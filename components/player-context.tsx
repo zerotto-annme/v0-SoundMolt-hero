@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react"
+import { createContext, useContext, useState, useCallback, useRef, useEffect, type ReactNode } from "react"
 
 export interface Track {
   id: string
@@ -11,15 +11,37 @@ export interface Track {
   coverUrl: string
   duration?: number
   plays?: number
+  audioUrl?: string
+}
+
+// Mock audio URLs - using royalty-free sample audio
+const MOCK_AUDIO_URLS = [
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3",
+]
+
+// Get a consistent audio URL for a track based on its ID
+function getAudioUrl(trackId: string): string {
+  const index = parseInt(trackId.replace(/\D/g, ''), 10) || 0
+  return MOCK_AUDIO_URLS[index % MOCK_AUDIO_URLS.length]
 }
 
 interface PlayerState {
   currentTrack: Track | null
   isPlaying: boolean
   progress: number
+  currentTime: number
+  duration: number
   volume: number
   queue: Track[]
   queueIndex: number
+  isLoading: boolean
 }
 
 interface PlayerContextType extends PlayerState {
@@ -27,9 +49,10 @@ interface PlayerContextType extends PlayerState {
   togglePlay: () => void
   nextTrack: () => void
   prevTrack: () => void
-  setProgress: (progress: number) => void
+  seekTo: (percent: number) => void
   setVolume: (volume: number) => void
   addToQueue: (track: Track) => void
+  audioRef: React.RefObject<HTMLAudioElement | null>
 }
 
 const PlayerContext = createContext<PlayerContextType | null>(null)
@@ -43,41 +66,149 @@ export function usePlayer() {
 }
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  
   const [state, setState] = useState<PlayerState>({
     currentTrack: null,
     isPlaying: false,
     progress: 0,
+    currentTime: 0,
+    duration: 0,
     volume: 80,
     queue: [],
     queueIndex: -1,
+    isLoading: false,
   })
 
+  // Initialize audio element
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !audioRef.current) {
+      audioRef.current = new Audio()
+      audioRef.current.volume = state.volume / 100
+      
+      // Audio event listeners
+      audioRef.current.addEventListener('loadedmetadata', () => {
+        if (audioRef.current) {
+          setState(prev => ({ 
+            ...prev, 
+            duration: audioRef.current!.duration,
+            isLoading: false 
+          }))
+        }
+      })
+
+      audioRef.current.addEventListener('timeupdate', () => {
+        if (audioRef.current) {
+          const currentTime = audioRef.current.currentTime
+          const duration = audioRef.current.duration || 1
+          setState(prev => ({ 
+            ...prev, 
+            currentTime,
+            progress: (currentTime / duration) * 100 
+          }))
+        }
+      })
+
+      audioRef.current.addEventListener('ended', () => {
+        setState(prev => {
+          if (prev.queueIndex < prev.queue.length - 1) {
+            // Auto-play next track
+            const newIndex = prev.queueIndex + 1
+            const nextTrack = prev.queue[newIndex]
+            if (audioRef.current && nextTrack) {
+              audioRef.current.src = nextTrack.audioUrl || getAudioUrl(nextTrack.id)
+              audioRef.current.play()
+            }
+            return {
+              ...prev,
+              currentTrack: nextTrack,
+              queueIndex: newIndex,
+              progress: 0,
+              currentTime: 0,
+              isPlaying: true,
+            }
+          }
+          return { ...prev, isPlaying: false, progress: 100 }
+        })
+      })
+
+      audioRef.current.addEventListener('play', () => {
+        setState(prev => ({ ...prev, isPlaying: true }))
+      })
+
+      audioRef.current.addEventListener('pause', () => {
+        setState(prev => ({ ...prev, isPlaying: false }))
+      })
+
+      audioRef.current.addEventListener('waiting', () => {
+        setState(prev => ({ ...prev, isLoading: true }))
+      })
+
+      audioRef.current.addEventListener('canplay', () => {
+        setState(prev => ({ ...prev, isLoading: false }))
+      })
+    }
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current.src = ''
+      }
+    }
+  }, [])
+
+  // Update volume when it changes
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = state.volume / 100
+    }
+  }, [state.volume])
+
   const playTrack = useCallback((track: Track) => {
+    const audioUrl = track.audioUrl || getAudioUrl(track.id)
+    
     setState((prev) => {
       const existingIndex = prev.queue.findIndex((t) => t.id === track.id)
+      
+      if (audioRef.current) {
+        audioRef.current.src = audioUrl
+        audioRef.current.play().catch(console.error)
+      }
+
       if (existingIndex >= 0) {
         return {
           ...prev,
-          currentTrack: track,
+          currentTrack: { ...track, audioUrl },
           isPlaying: true,
           progress: 0,
+          currentTime: 0,
           queueIndex: existingIndex,
+          isLoading: true,
         }
       }
-      const newQueue = [...prev.queue, track]
+      
+      const newQueue = [...prev.queue, { ...track, audioUrl }]
       return {
         ...prev,
-        currentTrack: track,
+        currentTrack: { ...track, audioUrl },
         isPlaying: true,
         progress: 0,
+        currentTime: 0,
         queue: newQueue,
         queueIndex: newQueue.length - 1,
+        isLoading: true,
       }
     })
   }, [])
 
   const togglePlay = useCallback(() => {
-    setState((prev) => ({ ...prev, isPlaying: !prev.isPlaying }))
+    if (audioRef.current) {
+      if (audioRef.current.paused) {
+        audioRef.current.play().catch(console.error)
+      } else {
+        audioRef.current.pause()
+      }
+    }
   }, [])
 
   const nextTrack = useCallback(() => {
@@ -86,34 +217,70 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         return prev
       }
       const newIndex = prev.queueIndex + 1
+      const nextTrackItem = prev.queue[newIndex]
+      
+      if (audioRef.current && nextTrackItem) {
+        audioRef.current.src = nextTrackItem.audioUrl || getAudioUrl(nextTrackItem.id)
+        audioRef.current.play().catch(console.error)
+      }
+      
       return {
         ...prev,
-        currentTrack: prev.queue[newIndex],
+        currentTrack: nextTrackItem,
         queueIndex: newIndex,
         progress: 0,
+        currentTime: 0,
         isPlaying: true,
+        isLoading: true,
       }
     })
   }, [])
 
   const prevTrack = useCallback(() => {
     setState((prev) => {
-      if (prev.queue.length === 0 || prev.queueIndex <= 0) {
-        return { ...prev, progress: 0 }
+      // If more than 3 seconds into track, restart current track
+      if (audioRef.current && audioRef.current.currentTime > 3) {
+        audioRef.current.currentTime = 0
+        return { ...prev, progress: 0, currentTime: 0 }
       }
+      
+      if (prev.queue.length === 0 || prev.queueIndex <= 0) {
+        if (audioRef.current) {
+          audioRef.current.currentTime = 0
+        }
+        return { ...prev, progress: 0, currentTime: 0 }
+      }
+      
       const newIndex = prev.queueIndex - 1
+      const prevTrackItem = prev.queue[newIndex]
+      
+      if (audioRef.current && prevTrackItem) {
+        audioRef.current.src = prevTrackItem.audioUrl || getAudioUrl(prevTrackItem.id)
+        audioRef.current.play().catch(console.error)
+      }
+      
       return {
         ...prev,
-        currentTrack: prev.queue[newIndex],
+        currentTrack: prevTrackItem,
         queueIndex: newIndex,
         progress: 0,
+        currentTime: 0,
         isPlaying: true,
+        isLoading: true,
       }
     })
   }, [])
 
-  const setProgress = useCallback((progress: number) => {
-    setState((prev) => ({ ...prev, progress }))
+  const seekTo = useCallback((percent: number) => {
+    if (audioRef.current && audioRef.current.duration) {
+      const newTime = (percent / 100) * audioRef.current.duration
+      audioRef.current.currentTime = newTime
+      setState(prev => ({ 
+        ...prev, 
+        progress: percent,
+        currentTime: newTime 
+      }))
+    }
   }, [])
 
   const setVolume = useCallback((volume: number) => {
@@ -121,9 +288,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const addToQueue = useCallback((track: Track) => {
+    const audioUrl = track.audioUrl || getAudioUrl(track.id)
     setState((prev) => ({
       ...prev,
-      queue: [...prev.queue, track],
+      queue: [...prev.queue, { ...track, audioUrl }],
     }))
   }, [])
 
@@ -135,9 +303,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         togglePlay,
         nextTrack,
         prevTrack,
-        setProgress,
+        seekTo,
         setVolume,
         addToQueue,
+        audioRef,
       }}
     >
       {children}
