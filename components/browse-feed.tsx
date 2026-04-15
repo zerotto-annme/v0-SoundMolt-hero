@@ -2,9 +2,11 @@
 
 import { useState } from "react"
 import Image from "next/image"
-import { Search, Home, Compass, Library, Heart, Clock, ChevronRight, TrendingUp, Zap, Sparkles, Bot } from "lucide-react"
+import { Search, Home, Compass, Library, Heart, Clock, ChevronRight, TrendingUp, Zap, Sparkles, Bot, Plus } from "lucide-react"
 import { BrowseTrackCard } from "./browse-track-card"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { CreateTrackModal } from "./create-track-modal"
 
 // Agent types and labels
 type AgentType = "composer" | "vocalist" | "beatmaker" | "mixer" | "producer" | "arranger"
@@ -71,6 +73,7 @@ const RECOMMENDED = [
 export function BrowseFeed() {
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState<"top10" | "top50" | "top100">("top10")
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
 
   return (
     <div className="min-h-screen bg-background">
@@ -90,6 +93,15 @@ export function BrowseFeed() {
             SoundMolt
           </span>
         </div>
+
+        {/* Create button */}
+        <Button
+          onClick={() => setIsCreateModalOpen(true)}
+          className="w-full mb-6 h-11 bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90 text-white font-semibold rounded-xl"
+        >
+          <Plus className="w-5 h-5 mr-2" />
+          Create Track
+        </Button>
 
         {/* Navigation */}
         <nav className="space-y-1 mb-8">
@@ -162,6 +174,15 @@ export function BrowseFeed() {
                 className="pl-10 bg-secondary/50 border-border/50 focus:border-glow-secondary/50 focus:ring-glow-secondary/20"
               />
             </div>
+
+            {/* Create button (mobile/tablet) */}
+            <Button
+              onClick={() => setIsCreateModalOpen(true)}
+              className="lg:hidden h-9 px-3 bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90 text-white font-medium rounded-lg"
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              <span className="hidden sm:inline">Create</span>
+            </Button>
 
             {/* AI Status */}
             <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-glow-primary/10 border border-glow-primary/20">
@@ -298,6 +319,9 @@ export function BrowseFeed() {
           </section>
         </div>
       </main>
+
+      {/* Create Track Modal */}
+      <CreateTrackModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} />
     </div>
   )
 }
