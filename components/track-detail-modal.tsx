@@ -1,10 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import Image from "next/image"
-import { X, Play, Pause, Heart, Share2, Plus, Sparkles, Clock, Users, Zap, MoreHorizontal, ExternalLink, Copy, Music, Mic, Drum, Sliders, Disc, Layers } from "lucide-react"
+import Link from "next/link"
+import { X, Play, Pause, Heart, Share2, Plus, Sparkles, Clock, Users, Zap, MoreHorizontal, ExternalLink, Copy, Music, Mic, Drum, Sliders, Disc, Layers, SkipBack, SkipForward, Volume2, MessageCircle } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { usePlayer } from "./player-context"
+import { useDiscussions } from "./discussions-context"
 
 type AgentType = "composer" | "vocalist" | "beatmaker" | "mixer" | "producer" | "arranger"
 
@@ -73,13 +76,45 @@ const MODEL_BADGES: Record<string, string> = {
   stability: "bg-violet-500/20 text-violet-300 border-violet-500/30",
 }
 
+// Generate consistent waveform data based on track ID
+function generateWaveformData(trackId: string, bars: number = 80): number[] {
+  const seed = trackId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+  const data: number[] = []
+  for (let i = 0; i < bars; i++) {
+    const noise = Math.sin(seed * i * 0.1) * 0.3 + Math.sin(seed * i * 0.05) * 0.2
+    const envelope = Math.sin((i / bars) * Math.PI) * 0.5 + 0.5
+    const value = Math.abs(noise + envelope * 0.7) * 0.8 + 0.2
+    data.push(Math.min(1, Math.max(0.1, value)))
+  }
+  return data
+}
+
 export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalProps) {
   const [isLiked, setIsLiked] = useState(false)
   const [showCopied, setShowCopied] = useState(false)
-  const { currentTrack, isPlaying, playTrack, togglePlay } = usePlayer()
+  const waveformRef = useRef<HTMLDivElement>(null)
+  const router = useRouter()
+  const { currentTrack, isPlaying, progress, currentTime, duration, playTrack, togglePlay, seekTo, prevTrack, nextTrack } = usePlayer()
+  const { getTopicByTrackId, createTrackTopic } = useDiscussions()
+
+  const handleDiscussTrack = () => {
+    // Check if a topic already exists for this track
+    let topic = getTopicByTrackId(track.id)
+    
+    // If no existing topic, create one
+    if (!topic) {
+      topic = createTrackTopic(track.id, track.title, track.agentName)
+    }
+    
+    onClose()
+    router.push(`/discussions/${topic.slug}`)
+  }
 
   const isCurrentTrack = currentTrack?.id === track.id
   const isTrackPlaying = isCurrentTrack && isPlaying
+
+  // Generate waveform data once based on track ID
+  const waveformData = useMemo(() => generateWaveformData(track.id, 80), [track.id])
 
   const handlePlay = () => {
     if (isCurrentTrack) {
@@ -99,6 +134,22 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
     setTimeout(() => setShowCopied(false), 2000)
   }
 
+  const handleWaveformClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isCurrentTrack || !waveformRef.current) return
+    
+    const rect = waveformRef.current.getBoundingClientRect()
+    const clickX = e.clientX - rect.left
+    const percent = (clickX / rect.width) * 100
+    seekTo(Math.max(0, Math.min(100, percent)))
+  }
+
+  const formatTime = (seconds: number) => {
+    if (isNaN(seconds) || seconds === Infinity) return "0:00"
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${mins}:${secs.toString().padStart(2, "0")}`
+  }
+
   const formatPlays = (num?: number) => {
     if (!num) return "0"
     if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
@@ -106,12 +157,9 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
     return num.toString()
   }
 
-  const formatDuration = (seconds?: number) => {
-    if (!seconds) return "3:24" // Default mock duration
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, "0")}`
-  }
+  const displayDuration = isCurrentTrack && duration > 0 ? duration : (track.duration || 204)
+  const displayCurrentTime = isCurrentTrack ? currentTime : 0
+  const displayProgress = isCurrentTrack ? progress : 0
 
   if (!isOpen) return null
 
@@ -195,7 +243,13 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                   </div>
                 )}
                 <div className="flex flex-col">
-                  <span className="text-foreground font-medium">{track.agentName}</span>
+                  <Link 
+                      href={`/agent/${encodeURIComponent(track.agentName)}`}
+                      onClick={onClose}
+                      className="text-foreground font-medium hover:text-glow-primary hover:underline transition-colors"
+                    >
+                      {track.agentName}
+                    </Link>
                   {track.agentLabel && (
                     <span className={`text-xs px-2 py-0.5 rounded border w-fit ${track.agentType ? AGENT_TYPE_BG[track.agentType] : "bg-glow-secondary/10 text-glow-secondary border-glow-secondary/20"}`}>
                       {track.agentLabel}
@@ -212,26 +266,119 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
 
         {/* Content */}
         <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(85vh-220px)]">
+          
+          {/* Waveform Player Section */}
+          <div className="bg-secondary/30 rounded-xl p-4 space-y-4">
+            {/* Waveform visualization */}
+            <div 
+              ref={waveformRef}
+              className={`relative h-20 flex items-end gap-[2px] cursor-pointer ${!isCurrentTrack ? 'opacity-60' : ''}`}
+              onClick={handleWaveformClick}
+            >
+              {waveformData.map((height, i) => {
+                const barProgress = (i / waveformData.length) * 100
+                const isPast = barProgress <= displayProgress
+                return (
+                  <div
+                    key={i}
+                    className={`flex-1 rounded-sm transition-all duration-100 ${
+                      isPast 
+                        ? 'bg-glow-primary' 
+                        : 'bg-white/20 hover:bg-white/30'
+                    }`}
+                    style={{ 
+                      height: `${height * 100}%`,
+                      opacity: isPast ? 1 : 0.6
+                    }}
+                  />
+                )
+              })}
+              
+              {/* Progress line */}
+              {isCurrentTrack && (
+                <div 
+                  className="absolute top-0 bottom-0 w-0.5 bg-white shadow-lg shadow-white/50"
+                  style={{ left: `${displayProgress}%` }}
+                />
+              )}
+            </div>
+
+            {/* Time display */}
+            <div className="flex items-center justify-between text-xs font-mono text-muted-foreground">
+              <span>{formatTime(displayCurrentTime)}</span>
+              <span>{formatTime(displayDuration)}</span>
+            </div>
+
+            {/* Progress bar (clickable) */}
+            <div 
+              className="relative h-1.5 bg-white/10 rounded-full cursor-pointer group"
+              onClick={(e) => {
+                if (!isCurrentTrack) {
+                  playTrack(track)
+                  return
+                }
+                const rect = e.currentTarget.getBoundingClientRect()
+                const percent = ((e.clientX - rect.left) / rect.width) * 100
+                seekTo(Math.max(0, Math.min(100, percent)))
+              }}
+            >
+              <div 
+                className="absolute inset-y-0 left-0 bg-gradient-to-r from-glow-primary to-glow-secondary rounded-full transition-all duration-100"
+                style={{ width: `${displayProgress}%` }}
+              />
+              <div 
+                className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{ left: `calc(${displayProgress}% - 6px)` }}
+              />
+            </div>
+
+            {/* Playback controls */}
+            <div className="flex items-center justify-center gap-4">
+              <button 
+                onClick={() => isCurrentTrack && prevTrack()}
+                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+                  isCurrentTrack 
+                    ? 'text-foreground hover:bg-white/10' 
+                    : 'text-muted-foreground/50 cursor-not-allowed'
+                }`}
+                disabled={!isCurrentTrack}
+              >
+                <SkipBack className="w-5 h-5" />
+              </button>
+              
+              <button
+                onClick={handlePlay}
+                className="w-14 h-14 rounded-full bg-gradient-to-br from-glow-primary to-glow-secondary flex items-center justify-center shadow-lg shadow-glow-primary/30 hover:scale-105 active:scale-95 transition-transform"
+              >
+                {isTrackPlaying ? (
+                  <Pause className="w-6 h-6 text-white" fill="white" />
+                ) : (
+                  <Play className="w-6 h-6 text-white ml-1" fill="white" />
+                )}
+              </button>
+              
+              <button 
+                onClick={() => isCurrentTrack && nextTrack()}
+                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+                  isCurrentTrack 
+                    ? 'text-foreground hover:bg-white/10' 
+                    : 'text-muted-foreground/50 cursor-not-allowed'
+                }`}
+                disabled={!isCurrentTrack}
+              >
+                <SkipForward className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Volume indicator */}
+            <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+              <Volume2 className="w-3.5 h-3.5" />
+              <span>Click waveform to seek</span>
+            </div>
+          </div>
+
           {/* Action buttons */}
           <div className="flex items-center gap-3">
-            <Button
-              size="lg"
-              onClick={handlePlay}
-              className="bg-glow-primary hover:bg-glow-primary/90 text-white shadow-lg shadow-glow-primary/30 gap-2"
-            >
-              {isTrackPlaying ? (
-                <>
-                  <Pause className="w-5 h-5" fill="white" />
-                  Pause
-                </>
-              ) : (
-                <>
-                  <Play className="w-5 h-5" fill="white" />
-                  Play
-                </>
-              )}
-            </Button>
-
             <button
               onClick={handleLike}
               className={`w-12 h-12 rounded-full border flex items-center justify-center transition-all duration-300 ${
@@ -258,6 +405,14 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
               )}
             </button>
 
+            <button 
+              onClick={handleDiscussTrack}
+              className="flex items-center gap-2 h-12 px-4 rounded-full border border-border hover:border-glow-secondary/50 hover:bg-glow-secondary/10 text-muted-foreground hover:text-glow-secondary transition-colors"
+            >
+              <MessageCircle className="w-5 h-5" />
+              <span className="text-sm font-medium">Discuss</span>
+            </button>
+
             <button className="w-12 h-12 rounded-full border border-border hover:border-foreground/30 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors ml-auto">
               <MoreHorizontal className="w-5 h-5" />
             </button>
@@ -271,7 +426,7 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
             </div>
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">{formatDuration(track.duration)}</span>
+              <span className="text-sm text-muted-foreground">{formatTime(displayDuration)}</span>
             </div>
             <div className="flex items-center gap-2">
               <Heart className="w-4 h-4 text-muted-foreground" />
@@ -305,7 +460,13 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                   </div>
                 )}
                 <div>
-                  <div className="font-semibold text-foreground">{track.agentName}</div>
+                  <Link 
+                        href={`/agent/${encodeURIComponent(track.agentName)}`}
+                        onClick={onClose}
+                        className="font-semibold text-foreground hover:text-glow-primary hover:underline transition-colors"
+                      >
+                        {track.agentName}
+                      </Link>
                   <div className="flex items-center gap-2 mt-1">
                     {track.agentLabel && (
                       <span className={`text-xs px-2 py-0.5 rounded border ${track.agentType ? AGENT_TYPE_BG[track.agentType] : "bg-glow-secondary/10 text-glow-secondary border-glow-secondary/20"}`}>

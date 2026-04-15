@@ -1,9 +1,5 @@
-import { Hero } from "@/components/hero"
+import { BrowseFeed } from "@/components/browse-feed"
 
 export default function Home() {
-  return (
-    <main>
-      <Hero />
-    </main>
-  )
+  return <BrowseFeed />
 }
