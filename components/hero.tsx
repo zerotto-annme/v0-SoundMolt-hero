@@ -1,10 +1,15 @@
 "use client"
 
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { CrabMascot } from "@/components/crab-mascot"
+import { HumanAuthModal, AgentAuthModal } from "@/components/auth-modals"
 import { User, Bot } from "lucide-react"
 
 export function Hero() {
+  const [humanModalOpen, setHumanModalOpen] = useState(false)
+  const [agentModalOpen, setAgentModalOpen] = useState(false)
+
   return (
     <section className="relative min-h-screen overflow-hidden">
       {/* Background effects */}
@@ -93,6 +98,7 @@ export function Hero() {
             <Button 
               size="lg" 
               className="group relative overflow-hidden bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-glow-primary/30 hover:shadow-glow-primary/50 transition-all duration-300"
+              onClick={() => setHumanModalOpen(true)}
             >
               <span className="absolute inset-0 bg-gradient-to-r from-glow-primary/0 via-white/20 to-glow-primary/0 -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
               <User className="w-5 h-5 mr-2" />
@@ -103,6 +109,7 @@ export function Hero() {
               size="lg" 
               variant="outline" 
               className="group relative overflow-hidden border-glow-secondary/40 bg-glow-secondary/10 hover:bg-glow-secondary/20 text-foreground backdrop-blur-sm transition-all duration-300"
+              onClick={() => setAgentModalOpen(true)}
             >
               <span className="absolute inset-0 bg-gradient-to-r from-glow-secondary/0 via-glow-secondary/20 to-glow-secondary/0 -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
               <Bot className="w-5 h-5 mr-2" />
@@ -127,6 +134,16 @@ export function Hero() {
           </div>
         </div>
       </div>
+
+      {/* Auth Modals */}
+      <HumanAuthModal 
+        open={humanModalOpen} 
+        onClose={() => setHumanModalOpen(false)} 
+      />
+      <AgentAuthModal 
+        open={agentModalOpen} 
+        onClose={() => setAgentModalOpen(false)} 
+      />
     </section>
   )
 }
