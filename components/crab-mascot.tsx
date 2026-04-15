@@ -15,165 +15,167 @@ export function CrabMascot({ size = "md", className = "" }: CrabMascotProps) {
   return (
     <div className={`${sizeClasses[size]} ${className}`}>
       <svg
-        viewBox="0 0 120 120"
+        viewBox="0 0 200 200"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
         className="w-full h-full"
       >
         <defs>
-          {/* Subtle glow for tech elements */}
-          <filter id="subtleGlow" x="-30%" y="-30%" width="160%" height="160%">
-            <feGaussianBlur stdDeviation="1.5" result="coloredBlur" />
+          {/* Crab body gradient - coral red matching the reference */}
+          <linearGradient id="crabBodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#e8847a" />
+            <stop offset="50%" stopColor="#d66b61" />
+            <stop offset="100%" stopColor="#c45a50" />
+          </linearGradient>
+          
+          {/* Darker shade for depth */}
+          <linearGradient id="crabDarkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#d66b61" />
+            <stop offset="100%" stopColor="#b54a40" />
+          </linearGradient>
+          
+          {/* Light highlights */}
+          <linearGradient id="highlightGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#f0a8a0" stopOpacity="0.6" />
+            <stop offset="100%" stopColor="#d66b61" stopOpacity="0" />
+          </linearGradient>
+          
+          {/* Headphone gradient */}
+          <linearGradient id="headphoneGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#4a5568" />
+            <stop offset="100%" stopColor="#2d3748" />
+          </linearGradient>
+          
+          {/* Cyan glow for music elements */}
+          <filter id="cyanGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2" result="coloredBlur" />
             <feMerge>
               <feMergeNode in="coloredBlur" />
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
           
-          {/* Premium red gradient - deep and rich */}
-          <linearGradient id="shellGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#ef4444" />
-            <stop offset="40%" stopColor="#dc2626" />
-            <stop offset="100%" stopColor="#991b1b" />
-          </linearGradient>
-          
-          {/* Highlight for shell */}
-          <linearGradient id="shellHighlight" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#fca5a5" stopOpacity="0.4" />
-            <stop offset="100%" stopColor="#dc2626" stopOpacity="0" />
-          </linearGradient>
-          
-          {/* Cyan accent for audio elements */}
-          <linearGradient id="cyanAccent" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#06b6d4" />
-            <stop offset="100%" stopColor="#22d3ee" />
-          </linearGradient>
-          
-          {/* Headphone gradient - premium dark */}
-          <linearGradient id="headphoneGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#374151" />
-            <stop offset="100%" stopColor="#1f2937" />
-          </linearGradient>
+          {/* Soft shadow */}
+          <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.2" />
+          </filter>
         </defs>
 
-        {/* Headphone band - sleek arc */}
+        {/* === HEADPHONE BAND === */}
         <path
-          d="M25 52 Q 25 28 60 24 Q 95 28 95 52"
-          stroke="#1f2937"
-          strokeWidth="5"
+          d="M38 68 Q 38 30 100 26 Q 162 30 162 68"
+          stroke="#2d3748"
+          strokeWidth="8"
           strokeLinecap="round"
           fill="none"
         />
         <path
-          d="M27 50 Q 27 30 60 27 Q 93 30 93 50"
-          stroke="#374151"
-          strokeWidth="1.5"
+          d="M40 66 Q 40 34 100 30 Q 160 34 160 66"
+          stroke="#4a5568"
+          strokeWidth="3"
           strokeLinecap="round"
           fill="none"
         />
 
-        {/* Left headphone cup - minimal */}
-        <g>
-          <rect x="16" y="46" width="16" height="22" rx="4" fill="url(#headphoneGrad)" />
-          <rect x="18" y="48" width="12" height="18" rx="3" fill="#111827" />
-          {/* Cyan accent ring */}
-          <rect
-            x="19"
-            y="49"
-            width="10"
-            height="16"
-            rx="2"
-            stroke="url(#cyanAccent)"
-            strokeWidth="1"
-            fill="none"
-            filter="url(#subtleGlow)"
-          />
+        {/* === LEFT HEADPHONE CUP === */}
+        <g filter="url(#softShadow)">
+          <rect x="24" y="58" width="24" height="34" rx="6" fill="url(#headphoneGrad)" />
+          <rect x="27" y="61" width="18" height="28" rx="4" fill="#1a202c" />
+          {/* Cyan accent */}
+          <rect x="29" y="63" width="14" height="24" rx="3" stroke="#22d3ee" strokeWidth="1.5" fill="none" />
+          <circle cx="36" cy="75" r="6" fill="#1a202c" stroke="#22d3ee" strokeWidth="1" />
         </g>
 
-        {/* Right headphone cup - minimal */}
-        <g>
-          <rect x="88" y="46" width="16" height="22" rx="4" fill="url(#headphoneGrad)" />
-          <rect x="90" y="48" width="12" height="18" rx="3" fill="#111827" />
-          {/* Cyan accent ring */}
-          <rect
-            x="91"
-            y="49"
-            width="10"
-            height="16"
-            rx="2"
-            stroke="url(#cyanAccent)"
-            strokeWidth="1"
-            fill="none"
-            filter="url(#subtleGlow)"
-          />
+        {/* === RIGHT HEADPHONE CUP === */}
+        <g filter="url(#softShadow)">
+          <rect x="152" y="58" width="24" height="34" rx="6" fill="url(#headphoneGrad)" />
+          <rect x="155" y="61" width="18" height="28" rx="4" fill="#1a202c" />
+          {/* Cyan accent */}
+          <rect x="157" y="63" width="14" height="24" rx="3" stroke="#22d3ee" strokeWidth="1.5" fill="none" />
+          <circle cx="164" cy="75" r="6" fill="#1a202c" stroke="#22d3ee" strokeWidth="1" />
         </g>
 
-        {/* Main shell body - clean geometric shape */}
-        <ellipse
-          cx="60"
-          cy="70"
-          rx="32"
-          ry="26"
-          fill="url(#shellGradient)"
-        />
+        {/* === MUSIC NOTE near right headphone === */}
+        <g filter="url(#cyanGlow)">
+          <ellipse cx="182" cy="56" rx="5" ry="4" fill="#22d3ee" />
+          <rect x="186" y="38" width="2.5" height="18" fill="#22d3ee" />
+          <path d="M186 38 Q 196 35 196 44" stroke="#22d3ee" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+        </g>
+
+        {/* === ANTENNAE === */}
+        <ellipse cx="85" cy="52" rx="4" ry="8" fill="url(#crabBodyGrad)" />
+        <ellipse cx="115" cy="52" rx="4" ry="8" fill="url(#crabBodyGrad)" />
+        <circle cx="85" cy="44" r="4" fill="url(#crabBodyGrad)" />
+        <circle cx="115" cy="44" r="4" fill="url(#crabBodyGrad)" />
+
+        {/* === MAIN HEAD === */}
+        <ellipse cx="100" cy="78" rx="42" ry="38" fill="url(#crabBodyGrad)" filter="url(#softShadow)" />
+        {/* Head highlight */}
+        <ellipse cx="92" cy="68" rx="20" ry="14" fill="url(#highlightGrad)" />
+
+        {/* === EYES === */}
+        {/* Left eye */}
+        <ellipse cx="82" cy="74" rx="12" ry="13" fill="#2d1f1f" />
+        <ellipse cx="82" cy="74" rx="10" ry="11" fill="#1a1212" />
+        <circle cx="85" cy="71" r="4" fill="#ffffff" />
+        <circle cx="79" cy="77" r="2" fill="#ffffff" opacity="0.5" />
         
-        {/* Shell highlight for depth */}
-        <ellipse
-          cx="60"
-          cy="62"
-          rx="24"
-          ry="14"
-          fill="url(#shellHighlight)"
-        />
+        {/* Right eye */}
+        <ellipse cx="118" cy="74" rx="12" ry="13" fill="#2d1f1f" />
+        <ellipse cx="118" cy="74" rx="10" ry="11" fill="#1a1212" />
+        <circle cx="121" cy="71" r="4" fill="#ffffff" />
+        <circle cx="115" cy="77" r="2" fill="#ffffff" opacity="0.5" />
 
-        {/* Left claw - simplified geometric */}
-        <g>
-          <ellipse cx="22" cy="78" rx="10" ry="6" fill="url(#shellGradient)" transform="rotate(-25 22 78)" />
-          <ellipse cx="14" cy="82" rx="8" ry="5" fill="url(#shellGradient)" transform="rotate(-15 14 82)" />
-          <ellipse cx="12" cy="76" rx="7" ry="4" fill="url(#shellGradient)" transform="rotate(-40 12 76)" />
-        </g>
+        {/* === BODY === */}
+        <ellipse cx="100" cy="128" rx="38" ry="24" fill="url(#crabBodyGrad)" filter="url(#softShadow)" />
+        {/* Body highlight */}
+        <ellipse cx="94" cy="122" rx="18" ry="10" fill="url(#highlightGrad)" />
+        {/* Body segment line */}
+        <path d="M72 130 Q 100 138 128 130" stroke="#b54a40" strokeWidth="2" fill="none" opacity="0.5" />
 
-        {/* Right claw - simplified geometric */}
-        <g>
-          <ellipse cx="98" cy="78" rx="10" ry="6" fill="url(#shellGradient)" transform="rotate(25 98 78)" />
-          <ellipse cx="106" cy="82" rx="8" ry="5" fill="url(#shellGradient)" transform="rotate(15 106 82)" />
-          <ellipse cx="108" cy="76" rx="7" ry="4" fill="url(#shellGradient)" transform="rotate(40 108 76)" />
-        </g>
-
-        {/* Legs - subtle, minimal */}
-        <g opacity="0.9">
-          <ellipse cx="35" cy="90" rx="8" ry="3" fill="url(#shellGradient)" transform="rotate(-15 35 90)" />
-          <ellipse cx="32" cy="96" rx="7" ry="2.5" fill="url(#shellGradient)" transform="rotate(-5 32 96)" />
-          <ellipse cx="85" cy="90" rx="8" ry="3" fill="url(#shellGradient)" transform="rotate(15 85 90)" />
-          <ellipse cx="88" cy="96" rx="7" ry="2.5" fill="url(#shellGradient)" transform="rotate(5 88 96)" />
-        </g>
-
-        {/* Audio waveform on shell - signature element */}
-        <g filter="url(#subtleGlow)">
-          <rect x="47" y="72" width="2" height="6" rx="1" fill="url(#cyanAccent)" />
-          <rect x="51" y="69" width="2" height="12" rx="1" fill="url(#cyanAccent)" />
-          <rect x="55" y="66" width="2" height="18" rx="1" fill="url(#cyanAccent)" />
-          <rect x="59" y="68" width="2" height="14" rx="1" fill="url(#cyanAccent)" />
-          <rect x="63" y="65" width="2" height="20" rx="1" fill="url(#cyanAccent)" />
-          <rect x="67" y="69" width="2" height="12" rx="1" fill="url(#cyanAccent)" />
-          <rect x="71" y="72" width="2" height="6" rx="1" fill="url(#cyanAccent)" />
-        </g>
-
-        {/* Eye stalks - clean */}
-        <ellipse cx="48" cy="54" rx="4" ry="6" fill="url(#shellGradient)" />
-        <ellipse cx="72" cy="54" rx="4" ry="6" fill="url(#shellGradient)" />
-
-        {/* Eyes - minimal, sophisticated */}
-        <circle cx="48" cy="50" r="5" fill="#fafafa" />
-        <circle cx="72" cy="50" r="5" fill="#fafafa" />
+        {/* === LEFT CLAW ARM === */}
+        <ellipse cx="54" cy="118" rx="14" ry="8" fill="url(#crabBodyGrad)" transform="rotate(-20 54 118)" />
+        <ellipse cx="38" cy="124" rx="12" ry="7" fill="url(#crabBodyGrad)" transform="rotate(-10 38 124)" />
         
-        {/* Pupils - clean dots */}
-        <circle cx="49" cy="50" r="2.5" fill="#0f172a" />
-        <circle cx="73" cy="50" r="2.5" fill="#0f172a" />
+        {/* Left claw */}
+        <g filter="url(#softShadow)">
+          <ellipse cx="22" cy="130" rx="16" ry="12" fill="url(#crabBodyGrad)" transform="rotate(-15 22 130)" />
+          <ellipse cx="16" cy="124" rx="10" ry="7" fill="url(#crabBodyGrad)" transform="rotate(-30 16 124)" />
+          {/* Claw highlight */}
+          <ellipse cx="20" cy="126" rx="8" ry="5" fill="url(#highlightGrad)" transform="rotate(-15 20 126)" />
+        </g>
+
+        {/* === RIGHT CLAW ARM === */}
+        <ellipse cx="146" cy="118" rx="14" ry="8" fill="url(#crabBodyGrad)" transform="rotate(20 146 118)" />
+        <ellipse cx="162" cy="124" rx="12" ry="7" fill="url(#crabBodyGrad)" transform="rotate(10 162 124)" />
         
-        {/* Eye highlights */}
-        <circle cx="50" cy="49" r="1" fill="#ffffff" />
-        <circle cx="74" cy="49" r="1" fill="#ffffff" />
+        {/* Right claw */}
+        <g filter="url(#softShadow)">
+          <ellipse cx="178" cy="130" rx="16" ry="12" fill="url(#crabBodyGrad)" transform="rotate(15 178 130)" />
+          <ellipse cx="184" cy="124" rx="10" ry="7" fill="url(#crabBodyGrad)" transform="rotate(30 184 124)" />
+          {/* Claw highlight */}
+          <ellipse cx="180" cy="126" rx="8" ry="5" fill="url(#highlightGrad)" transform="rotate(15 180 126)" />
+        </g>
+
+        {/* === LEGS LEFT === */}
+        <ellipse cx="68" cy="148" rx="12" ry="4" fill="url(#crabDarkGrad)" transform="rotate(-25 68 148)" />
+        <ellipse cx="58" cy="156" rx="8" ry="3" fill="url(#crabDarkGrad)" transform="rotate(-35 58 156)" />
+        
+        <ellipse cx="72" cy="156" rx="12" ry="4" fill="url(#crabDarkGrad)" transform="rotate(-15 72 156)" />
+        <ellipse cx="64" cy="164" rx="8" ry="3" fill="url(#crabDarkGrad)" transform="rotate(-25 64 164)" />
+        
+        <ellipse cx="78" cy="162" rx="10" ry="3.5" fill="url(#crabDarkGrad)" transform="rotate(-5 78 162)" />
+        <ellipse cx="72" cy="170" rx="7" ry="2.5" fill="url(#crabDarkGrad)" transform="rotate(-15 72 170)" />
+
+        {/* === LEGS RIGHT === */}
+        <ellipse cx="132" cy="148" rx="12" ry="4" fill="url(#crabDarkGrad)" transform="rotate(25 132 148)" />
+        <ellipse cx="142" cy="156" rx="8" ry="3" fill="url(#crabDarkGrad)" transform="rotate(35 142 156)" />
+        
+        <ellipse cx="128" cy="156" rx="12" ry="4" fill="url(#crabDarkGrad)" transform="rotate(15 128 156)" />
+        <ellipse cx="136" cy="164" rx="8" ry="3" fill="url(#crabDarkGrad)" transform="rotate(25 136 164)" />
+        
+        <ellipse cx="122" cy="162" rx="10" ry="3.5" fill="url(#crabDarkGrad)" transform="rotate(5 122 162)" />
+        <ellipse cx="128" cy="170" rx="7" ry="2.5" fill="url(#crabDarkGrad)" transform="rotate(15 128 170)" />
       </svg>
     </div>
   )
