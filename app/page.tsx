@@ -89,11 +89,11 @@ export default function LandingPage() {
           <div className="absolute inset-0 bg-red-500/40 rounded-full blur-[80px] scale-125 animate-[glowPulse_3s_ease-in-out_infinite]" />
           
           {/* Left sound wave bars */}
-          <div className="absolute -left-16 md:-left-24 top-1/2 -translate-y-1/2 flex items-center gap-[3px] md:gap-1">
+          <div className="absolute -left-8 md:-left-12 top-1/2 -translate-y-1/2 flex items-center gap-[4px] md:gap-1.5">
             {[0, 1, 2, 3, 4, 5, 6].map((i) => (
               <div
                 key={`left-${i}`}
-                className="w-[3px] md:w-1 rounded-full bg-gradient-to-t from-red-500 to-red-400"
+                className="w-[5px] md:w-1.5 rounded-full bg-gradient-to-t from-red-500 to-red-400"
                 style={{
                   height: '40px',
                   animation: `waveBar ${0.8 + (i % 3) * 0.15}s ease-in-out infinite`,
@@ -106,11 +106,11 @@ export default function LandingPage() {
           </div>
           
           {/* Right sound wave bars */}
-          <div className="absolute -right-16 md:-right-24 top-1/2 -translate-y-1/2 flex items-center gap-[3px] md:gap-1">
+          <div className="absolute -right-8 md:-right-12 top-1/2 -translate-y-1/2 flex items-center gap-[4px] md:gap-1.5">
             {[0, 1, 2, 3, 4, 5, 6].map((i) => (
               <div
                 key={`right-${i}`}
-                className="w-[3px] md:w-1 rounded-full bg-gradient-to-t from-red-500 to-red-400"
+                className="w-[5px] md:w-1.5 rounded-full bg-gradient-to-t from-red-500 to-red-400"
                 style={{
                   height: '40px',
                   animation: `waveBar ${0.8 + ((6 - i) % 3) * 0.15}s ease-in-out infinite`,
