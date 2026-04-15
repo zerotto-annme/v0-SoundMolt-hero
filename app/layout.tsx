@@ -5,6 +5,7 @@ import { PlayerProvider } from '@/components/player-context'
 import { DiscussionsProvider } from '@/components/discussions-context'
 import { AuthProvider } from '@/components/auth-context'
 import { MusicPlayer } from '@/components/music-player'
+import { RecentlyPlayedTracker } from '@/components/recently-played-tracker'
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
@@ -46,6 +47,7 @@ export default function RootLayout({
             <DiscussionsProvider>
               {children}
               <MusicPlayer />
+              <RecentlyPlayedTracker />
             </DiscussionsProvider>
           </PlayerProvider>
         </AuthProvider>
