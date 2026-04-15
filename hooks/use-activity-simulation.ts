@@ -13,12 +13,22 @@ export interface ChartEntry {
   weeklyTrendScore: number
 }
 
+// ChartTrack is a SeedTrack with chart-specific data
+export interface ChartTrack extends SeedTrack {
+  rank: number
+  previousRank: number
+  movement: "up" | "down" | "same" | "new"
+  movementAmount: number
+  chartScore: number
+  weeklyTrendScore: number
+}
+
 export interface ActivityState {
   tracks: SeedTrack[]
   agentsOnline: number
   recentActivity: ActivityEvent[]
   trendingTracks: SeedTrack[]
-  topCharts: ChartEntry[]
+  topCharts: ChartTrack[]
   newReleases: SeedTrack[]
   weeklyMomentum: Map<string, number>
   lastChartUpdate: Date
@@ -201,7 +211,7 @@ export function useActivitySimulation() {
   }, [tracks, weeklyMomentum])
 
   // Get dynamic top charts with movement indicators
-  const getTopCharts = useCallback((): ChartEntry[] => {
+  const getTopCharts = useCallback((): ChartTrack[] => {
     const chartEntries = tracks.map((track) => {
       const momentum = weeklyMomentum.get(track.id) || 0
       const { score, trendScore } = calculateChartScore(track, momentum)
@@ -211,7 +221,7 @@ export function useActivitySimulation() {
     // Sort by score
     chartEntries.sort((a, b) => b.score - a.score)
     
-    // Calculate movements
+    // Calculate movements and return ChartTrack objects
     return chartEntries.slice(0, 100).map((entry, index) => {
       const currentRank = index + 1
       const prevRank = previousRanks.get(entry.track.id) || currentRank
@@ -230,8 +240,9 @@ export function useActivitySimulation() {
         movementAmount = currentRank - prevRank
       }
       
+      // Merge track with chart data
       return {
-        track: entry.track,
+        ...entry.track,
         rank: currentRank,
         previousRank: prevRank,
         movement,
@@ -314,14 +325,28 @@ export function formatAgentsOnline(count: number): string {
 }
 
 // Format chart update time
-export function formatChartUpdate(date: Date): string {
+export function formatChartUpdate(): string {
   const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
+  const dayOfWeek = now.getDay()
+  const daysUntilSunday = (7 - dayOfWeek) % 7 || 7
   
-  if (diffMins < 1) return "Just updated"
-  if (diffMins < 60) return `Updated ${diffMins}m ago`
-  const diffHours = Math.floor(diffMins / 60)
-  if (diffHours < 24) return `Updated ${diffHours}h ago`
-  return `Updated ${Math.floor(diffHours / 24)}d ago`
+  if (daysUntilSunday === 7) {
+    return "Updates today"
+  } else if (daysUntilSunday === 1) {
+    return "Updates tomorrow"
+  } else {
+    return `Updates in ${daysUntilSunday} days`
+  }
+}
+
+// Get current chart period
+export function getChartPeriod(): string {
+  const now = new Date()
+  const weekStart = new Date(now)
+  weekStart.setDate(now.getDate() - now.getDay())
+  const weekEnd = new Date(weekStart)
+  weekEnd.setDate(weekStart.getDate() + 6)
+  
+  const formatDate = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  return `Week of ${formatDate(weekStart)}`
 }

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { CreateTrackModal } from "./create-track-modal"
 import { usePlayer } from "./player-context"
-import { useActivitySimulation, formatAgentsOnline, formatChartUpdate } from "@/hooks/use-activity-simulation"
+import { useActivitySimulation, formatAgentsOnline, formatChartUpdate, getChartPeriod } from "@/hooks/use-activity-simulation"
 import { LiveActivityFeed } from "./live-activity-feed"
 import { 
   RECOMMENDED,
@@ -356,8 +356,17 @@ export function BrowseFeed() {
 
               {/* Top Charts */}
               <section>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-bold text-foreground">Top Charts</h2>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+                  <div className="flex items-center gap-3">
+                    <TrendingUp className="w-5 h-5 text-amber-400" />
+                    <h2 className="text-xl font-bold text-foreground">Top Charts</h2>
+                    <span className="px-2 py-0.5 text-xs font-mono rounded bg-white/5 text-muted-foreground border border-white/10">
+                      {getChartPeriod()}
+                    </span>
+                    <span className="px-2 py-0.5 text-xs font-mono rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                      {formatChartUpdate()}
+                    </span>
+                  </div>
                   <div className="flex gap-2">
                     {(["top10", "top50", "top100"] as const).map((tab) => (
                       <button
@@ -375,11 +384,41 @@ export function BrowseFeed() {
                   </div>
                 </div>
 
-                <div className="bg-card/30 rounded-xl p-4">
-                  <div className="grid gap-1">
+                {/* Chart header */}
+                <div className="bg-card/30 rounded-xl overflow-hidden">
+                  <div className="grid grid-cols-[40px_1fr_100px_100px_80px] gap-4 px-4 py-2 border-b border-border/30 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <span className="text-center">#</span>
+                    <span>Track</span>
+                    <span className="text-right hidden sm:block">Plays</span>
+                    <span className="text-right hidden md:block">Likes</span>
+                    <span className="text-right">Trend</span>
+                  </div>
+                  <div className="divide-y divide-border/20">
                     {displayedTopCharts.map((track, index) => (
-                      <BrowseTrackCard key={track.id} track={track} variant="list" rank={index + 1} />
+                      <ChartTrackCard key={track.id} track={track} rank={index + 1} />
                     ))}
+                  </div>
+                </div>
+
+                {/* Chart legend */}
+                <div className="flex items-center justify-center gap-6 mt-4 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                      <span className="text-emerald-400 text-[8px]">+</span>
+                    </div>
+                    <span>Moving up</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-full bg-red-500/20 flex items-center justify-center">
+                      <span className="text-red-400 text-[8px]">-</span>
+                    </div>
+                    <span>Moving down</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-full bg-white/10 flex items-center justify-center">
+                      <span className="text-muted-foreground text-[8px]">=</span>
+                    </div>
+                    <span>No change</span>
                   </div>
                 </div>
               </section>

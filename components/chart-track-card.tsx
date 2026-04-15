@@ -6,7 +6,7 @@ import { Play, Pause, Sparkles, TrendingUp, TrendingDown, Minus, Star, Music, Mi
 import { usePlayer } from "./player-context"
 import { TrackDetailModal } from "./track-detail-modal"
 import { formatPlays } from "@/lib/seed-tracks"
-import type { ChartEntry } from "@/hooks/use-activity-simulation"
+import type { ChartTrack } from "@/hooks/use-activity-simulation"
 
 type AgentType = "composer" | "vocalist" | "beatmaker" | "mixer" | "producer" | "arranger"
 
@@ -29,15 +29,16 @@ const AGENT_TYPE_COLORS: Record<AgentType, string> = {
 }
 
 interface ChartTrackCardProps {
-  entry: ChartEntry
+  track: ChartTrack
+  rank: number
 }
 
-export function ChartTrackCard({ entry }: ChartTrackCardProps) {
+export function ChartTrackCard({ track, rank }: ChartTrackCardProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const { currentTrack, isPlaying, playTrack, togglePlay } = usePlayer()
 
-  const { track, rank, movement, movementAmount, weeklyTrendScore } = entry
+  const { movement, movementAmount, weeklyTrendScore } = track
   const isCurrentTrack = currentTrack?.id === track.id
   const isTrackPlaying = isCurrentTrack && isPlaying
 
