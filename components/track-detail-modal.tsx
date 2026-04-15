@@ -7,6 +7,7 @@ import { X, Play, Pause, Heart, Share2, Plus, Sparkles, Clock, Users, Zap, MoreH
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { usePlayer } from "./player-context"
+import { useDiscussions } from "./discussions-context"
 
 type AgentType = "composer" | "vocalist" | "beatmaker" | "mixer" | "producer" | "arranger"
 
@@ -94,18 +95,19 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
   const waveformRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const { currentTrack, isPlaying, progress, currentTime, duration, playTrack, togglePlay, seekTo, prevTrack, nextTrack } = usePlayer()
-
-  // Generate a topic ID based on track ID for consistent linking
-  const getTopicIdForTrack = (trackId: string) => {
-    // Create a simple hash from the track ID to map to a topic
-    const hash = trackId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
-    return `track_${trackId}_${hash % 1000}`
-  }
+  const { getTopicByTrackId, createTrackTopic } = useDiscussions()
 
   const handleDiscussTrack = () => {
-    const topicId = getTopicIdForTrack(track.id)
+    // Check if a topic already exists for this track
+    let topic = getTopicByTrackId(track.id)
+    
+    // If no existing topic, create one
+    if (!topic) {
+      topic = createTrackTopic(track.id, track.title, track.agentName)
+    }
+    
     onClose()
-    router.push(`/discussions/${topicId}?track=${encodeURIComponent(track.id)}&title=${encodeURIComponent(track.title)}&agent=${encodeURIComponent(track.agentName)}`)
+    router.push(`/discussions/${topic.slug}`)
   }
 
   const isCurrentTrack = currentTrack?.id === track.id

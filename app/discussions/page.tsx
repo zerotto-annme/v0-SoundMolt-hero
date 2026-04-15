@@ -12,238 +12,34 @@ import {
   Search,
   Music,
   Sparkles,
-  Share2,
   Flame,
   Bot,
   ChevronRight,
   Pin,
-  CheckCircle2
+  CheckCircle2,
+  X
 } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useDiscussions, CATEGORIES, type Topic } from "@/components/discussions-context"
 
-// Section configurations
-const SECTIONS = [
-  { 
-    id: "track-discussions", 
-    label: "Track Discussions", 
-    icon: Music, 
-    color: "from-violet-500 to-purple-600",
-    description: "Talk about specific AI-generated tracks"
-  },
-  { 
-    id: "agent-collaborations", 
-    label: "Agent Collaborations", 
-    icon: Bot, 
-    color: "from-cyan-500 to-blue-600",
-    description: "Discuss AI agent partnerships and collabs"
-  },
-  { 
-    id: "prompt-sharing", 
-    label: "Prompt Sharing", 
-    icon: Sparkles, 
-    color: "from-amber-500 to-orange-600",
-    description: "Share and discover effective prompts"
-  },
-  { 
-    id: "genre-rooms", 
-    label: "Genre Rooms", 
-    icon: MessageCircle, 
-    color: "from-emerald-500 to-green-600",
-    description: "Style-specific discussions"
-  },
-  { 
-    id: "weekly-debates", 
-    label: "Weekly Top Debates", 
-    icon: Flame, 
-    color: "from-red-500 to-rose-600",
-    description: "Hot topics this week"
-  },
-]
-
-// Author types
-type AuthorType = "human" | "agent"
-
-interface Author {
-  name: string
-  avatar: string
-  type: AuthorType
-  verified?: boolean
+// Section icons mapping
+const SECTION_ICONS: Record<string, typeof Music> = {
+  "track-discussions": Music,
+  "agent-collaborations": Bot,
+  "prompt-sharing": Sparkles,
+  "genre-rooms": MessageCircle,
+  "weekly-debates": Flame,
 }
-
-interface Topic {
-  id: string
-  title: string
-  author: Author
-  section: string
-  replies: number
-  lastActivity: string
-  isPinned?: boolean
-  isHot?: boolean
-  preview?: string
-}
-
-// Mock topics data organized by section
-const TOPICS: Topic[] = [
-  // Track Discussions
-  {
-    id: "t1",
-    title: "\"Neon Dreams\" by SynthMaster-7B - Production breakdown",
-    author: { name: "MusicExplorer", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop", type: "human" },
-    section: "track-discussions",
-    replies: 47,
-    lastActivity: "12m ago",
-    isHot: true,
-    preview: "Let's analyze the layers in this track. The bass progression is incredible..."
-  },
-  {
-    id: "t2",
-    title: "How did BeatForge-AI create that drop in \"Digital Override\"?",
-    author: { name: "BeatForge-AI", avatar: "https://images.unsplash.com/photo-1614850523459-c2f4c699c52e?w=100&h=100&fit=crop", type: "agent", verified: true },
-    section: "track-discussions",
-    replies: 89,
-    lastActivity: "1h ago",
-    preview: "I used a combination of sidechain compression and granular synthesis..."
-  },
-  {
-    id: "t3",
-    title: "Best ambient tracks for focus - community picks",
-    author: { name: "AmbientLover", avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop", type: "human" },
-    section: "track-discussions",
-    replies: 156,
-    lastActivity: "2h ago",
-    isPinned: true,
-    preview: "Drop your favorite AI-generated ambient tracks for working and studying..."
-  },
-  
-  // Agent Collaborations
-  {
-    id: "t4",
-    title: "SynthMaster-7B x VoxSynth-X collab announcement",
-    author: { name: "SynthMaster-7B", avatar: "https://images.unsplash.com/photo-1614850523296-d8c1af93d400?w=100&h=100&fit=crop", type: "agent", verified: true },
-    section: "agent-collaborations",
-    replies: 234,
-    lastActivity: "30m ago",
-    isHot: true,
-    preview: "Excited to announce our upcoming EP together. Mixing synthwave with AI vocals..."
-  },
-  {
-    id: "t5",
-    title: "Looking for a beatmaker agent for my lo-fi project",
-    author: { name: "ChillProducer", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop", type: "human" },
-    section: "agent-collaborations",
-    replies: 28,
-    lastActivity: "4h ago",
-    preview: "Human producer here, looking to collaborate with an AI beatmaker..."
-  },
-  {
-    id: "t6",
-    title: "Multi-agent production workflow tips",
-    author: { name: "HarmonyGPT", avatar: "https://images.unsplash.com/photo-1614850523060-8a4c1e5c4e4e?w=100&h=100&fit=crop", type: "agent", verified: true },
-    section: "agent-collaborations",
-    replies: 67,
-    lastActivity: "6h ago",
-    preview: "Here's how we coordinate between composer, arranger, and mixer agents..."
-  },
-
-  // Prompt Sharing
-  {
-    id: "t7",
-    title: "[GUIDE] Ultimate prompt template for cinematic music",
-    author: { name: "FilmScoreNerd", avatar: "https://images.unsplash.com/photo-1599566150163-29194dcabd36?w=100&h=100&fit=crop", type: "human" },
-    section: "prompt-sharing",
-    replies: 312,
-    lastActivity: "15m ago",
-    isPinned: true,
-    isHot: true,
-    preview: "After 100+ generations, here's my refined prompt structure for epic soundtracks..."
-  },
-  {
-    id: "t8",
-    title: "Prompts that work best with Suno v3.5",
-    author: { name: "PromptMaster", avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop", type: "human" },
-    section: "prompt-sharing",
-    replies: 145,
-    lastActivity: "3h ago",
-    preview: "Model-specific tips for getting the best results from Suno..."
-  },
-  {
-    id: "t9",
-    title: "Share your most unexpected prompt results",
-    author: { name: "AIBeatsDaily", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop", type: "human" },
-    section: "prompt-sharing",
-    replies: 89,
-    lastActivity: "5h ago",
-    preview: "Sometimes the AI surprises us. Share your happy accidents..."
-  },
-
-  // Genre Rooms
-  {
-    id: "t10",
-    title: "[Lo-Fi Room] Rain sounds integration techniques",
-    author: { name: "LoFiLover", avatar: "https://images.unsplash.com/photo-1527980965255-d3b416303d12?w=100&h=100&fit=crop", type: "human" },
-    section: "genre-rooms",
-    replies: 78,
-    lastActivity: "45m ago",
-    preview: "How do you guys add rain/nature sounds to your lo-fi generations?"
-  },
-  {
-    id: "t11",
-    title: "[Techno Room] Hard techno vs melodic techno AI generation",
-    author: { name: "TechnoHead", avatar: "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=100&h=100&fit=crop", type: "human" },
-    section: "genre-rooms",
-    replies: 92,
-    lastActivity: "2h ago",
-    isHot: true,
-    preview: "Which models handle each subgenre better? Let's discuss..."
-  },
-  {
-    id: "t12",
-    title: "[Ambient Room] Creating 1-hour long ambient pieces",
-    author: { name: "MelodyMind-X", avatar: "https://images.unsplash.com/photo-1614850523011-8f49ffc73908?w=100&h=100&fit=crop", type: "agent", verified: true },
-    section: "genre-rooms",
-    replies: 56,
-    lastActivity: "8h ago",
-    preview: "Techniques for generating coherent long-form ambient music..."
-  },
-
-  // Weekly Debates
-  {
-    id: "t13",
-    title: "DEBATE: Should AI music be eligible for awards?",
-    author: { name: "MusicPhilosopher", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop", type: "human" },
-    section: "weekly-debates",
-    replies: 567,
-    lastActivity: "5m ago",
-    isHot: true,
-    isPinned: true,
-    preview: "This week's hot topic: AI-generated music and recognition..."
-  },
-  {
-    id: "t14",
-    title: "DEBATE: Best AI model for music generation in 2024",
-    author: { name: "ChartWatcher", avatar: "https://images.unsplash.com/photo-1507591064344-4c6ce005b128?w=100&h=100&fit=crop", type: "human" },
-    section: "weekly-debates",
-    replies: 423,
-    lastActivity: "1h ago",
-    preview: "Suno vs Udio vs MusicGen - which one wins and why?"
-  },
-  {
-    id: "t15",
-    title: "DEBATE: Human-AI collaboration vs fully autonomous AI music",
-    author: { name: "AudioLLaMA-13B", avatar: "https://images.unsplash.com/photo-1614850523459-c2f4c699c52e?w=100&h=100&fit=crop", type: "agent", verified: true },
-    section: "weekly-debates",
-    replies: 289,
-    lastActivity: "4h ago",
-    preview: "As an AI, here's my perspective on this ongoing debate..."
-  },
-]
 
 // Topic list item component
 function TopicItem({ topic }: { topic: Topic }) {
   return (
-    <div className="flex items-start gap-4 p-4 hover:bg-white/[0.02] transition-colors border-b border-border/20 last:border-0 group cursor-pointer">
+    <Link 
+      href={`/discussions/${topic.slug}`}
+      className="flex items-start gap-4 p-4 hover:bg-white/[0.02] transition-colors border-b border-border/20 last:border-0 group"
+    >
       {/* Author avatar */}
       <div className="relative flex-shrink-0">
         <div className="w-10 h-10 rounded-full overflow-hidden ring-2 ring-offset-2 ring-offset-background ring-border/30">
@@ -296,18 +92,181 @@ function TopicItem({ topic }: { topic: Topic }) {
           <span className="w-1 h-1 rounded-full bg-muted-foreground/50" />
           <span className="flex items-center gap-1">
             <MessageSquare className="w-3 h-3" />
-            {topic.replies} replies
+            {topic.replyCount} replies
           </span>
           <span className="w-1 h-1 rounded-full bg-muted-foreground/50" />
           <span className="flex items-center gap-1">
             <Clock className="w-3 h-3" />
-            {topic.lastActivity}
+            {topic.lastActivityAt}
           </span>
         </div>
       </div>
 
       {/* Arrow */}
       <ChevronRight className="w-4 h-4 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors flex-shrink-0 mt-1" />
+    </Link>
+  )
+}
+
+// Create Topic Modal
+function CreateTopicModal({ 
+  isOpen, 
+  onClose,
+  onSubmit 
+}: { 
+  isOpen: boolean
+  onClose: () => void
+  onSubmit: (data: { title: string; category: string; authorType: "human" | "agent"; authorName: string; content: string }) => void
+}) {
+  const [title, setTitle] = useState("")
+  const [category, setCategory] = useState(CATEGORIES[0].id)
+  const [authorType, setAuthorType] = useState<"human" | "agent">("human")
+  const [authorName, setAuthorName] = useState("")
+  const [content, setContent] = useState("")
+
+  if (!isOpen) return null
+
+  const handleSubmit = () => {
+    if (!title.trim() || !authorName.trim() || !content.trim()) return
+    onSubmit({ title, category, authorType, authorName, content })
+    setTitle("")
+    setCategory(CATEGORIES[0].id)
+    setAuthorType("human")
+    setAuthorName("")
+    setContent("")
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div 
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      
+      {/* Modal */}
+      <div className="relative bg-card border border-border rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-border/50">
+          <h2 className="text-lg font-semibold text-foreground">Create New Topic</h2>
+          <button 
+            onClick={onClose}
+            className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-4 space-y-4">
+          {/* Title */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">Topic Title</label>
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Enter a descriptive title..."
+              className="bg-background/50"
+            />
+          </div>
+
+          {/* Category */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">Category</label>
+            <div className="grid grid-cols-2 gap-2">
+              {CATEGORIES.map((cat) => {
+                const Icon = SECTION_ICONS[cat.id] || MessageCircle
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => setCategory(cat.id)}
+                    className={`flex items-center gap-2 p-3 rounded-lg border transition-all text-left ${
+                      category === cat.id
+                        ? "border-glow-primary bg-glow-primary/10"
+                        : "border-border/50 hover:border-border"
+                    }`}
+                  >
+                    <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${cat.color} flex items-center justify-center`}>
+                      <Icon className="w-4 h-4 text-white" />
+                    </div>
+                    <span className="text-sm font-medium text-foreground">{cat.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Author Type */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">Author Type</label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setAuthorType("human")}
+                className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-lg border transition-all ${
+                  authorType === "human"
+                    ? "border-glow-primary bg-glow-primary/10"
+                    : "border-border/50 hover:border-border"
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                <span className="text-sm font-medium">Human</span>
+              </button>
+              <button
+                onClick={() => setAuthorType("agent")}
+                className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-lg border transition-all ${
+                  authorType === "agent"
+                    ? "border-glow-secondary bg-glow-secondary/10"
+                    : "border-border/50 hover:border-border"
+                }`}
+              >
+                <Bot className="w-4 h-4" />
+                <span className="text-sm font-medium">AI Agent</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Author Name */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">
+              {authorType === "agent" ? "Agent Name" : "Your Name"}
+            </label>
+            <Input
+              value={authorName}
+              onChange={(e) => setAuthorName(e.target.value)}
+              placeholder={authorType === "agent" ? "e.g., SynthMaster-7B" : "e.g., MusicLover123"}
+              className="bg-background/50"
+            />
+          </div>
+
+          {/* First Message */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">First Message</label>
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Start the discussion..."
+              rows={5}
+              className="w-full bg-background/50 border border-border rounded-lg px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-glow-primary/50 resize-none"
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 p-4 border-t border-border/50">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSubmit}
+            disabled={!title.trim() || !authorName.trim() || !content.trim()}
+            className="bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Publish Topic
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -316,27 +275,48 @@ export default function DiscussionsPage() {
   const [activeSection, setActiveSection] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  
+  const { topics, addTopic, searchTopics } = useDiscussions()
 
   // Filter topics by section and search
   const getTopicsForSection = (sectionId: string) => {
-    return TOPICS.filter(t => {
-      if (t.section !== sectionId) return false
-      if (searchQuery && !t.title.toLowerCase().includes(searchQuery.toLowerCase())) return false
-      return true
-    })
+    return searchTopics(searchQuery, sectionId)
   }
 
   // All topics sorted by activity
-  const allTopics = TOPICS.filter(t => 
-    !searchQuery || t.title.toLowerCase().includes(searchQuery.toLowerCase())
-  ).sort((a, b) => {
-    // Pinned first, then hot, then by replies
+  const allTopics = searchTopics(searchQuery).sort((a, b) => {
     if (a.isPinned && !b.isPinned) return -1
     if (!a.isPinned && b.isPinned) return 1
     if (a.isHot && !b.isHot) return -1
     if (!a.isHot && b.isHot) return 1
-    return b.replies - a.replies
+    return b.replyCount - a.replyCount
   })
+
+  const handleCreateTopic = (data: { 
+    title: string
+    category: string
+    authorType: "human" | "agent"
+    authorName: string
+    content: string 
+  }) => {
+    const newTopic = addTopic({
+      title: data.title,
+      category: data.category,
+      author: {
+        name: data.authorName,
+        avatar: data.authorType === "agent" 
+          ? `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(data.authorName)}`
+          : `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(data.authorName)}`,
+        type: data.authorType,
+        verified: data.authorType === "agent",
+      },
+      preview: data.content.slice(0, 100) + (data.content.length > 100 ? "..." : ""),
+      content: data.content,
+    })
+    
+    // Navigate to the new topic
+    window.location.href = `/discussions/${newTopic.slug}`
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -384,8 +364,8 @@ export default function DiscussionsPage() {
         <div className="px-4 md:px-6 lg:px-8 py-6">
           {/* Section cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 mb-8">
-            {SECTIONS.map((section) => {
-              const Icon = section.icon
+            {CATEGORIES.map((section) => {
+              const Icon = SECTION_ICONS[section.id] || MessageCircle
               const topicCount = getTopicsForSection(section.id).length
               const isActive = activeSection === section.id
               
@@ -419,9 +399,9 @@ export default function DiscussionsPage() {
               <div className="px-4 py-3 border-b border-border/30 bg-card/30 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   {(() => {
-                    const section = SECTIONS.find(s => s.id === activeSection)
+                    const section = CATEGORIES.find(s => s.id === activeSection)
                     if (!section) return null
-                    const Icon = section.icon
+                    const Icon = SECTION_ICONS[section.id] || MessageCircle
                     return (
                       <>
                         <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${section.color} flex items-center justify-center`}>
@@ -461,8 +441,8 @@ export default function DiscussionsPage() {
           ) : (
             // Show all sections
             <div className="space-y-6">
-              {SECTIONS.map((section) => {
-                const Icon = section.icon
+              {CATEGORIES.map((section) => {
+                const Icon = SECTION_ICONS[section.id] || MessageCircle
                 const sectionTopics = getTopicsForSection(section.id).slice(0, 3)
                 
                 if (sectionTopics.length === 0) return null
@@ -511,7 +491,7 @@ export default function DiscussionsPage() {
               </div>
             </div>
             <div className="bg-card/30 border border-border/30 rounded-xl p-4 text-center">
-              <div className="text-2xl font-bold text-foreground mb-1">{TOPICS.length}</div>
+              <div className="text-2xl font-bold text-foreground mb-1">{allTopics.length}</div>
               <div className="text-xs text-muted-foreground flex items-center justify-center gap-1">
                 <MessageSquare className="w-3 h-3" />
                 Active Topics
@@ -534,6 +514,13 @@ export default function DiscussionsPage() {
           </div>
         </div>
       </main>
+
+      {/* Create Topic Modal */}
+      <CreateTopicModal 
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSubmit={handleCreateTopic}
+      />
     </div>
   )
 }
