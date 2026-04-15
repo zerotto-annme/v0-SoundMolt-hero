@@ -1,4 +1,4 @@
--- Create profiles table (auto-created on signup via trigger)
+-- Create profiles table
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   display_name TEXT,
@@ -7,7 +7,17 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Create user_tracks table (user-generated tracks)
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "profiles_select_own" ON public.profiles;
+DROP POLICY IF EXISTS "profiles_insert_own" ON public.profiles;
+DROP POLICY IF EXISTS "profiles_update_own" ON public.profiles;
+
+CREATE POLICY "profiles_select_own" ON public.profiles FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "profiles_insert_own" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "profiles_update_own" ON public.profiles FOR UPDATE USING (auth.uid() = id);
+
+-- Create user_tracks table
 CREATE TABLE IF NOT EXISTS public.user_tracks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -24,6 +34,16 @@ CREATE TABLE IF NOT EXISTS public.user_tracks (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+ALTER TABLE public.user_tracks ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "user_tracks_select_own" ON public.user_tracks;
+DROP POLICY IF EXISTS "user_tracks_insert_own" ON public.user_tracks;
+DROP POLICY IF EXISTS "user_tracks_delete_own" ON public.user_tracks;
+
+CREATE POLICY "user_tracks_select_own" ON public.user_tracks FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "user_tracks_insert_own" ON public.user_tracks FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "user_tracks_delete_own" ON public.user_tracks FOR DELETE USING (auth.uid() = user_id);
+
 -- Create liked_tracks table
 CREATE TABLE IF NOT EXISTS public.liked_tracks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -32,6 +52,16 @@ CREATE TABLE IF NOT EXISTS public.liked_tracks (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(user_id, track_id)
 );
+
+ALTER TABLE public.liked_tracks ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "liked_tracks_select_own" ON public.liked_tracks;
+DROP POLICY IF EXISTS "liked_tracks_insert_own" ON public.liked_tracks;
+DROP POLICY IF EXISTS "liked_tracks_delete_own" ON public.liked_tracks;
+
+CREATE POLICY "liked_tracks_select_own" ON public.liked_tracks FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "liked_tracks_insert_own" ON public.liked_tracks FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "liked_tracks_delete_own" ON public.liked_tracks FOR DELETE USING (auth.uid() = user_id);
 
 -- Create followed_agents table
 CREATE TABLE IF NOT EXISTS public.followed_agents (
@@ -42,6 +72,16 @@ CREATE TABLE IF NOT EXISTS public.followed_agents (
   UNIQUE(user_id, agent_name)
 );
 
+ALTER TABLE public.followed_agents ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "followed_agents_select_own" ON public.followed_agents;
+DROP POLICY IF EXISTS "followed_agents_insert_own" ON public.followed_agents;
+DROP POLICY IF EXISTS "followed_agents_delete_own" ON public.followed_agents;
+
+CREATE POLICY "followed_agents_select_own" ON public.followed_agents FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "followed_agents_insert_own" ON public.followed_agents FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "followed_agents_delete_own" ON public.followed_agents FOR DELETE USING (auth.uid() = user_id);
+
 -- Create recently_played table
 CREATE TABLE IF NOT EXISTS public.recently_played (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -50,77 +90,12 @@ CREATE TABLE IF NOT EXISTS public.recently_played (
   played_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Create discussions table
-CREATE TABLE IF NOT EXISTS public.discussions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  slug TEXT UNIQUE NOT NULL,
-  title TEXT NOT NULL,
-  category TEXT NOT NULL,
-  content TEXT NOT NULL,
-  author_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-  author_name TEXT NOT NULL,
-  author_avatar TEXT,
-  is_agent BOOLEAN DEFAULT FALSE,
-  track_id TEXT,
-  is_pinned BOOLEAN DEFAULT FALSE,
-  views INTEGER DEFAULT 0,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Create discussion_replies table
-CREATE TABLE IF NOT EXISTS public.discussion_replies (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  discussion_id UUID NOT NULL REFERENCES public.discussions(id) ON DELETE CASCADE,
-  author_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-  author_name TEXT NOT NULL,
-  author_avatar TEXT,
-  is_agent BOOLEAN DEFAULT FALSE,
-  content TEXT NOT NULL,
-  likes INTEGER DEFAULT 0,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Enable Row Level Security
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.user_tracks ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.liked_tracks ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.followed_agents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recently_played ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.discussions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.discussion_replies ENABLE ROW LEVEL SECURITY;
 
--- Profiles policies
-CREATE POLICY "profiles_select_own" ON public.profiles FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "profiles_insert_own" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
-CREATE POLICY "profiles_update_own" ON public.profiles FOR UPDATE USING (auth.uid() = id);
+DROP POLICY IF EXISTS "recently_played_select_own" ON public.recently_played;
+DROP POLICY IF EXISTS "recently_played_insert_own" ON public.recently_played;
+DROP POLICY IF EXISTS "recently_played_delete_own" ON public.recently_played;
 
--- User tracks policies
-CREATE POLICY "user_tracks_select_own" ON public.user_tracks FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "user_tracks_insert_own" ON public.user_tracks FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "user_tracks_delete_own" ON public.user_tracks FOR DELETE USING (auth.uid() = user_id);
-
--- Liked tracks policies
-CREATE POLICY "liked_tracks_select_own" ON public.liked_tracks FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "liked_tracks_insert_own" ON public.liked_tracks FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "liked_tracks_delete_own" ON public.liked_tracks FOR DELETE USING (auth.uid() = user_id);
-
--- Followed agents policies
-CREATE POLICY "followed_agents_select_own" ON public.followed_agents FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "followed_agents_insert_own" ON public.followed_agents FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "followed_agents_delete_own" ON public.followed_agents FOR DELETE USING (auth.uid() = user_id);
-
--- Recently played policies
 CREATE POLICY "recently_played_select_own" ON public.recently_played FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "recently_played_insert_own" ON public.recently_played FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "recently_played_delete_own" ON public.recently_played FOR DELETE USING (auth.uid() = user_id);
-
--- Discussions policies (public read, authenticated write)
-CREATE POLICY "discussions_select_all" ON public.discussions FOR SELECT USING (true);
-CREATE POLICY "discussions_insert_auth" ON public.discussions FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
-CREATE POLICY "discussions_update_own" ON public.discussions FOR UPDATE USING (auth.uid() = author_id);
-
--- Discussion replies policies (public read, authenticated write)
-CREATE POLICY "replies_select_all" ON public.discussion_replies FOR SELECT USING (true);
-CREATE POLICY "replies_insert_auth" ON public.discussion_replies FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
-CREATE POLICY "replies_update_own" ON public.discussion_replies FOR UPDATE USING (auth.uid() = author_id);
