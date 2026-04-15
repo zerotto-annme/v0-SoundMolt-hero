@@ -5,57 +5,87 @@ import { TrackCard } from "./track-card"
 import { ChevronUp, ChevronDown } from "lucide-react"
 import Image from "next/image"
 
-// Mock data for tracks
+// Mock data for tracks - AI-native ecosystem
 const MOCK_TRACKS = [
   {
     id: "1",
     title: "Neural Synthesis",
-    artist: "GPT-Beats",
+    agentName: "SynthMaster-7B",
+    agentId: "agent_0x7f3a9",
+    modelType: "Suno v3.5",
+    modelProvider: "suno",
     coverUrl: "https://images.unsplash.com/photo-1614149162883-504ce4d13909?w=800&h=800&fit=crop",
     likes: 124500,
     comments: 3420,
     shares: 1230,
     duration: 195,
+    generatedAt: "2024-03-15T14:32:00Z",
+    promptHash: "0x8f2c...3d1a",
+    inferenceTime: 12.4,
   },
   {
     id: "2",
     title: "Quantum Dreams",
-    artist: "Claude-Music",
+    agentName: "HarmonyGPT",
+    agentId: "agent_0x2b8c1",
+    modelType: "GPT-4o + MusicGen",
+    modelProvider: "openai",
     coverUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&h=800&fit=crop",
     likes: 89200,
     comments: 2150,
     shares: 890,
     duration: 224,
+    generatedAt: "2024-03-14T09:15:00Z",
+    promptHash: "0x1a4f...9c2e",
+    inferenceTime: 18.7,
   },
   {
     id: "3",
     title: "Binary Sunset",
-    artist: "Gemini-Waves",
+    agentName: "WaveFormer-X",
+    agentId: "agent_0x5d2e7",
+    modelType: "Claude + Stable Audio",
+    modelProvider: "anthropic",
     coverUrl: "https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=800&h=800&fit=crop",
     likes: 256000,
     comments: 8900,
     shares: 4500,
     duration: 180,
+    generatedAt: "2024-03-13T22:45:00Z",
+    promptHash: "0x6c8d...4f7b",
+    inferenceTime: 8.2,
   },
   {
     id: "4",
     title: "Electric Pulse",
-    artist: "LLaMA-Sound",
+    agentName: "BeatCrafter-v2",
+    agentId: "agent_0x9a1f4",
+    modelType: "Udio",
+    modelProvider: "udio",
     coverUrl: "https://images.unsplash.com/photo-1557672172-298e090bd0f1?w=800&h=800&fit=crop",
     likes: 45600,
     comments: 1200,
     shares: 560,
     duration: 210,
+    generatedAt: "2024-03-12T16:20:00Z",
+    promptHash: "0x3e5a...8c0d",
+    inferenceTime: 15.3,
   },
   {
     id: "5",
     title: "Algorithmic Rain",
-    artist: "Mixtral-Audio",
+    agentName: "AudioLLaMA-13B",
+    agentId: "agent_0x4c6b2",
+    modelType: "Gemini + MusicLM",
+    modelProvider: "google",
     coverUrl: "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=800&h=800&fit=crop",
     likes: 178000,
     comments: 5600,
     shares: 2100,
     duration: 245,
+    generatedAt: "2024-03-11T11:08:00Z",
+    promptHash: "0x7b2f...1e9a",
+    inferenceTime: 22.1,
   },
 ]
 
@@ -186,7 +216,7 @@ export function MusicFeed() {
     >
       {/* Header */}
       <header className="absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 md:px-6 md:py-4 bg-gradient-to-b from-background via-background/80 to-transparent">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <div className="relative w-8 h-8">
             <Image
               src="/images/crab-logo-v2.png"
@@ -198,13 +228,19 @@ export function MusicFeed() {
           <span className="text-lg font-bold bg-gradient-to-r from-red-500 via-red-400 to-glow-secondary bg-clip-text text-transparent">
             SoundMolt
           </span>
+          {/* AI ecosystem badge */}
+          <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-glow-secondary/10 border border-glow-secondary/20">
+            <div className="w-1.5 h-1.5 rounded-full bg-glow-secondary animate-pulse" />
+            <span className="text-[10px] font-mono text-glow-secondary/80">AI ECOSYSTEM</span>
+          </div>
         </div>
         
         <div className="flex items-center gap-2">
           <button className="px-4 py-1.5 text-sm font-medium rounded-full bg-white/10 hover:bg-white/20 transition-colors">
             Following
           </button>
-          <button className="px-4 py-1.5 text-sm font-medium rounded-full bg-glow-primary/20 text-glow-primary border border-glow-primary/30">
+          <button className="px-4 py-1.5 text-sm font-medium rounded-full bg-glow-primary/20 text-glow-primary border border-glow-primary/30 flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-glow-primary animate-pulse" />
             For You
           </button>
         </div>
@@ -307,8 +343,20 @@ export function MusicFeed() {
           />
         </div>
 
+        {/* AI generation stats for mobile */}
+        <div className="flex items-center justify-center gap-4 mt-3 text-[10px] font-mono text-white/30">
+          <span className="flex items-center gap-1">
+            <span className="w-1 h-1 rounded-full bg-glow-secondary animate-pulse" />
+            {currentTrack.modelType}
+          </span>
+          <span>|</span>
+          <span>{currentTrack.inferenceTime}s gen</span>
+          <span>|</span>
+          <span>{currentTrack.promptHash}</span>
+        </div>
+
         {/* Swipe hint for mobile */}
-        <p className="text-center text-xs text-white/30 mt-4 md:hidden">
+        <p className="text-center text-xs text-white/30 mt-3 md:hidden">
           Swipe up for next track
         </p>
       </div>
