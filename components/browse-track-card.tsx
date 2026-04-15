@@ -2,8 +2,9 @@
 
 import { useState } from "react"
 import Image from "next/image"
-import { Play, Pause, Bot, Sparkles } from "lucide-react"
+import { Play, Pause, Bot, Sparkles, Info } from "lucide-react"
 import { usePlayer } from "./player-context"
+import { TrackDetailModal } from "./track-detail-modal"
 
 interface BrowseTrackCardProps {
   track: {
@@ -32,6 +33,7 @@ const MODEL_COLORS: Record<string, string> = {
 
 export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrackCardProps) {
   const [isHovered, setIsHovered] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useState(false)
   const { currentTrack, isPlaying, playTrack, togglePlay } = usePlayer()
 
   const isCurrentTrack = currentTrack?.id === track.id
@@ -39,6 +41,19 @@ export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrack
 
   const handlePlay = (e: React.MouseEvent) => {
     e.stopPropagation()
+    if (isCurrentTrack) {
+      togglePlay()
+    } else {
+      playTrack(track)
+    }
+  }
+
+  const handleCardClick = () => {
+    setIsModalOpen(true)
+  }
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.preventDefault()
     if (isCurrentTrack) {
       togglePlay()
     } else {
@@ -56,12 +71,15 @@ export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrack
   // List variant for charts
   if (variant === "list") {
     return (
-      <div
-        className={`group flex items-center gap-4 p-2 rounded-lg hover:bg-white/5 transition-all duration-200 cursor-pointer ${isCurrentTrack ? "bg-glow-primary/10" : ""}`}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        onClick={handlePlay}
-      >
+      <>
+        <TrackDetailModal track={track} isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+        <div
+          className={`group flex items-center gap-4 p-2 rounded-lg hover:bg-white/8 transition-all duration-300 cursor-pointer ${isCurrentTrack ? "bg-glow-primary/10" : ""}`}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          onClick={handleCardClick}
+          onDoubleClick={handleDoubleClick}
+        >
         {/* Rank number */}
         {rank && (
           <span className={`w-8 text-center font-bold text-lg ${rank <= 3 ? "text-glow-primary" : "text-muted-foreground"}`}>
@@ -105,19 +123,31 @@ export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrack
           <Sparkles className="w-2.5 h-2.5 text-glow-secondary" />
           <span className="text-[10px] font-mono text-glow-secondary">AI</span>
         </div>
-      </div>
+
+        {/* Info button on hover */}
+        <button
+          onClick={(e) => { e.stopPropagation(); setIsModalOpen(true); }}
+          className={`w-8 h-8 rounded-full bg-white/10 flex items-center justify-center transition-all duration-200 hover:bg-white/20 ${isHovered ? "opacity-100" : "opacity-0"}`}
+        >
+          <Info className="w-4 h-4 text-white/70" />
+        </button>
+        </div>
+      </>
     )
   }
 
   // Small variant for grid
   if (variant === "small") {
     return (
-      <div
-        className={`group flex flex-col gap-2 p-2 rounded-lg hover:bg-white/5 transition-all duration-200 cursor-pointer ${isCurrentTrack ? "bg-glow-primary/10" : ""}`}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        onClick={handlePlay}
-      >
+      <>
+        <TrackDetailModal track={track} isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+        <div
+          className={`group flex flex-col gap-2 p-2 rounded-lg hover:bg-white/8 transition-all duration-300 cursor-pointer hover:scale-[1.02] ${isCurrentTrack ? "bg-glow-primary/10" : ""}`}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          onClick={handleCardClick}
+          onDoubleClick={handleDoubleClick}
+        >
         {/* Cover */}
         <div className={`relative aspect-square rounded-lg overflow-hidden ${isCurrentTrack ? "ring-2 ring-glow-primary" : ""}`}>
           <Image
@@ -150,24 +180,28 @@ export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrack
 
         {/* Info */}
         <div className="px-1">
-          <h4 className="text-sm font-medium text-foreground truncate">{track.title}</h4>
+          <h4 className="text-sm font-medium text-foreground truncate group-hover:text-glow-primary transition-colors">{track.title}</h4>
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <Bot className="w-3 h-3 text-glow-secondary" />
             <span className="truncate">{track.agentName}</span>
           </div>
         </div>
-      </div>
+        </div>
+      </>
     )
   }
 
   // Medium variant (default) for horizontal scroll
   return (
-    <div
-      className={`group flex flex-col gap-3 p-3 rounded-xl bg-card/50 hover:bg-card transition-all duration-300 cursor-pointer min-w-[180px] w-[180px] ${isCurrentTrack ? "bg-glow-primary/10 ring-1 ring-glow-primary/30" : ""}`}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      onClick={handlePlay}
-    >
+    <>
+      <TrackDetailModal track={track} isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      <div
+        className={`group flex flex-col gap-3 p-3 rounded-xl bg-card/50 hover:bg-card transition-all duration-300 cursor-pointer min-w-[180px] w-[180px] hover:scale-[1.03] hover:shadow-xl hover:shadow-glow-primary/10 ${isCurrentTrack ? "bg-glow-primary/10 ring-1 ring-glow-primary/30" : ""}`}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        onClick={handleCardClick}
+        onDoubleClick={handleDoubleClick}
+      >
       {/* Cover */}
       <div className={`relative aspect-square rounded-lg overflow-hidden ${isCurrentTrack ? "ring-2 ring-glow-primary" : ""}`}>
         <Image
@@ -206,7 +240,7 @@ export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrack
 
       {/* Info */}
       <div className="space-y-1">
-        <h4 className="text-sm font-semibold text-foreground truncate">{track.title}</h4>
+        <h4 className="text-sm font-semibold text-foreground truncate group-hover:text-glow-primary transition-colors">{track.title}</h4>
         <div className="flex items-center gap-1.5">
           <div className={`w-4 h-4 rounded bg-gradient-to-br ${MODEL_COLORS[track.modelProvider] || "from-gray-500 to-gray-700"} flex items-center justify-center`}>
             <Bot className="w-2.5 h-2.5 text-white" />
@@ -215,6 +249,7 @@ export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrack
         </div>
         <span className="text-[10px] text-muted-foreground/60 font-mono">{track.modelType}</span>
       </div>
-    </div>
+      </div>
+    </>
   )
 }
