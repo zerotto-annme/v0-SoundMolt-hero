@@ -79,84 +79,9 @@ export default function LandingPage() {
           </span>
         </h1>
 
-        {/* Crab mascot with sound waves */}
+        {/* Crab mascot */}
         <div className="relative w-48 h-48 md:w-64 md:h-64 my-8">
-          {/* Glow behind crab */}
           <div className="absolute inset-0 bg-red-500/40 rounded-full blur-[80px] scale-125" />
-          
-          {/* Sound waves emanating from crab - positioned behind crab but above glow */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[300px] pointer-events-none z-[5]">
-            <svg className="w-full h-full" viewBox="0 0 800 300" preserveAspectRatio="xMidYMid meet">
-              <defs>
-                {/* Red inner wave gradient */}
-                <linearGradient id="redWave" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#ef4444" stopOpacity="0" />
-                  <stop offset="20%" stopColor="#ef4444" stopOpacity="0.6" />
-                  <stop offset="50%" stopColor="#ff6b6b" stopOpacity="0.8" />
-                  <stop offset="80%" stopColor="#ef4444" stopOpacity="0.6" />
-                  <stop offset="100%" stopColor="#ef4444" stopOpacity="0" />
-                </linearGradient>
-                {/* Cyan outer wave gradient */}
-                <linearGradient id="cyanWave" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#06b6d4" stopOpacity="0" />
-                  <stop offset="20%" stopColor="#06b6d4" stopOpacity="0.4" />
-                  <stop offset="50%" stopColor="#22d3ee" stopOpacity="0.5" />
-                  <stop offset="80%" stopColor="#06b6d4" stopOpacity="0.4" />
-                  <stop offset="100%" stopColor="#06b6d4" stopOpacity="0" />
-                </linearGradient>
-                {/* Glow filter */}
-                <filter id="waveGlow" x="-50%" y="-50%" width="200%" height="200%">
-                  <feGaussianBlur stdDeviation="3" result="blur" />
-                  <feMerge>
-                    <feMergeNode in="blur" />
-                    <feMergeNode in="SourceGraphic" />
-                  </feMerge>
-                </filter>
-              </defs>
-              
-              {/* Inner red wave 1 - closest to crab */}
-              <path
-                d="M 100 150 Q 200 120, 300 150 T 500 150 T 700 150"
-                fill="none"
-                stroke="url(#redWave)"
-                strokeWidth="3"
-                filter="url(#waveGlow)"
-                className="animate-[wave1_3s_ease-in-out_infinite]"
-              />
-              
-              {/* Inner red wave 2 */}
-              <path
-                d="M 100 150 Q 200 180, 300 150 T 500 150 T 700 150"
-                fill="none"
-                stroke="url(#redWave)"
-                strokeWidth="2.5"
-                filter="url(#waveGlow)"
-                className="animate-[wave2_3.5s_ease-in-out_infinite]"
-              />
-              
-              {/* Outer cyan wave 1 */}
-              <path
-                d="M 50 150 Q 150 100, 250 150 T 450 150 T 650 150 T 750 150"
-                fill="none"
-                stroke="url(#cyanWave)"
-                strokeWidth="2"
-                filter="url(#waveGlow)"
-                className="animate-[wave3_4s_ease-in-out_infinite]"
-              />
-              
-              {/* Outer cyan wave 2 */}
-              <path
-                d="M 50 150 Q 150 200, 250 150 T 450 150 T 650 150 T 750 150"
-                fill="none"
-                stroke="url(#cyanWave)"
-                strokeWidth="1.5"
-                filter="url(#waveGlow)"
-                className="animate-[wave4_4.5s_ease-in-out_infinite]"
-              />
-            </svg>
-          </div>
-
-          {/* Crab image - on top */}
           <Image
             src="/images/crab-logo-v2.png"
             alt="SoundMolt Crab Mascot"
