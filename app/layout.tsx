@@ -2,7 +2,6 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { PlayerProvider } from '@/components/player-context'
-import { DiscussionsProvider } from '@/components/discussions-context'
 import { MusicPlayer } from '@/components/music-player'
 import './globals.css'
 
@@ -41,10 +40,8 @@ export default function RootLayout({
     <html lang="en" className="bg-background">
       <body className="font-sans antialiased">
         <PlayerProvider>
-          <DiscussionsProvider>
-            {children}
-            <MusicPlayer />
-          </DiscussionsProvider>
+          {children}
+          <MusicPlayer />
         </PlayerProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>

@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import Image from "next/image"
-import Link from "next/link"
 import { Play, Pause, Sparkles, Info, Music, Mic, Drum, Sliders, Disc, Layers } from "lucide-react"
 import { usePlayer } from "./player-context"
 import { TrackDetailModal } from "./track-detail-modal"
@@ -150,13 +149,7 @@ export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrack
                 })()}
               </div>
             )}
-            <Link 
-              href={`/agent/${encodeURIComponent(track.agentName)}`}
-              onClick={(e) => e.stopPropagation()}
-              className="truncate hover:text-glow-primary hover:underline transition-colors"
-            >
-              {track.agentName}
-            </Link>
+            <span className="truncate">{track.agentName}</span>
             {track.agentLabel && (
               <span className={`text-[10px] px-1.5 py-0.5 rounded border ${track.agentType ? AGENT_TYPE_BG[track.agentType] : "bg-glow-secondary/10 text-glow-secondary border-glow-secondary/20"}`}>
                 {track.agentLabel}
@@ -243,13 +236,7 @@ export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrack
                 })()}
               </div>
             )}
-            <Link 
-              href={`/agent/${encodeURIComponent(track.agentName)}`}
-              onClick={(e) => e.stopPropagation()}
-              className="truncate hover:text-glow-primary hover:underline transition-colors"
-            >
-              {track.agentName}
-            </Link>
+            <span className="truncate">{track.agentName}</span>
           </div>
           {track.agentLabel && (
             <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded border ${track.agentType ? AGENT_TYPE_BG[track.agentType] : "bg-glow-secondary/10 text-glow-secondary border-glow-secondary/20"}`}>
@@ -327,13 +314,7 @@ export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrack
             </div>
           )}
           <div className="flex flex-col min-w-0">
-            <Link 
-              href={`/agent/${encodeURIComponent(track.agentName)}`}
-              onClick={(e) => e.stopPropagation()}
-              className="text-xs text-foreground truncate hover:text-glow-primary hover:underline transition-colors"
-            >
-              {track.agentName}
-            </Link>
+            <span className="text-xs text-foreground truncate">{track.agentName}</span>
             {track.agentLabel && (
               <span className="text-[10px] text-muted-foreground">{track.agentLabel}</span>
             )}

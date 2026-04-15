@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useRef } from "react"
 import Image from "next/image"
 import { 
   Play, 
@@ -8,12 +9,10 @@ import {
   SkipForward, 
   Volume2, 
   VolumeX, 
-  Volume1,
   Bot,
   Sparkles,
   ListMusic,
-  Maximize2,
-  Loader2
+  Maximize2
 } from "lucide-react"
 import { usePlayer } from "./player-context"
 import { Slider } from "@/components/ui/slider"
@@ -33,28 +32,47 @@ export function MusicPlayer() {
     currentTrack, 
     isPlaying, 
     progress, 
-    currentTime,
-    duration,
     volume, 
     togglePlay, 
     nextTrack, 
     prevTrack, 
-    seekTo,
+    setProgress,
     setVolume,
     queue,
-    queueIndex,
-    isLoading
+    queueIndex
   } = usePlayer()
 
-  const formatTime = (seconds: number) => {
-    if (!seconds || !isFinite(seconds)) return "0:00"
-    const mins = Math.floor(seconds / 60)
-    const secs = Math.floor(seconds % 60)
+  const progressInterval = useRef<NodeJS.Timeout | null>(null)
+
+  // Simulate progress when playing
+  useEffect(() => {
+    if (isPlaying && currentTrack) {
+      progressInterval.current = setInterval(() => {
+        setProgress(Math.min(progress + 0.5, 100))
+      }, 500)
+    }
+    return () => {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current)
+      }
+    }
+  }, [isPlaying, currentTrack, progress, setProgress])
+
+  // Auto-next when track ends
+  useEffect(() => {
+    if (progress >= 100 && currentTrack) {
+      nextTrack()
+    }
+  }, [progress, currentTrack, nextTrack])
+
+  const formatTime = (percent: number, duration: number = 180) => {
+    const totalSeconds = (percent / 100) * duration
+    const mins = Math.floor(totalSeconds / 60)
+    const secs = Math.floor(totalSeconds % 60)
     return `${mins}:${secs.toString().padStart(2, "0")}`
   }
 
-  // Get volume icon based on level
-  const VolumeIcon = volume === 0 ? VolumeX : volume < 50 ? Volume1 : Volume2
+  const duration = currentTrack?.duration || 180
 
   // Don't render if no track
   if (!currentTrack) {
@@ -64,16 +82,9 @@ export function MusicPlayer() {
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-xl border-t border-border/50">
       {/* Mobile progress bar on top */}
-      <div 
-        className="h-1 w-full bg-secondary/50 md:hidden cursor-pointer"
-        onClick={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect()
-          const percent = ((e.clientX - rect.left) / rect.width) * 100
-          seekTo(percent)
-        }}
-      >
+      <div className="h-1 w-full bg-secondary/50 md:hidden">
         <div 
-          className="h-full bg-gradient-to-r from-glow-primary to-glow-secondary transition-all duration-150"
+          className="h-full bg-gradient-to-r from-glow-primary to-glow-secondary transition-all duration-100"
           style={{ width: `${progress}%` }}
         />
       </div>
@@ -89,14 +100,8 @@ export function MusicPlayer() {
               fill
               className="object-cover"
             />
-            {/* Loading overlay */}
-            {isLoading && (
-              <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                <Loader2 className="w-6 h-6 text-white animate-spin" />
-              </div>
-            )}
             {/* Glow when playing */}
-            {isPlaying && !isLoading && (
+            {isPlaying && (
               <div className="absolute inset-0 ring-2 ring-glow-primary/50 rounded-md animate-pulse" />
             )}
           </div>
@@ -126,7 +131,8 @@ export function MusicPlayer() {
             {/* Previous */}
             <button 
               onClick={prevTrack}
-              className="p-2 rounded-full text-muted-foreground hover:text-foreground transition-colors active:scale-95"
+              disabled={queueIndex <= 0}
+              className="p-2 rounded-full text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <SkipBack className="w-4 h-4 md:w-5 md:h-5" fill="currentColor" />
             </button>
@@ -134,12 +140,9 @@ export function MusicPlayer() {
             {/* Play/Pause */}
             <button 
               onClick={togglePlay}
-              disabled={isLoading}
-              className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-foreground hover:bg-foreground/90 hover:scale-105 active:scale-95 flex items-center justify-center transition-all shadow-lg disabled:opacity-50"
+              className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-foreground hover:bg-foreground/90 hover:scale-105 active:scale-95 flex items-center justify-center transition-all shadow-lg"
             >
-              {isLoading ? (
-                <Loader2 className="w-5 h-5 md:w-6 md:h-6 text-background animate-spin" />
-              ) : isPlaying ? (
+              {isPlaying ? (
                 <Pause className="w-5 h-5 md:w-6 md:h-6 text-background" fill="currentColor" />
               ) : (
                 <Play className="w-5 h-5 md:w-6 md:h-6 text-background ml-0.5" fill="currentColor" />
@@ -150,7 +153,7 @@ export function MusicPlayer() {
             <button 
               onClick={nextTrack}
               disabled={queueIndex >= queue.length - 1}
-              className="p-2 rounded-full text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors active:scale-95"
+              className="p-2 rounded-full text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <SkipForward className="w-4 h-4 md:w-5 md:h-5" fill="currentColor" />
             </button>
@@ -159,19 +162,19 @@ export function MusicPlayer() {
           {/* Progress bar - Desktop only */}
           <div className="hidden md:flex items-center gap-2 w-full">
             <span className="text-[10px] text-muted-foreground w-10 text-right font-mono">
-              {formatTime(currentTime)}
+              {formatTime(progress, duration)}
             </span>
             <div className="flex-1 group">
               <Slider
                 value={[progress]}
-                onValueChange={(value) => seekTo(value[0])}
+                onValueChange={(value) => setProgress(value[0])}
                 max={100}
                 step={0.1}
                 className="cursor-pointer"
               />
             </div>
             <span className="text-[10px] text-muted-foreground w-10 font-mono">
-              {formatTime(duration)}
+              {formatTime(100, duration)}
             </span>
           </div>
         </div>
@@ -194,7 +197,11 @@ export function MusicPlayer() {
               onClick={() => setVolume(volume > 0 ? 0 : 80)}
               className="p-2 rounded-full text-muted-foreground hover:text-foreground transition-colors"
             >
-              <VolumeIcon className="w-4 h-4" />
+              {volume === 0 ? (
+                <VolumeX className="w-4 h-4" />
+              ) : (
+                <Volume2 className="w-4 h-4" />
+              )}
             </button>
             <Slider
               value={[volume]}
