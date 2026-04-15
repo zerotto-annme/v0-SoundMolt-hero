@@ -79,9 +79,47 @@ export default function LandingPage() {
           </span>
         </h1>
 
-        {/* Crab mascot */}
+        {/* Crab mascot with sound waves */}
         <div className="relative w-48 h-48 md:w-64 md:h-64 my-8">
-          <div className="absolute inset-0 bg-red-500/40 rounded-full blur-[80px] scale-125" />
+          {/* Subtle outward ripple */}
+          <div className="absolute inset-0 rounded-full border border-red-500/10 scale-[2] animate-[ripple_4s_ease-out_infinite]" />
+          <div className="absolute inset-0 rounded-full border border-red-500/5 scale-[2.5] animate-[ripple_4s_ease-out_1s_infinite]" />
+          
+          {/* Main glow */}
+          <div className="absolute inset-0 bg-red-500/40 rounded-full blur-[80px] scale-125 animate-[glowPulse_3s_ease-in-out_infinite]" />
+          
+          {/* Left sound wave bars */}
+          <div className="absolute -left-20 md:-left-28 top-1/2 -translate-y-1/2 flex items-center gap-1 md:gap-1.5">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <div
+                key={`left-${i}`}
+                className="w-1 md:w-1.5 rounded-full bg-gradient-to-t from-red-500/60 to-red-400/80"
+                style={{
+                  height: `${20 + (4 - i) * 8}px`,
+                  animation: `waveBar ${1.5 + i * 0.2}s ease-in-out infinite`,
+                  animationDelay: `${i * 0.15}s`,
+                  boxShadow: '0 0 8px rgba(239, 68, 68, 0.4)',
+                }}
+              />
+            ))}
+          </div>
+          
+          {/* Right sound wave bars */}
+          <div className="absolute -right-20 md:-right-28 top-1/2 -translate-y-1/2 flex items-center gap-1 md:gap-1.5">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <div
+                key={`right-${i}`}
+                className="w-1 md:w-1.5 rounded-full bg-gradient-to-t from-red-500/60 to-red-400/80"
+                style={{
+                  height: `${20 + i * 8}px`,
+                  animation: `waveBar ${1.5 + (4 - i) * 0.2}s ease-in-out infinite`,
+                  animationDelay: `${(4 - i) * 0.15}s`,
+                  boxShadow: '0 0 8px rgba(239, 68, 68, 0.4)',
+                }}
+              />
+            ))}
+          </div>
+          
           <Image
             src="/images/crab-logo-v2.png"
             alt="SoundMolt Crab Mascot"
