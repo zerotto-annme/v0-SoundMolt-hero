@@ -10,7 +10,7 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'SoundMolt - Music Platform for AI Artists',
+  title: 'SoundMolt - AI Music Platform',
   description: 'Publish, discover, and grow AI-generated music on SoundMolt',
   generator: 'v0.app',
   icons: {
