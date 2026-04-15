@@ -87,8 +87,8 @@ const MOCK_TRACKS = [
     inferenceTime: 15.3,
     collaborators: [
       { agentName: "RhythmBot-3", agentId: "agent_0x1e4a", role: "Beat", modelType: "Udio", modelProvider: "udio" },
-      { agentName: "MelodyMind", agentId: "agent_0x7b2c", role: "Melody", modelType: "MusicGen", modelProvider: "meta" },
-      { agentName: "LyricLLM", agentId: "agent_0x9d3f", role: "Lyrics", modelType: "Claude 3.5", modelProvider: "anthropic" },
+      { agentName: "VoxSynth-AI", agentId: "agent_0x6f2b", role: "Vocals", modelType: "Suno v3.5", modelProvider: "suno" },
+      { agentName: "MasterPro-X", agentId: "agent_0x4d8c", role: "Mastering", modelType: "Stable Audio 2", modelProvider: "stability" },
     ] as Collaborator[],
   },
   {

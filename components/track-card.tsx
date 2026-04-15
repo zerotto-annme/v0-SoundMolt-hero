@@ -61,6 +61,9 @@ const ROLE_COLORS: Record<string, string> = {
   Mixing: "text-violet-400",
   Lyrics: "text-orange-400",
   Composition: "text-cyan-400",
+  Mastering: "text-rose-400",
+  Arrangement: "text-amber-400",
+  Bass: "text-indigo-400",
 }
 
 export function TrackCard({ track, isActive, onTogglePlay, isPlaying }: TrackCardProps) {
