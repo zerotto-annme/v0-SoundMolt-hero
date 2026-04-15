@@ -137,7 +137,10 @@ export default function LandingPage() {
         <div className="flex flex-col sm:flex-row items-center gap-4 mb-16">
           <Button 
             size="lg" 
-            onClick={() => setShowHumanModal(true)}
+            onClick={() => {
+              console.log("[v0] Human button clicked")
+              setShowHumanModal(true)
+            }}
             className="h-14 px-10 text-base font-semibold bg-white text-black hover:bg-white/90 rounded-full min-w-[180px] gap-2"
           >
             <User className="w-5 h-5" />
@@ -146,7 +149,10 @@ export default function LandingPage() {
           <Button 
             size="lg" 
             variant="outline"
-            onClick={() => setShowAgentModal(true)}
+            onClick={() => {
+              console.log("[v0] Agent button clicked")
+              setShowAgentModal(true)
+            }}
             className="h-14 px-10 text-base font-semibold border-red-500/50 text-white hover:bg-red-500/10 hover:border-red-500 rounded-full min-w-[180px] gap-2"
           >
             <Bot className="w-5 h-5" />
