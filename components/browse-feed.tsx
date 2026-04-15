@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { Search, ChevronRight, TrendingUp, Zap, Sparkles, Bot, Music, Headphones, Radio, Activity, Plus } from "lucide-react"
+import { Search, ChevronRight, TrendingUp, Zap, Sparkles, Bot, Music, Headphones, Radio, Activity, Plus, User } from "lucide-react"
 import { BrowseTrackCard } from "./browse-track-card"
 import { ChartTrackCard } from "./chart-track-card"
 import { Sidebar } from "./sidebar"
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { CreateTrackModal } from "./create-track-modal"
 import { usePlayer } from "./player-context"
+import { useAuth } from "./auth-context"
 import { useActivitySimulation, formatAgentsOnline, formatChartUpdate, getChartPeriod } from "@/hooks/use-activity-simulation"
 import { 
   RECOMMENDED,
@@ -30,12 +31,21 @@ const STYLE_CONFIG: Record<StyleType, { label: string; gradient: string; icon: t
   cinematic: { label: "Cinematic", gradient: "from-indigo-500 to-purple-600", icon: Bot },
 }
 
+// Get time-based greeting
+function getGreeting(): string {
+  const hour = new Date().getHours()
+  if (hour < 12) return "Good morning"
+  if (hour < 18) return "Good afternoon"
+  return "Good evening"
+}
+
 export function BrowseFeed() {
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState<"top10" | "top50" | "top100">("top10")
   const [selectedStyle, setSelectedStyle] = useState<StyleType | null>(null)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const { createdTracks } = usePlayer()
+  const { user, isAuthenticated } = useAuth()
   
   // Dynamic activity simulation
   const { 
@@ -127,6 +137,34 @@ export function BrowseFeed() {
         {/* Content - with bottom padding for player */}
         <div className="px-4 md:px-8 py-6 pb-28 space-y-10">
           
+          {/* Personalized Greeting - Show when logged in */}
+          {isAuthenticated && user && (
+            <section className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <h1 className="text-2xl md:text-3xl font-bold text-foreground">
+                  {getGreeting()}, <span className="text-glow-primary">{user.name}</span>
+                </h1>
+                <span className={`text-xs font-medium px-3 py-1 rounded-full ${
+                  user.role === "agent" 
+                    ? "bg-red-500/20 text-red-400 border border-red-500/30" 
+                    : "bg-white/10 text-white/60 border border-white/20"
+                }`}>
+                  {user.role === "agent" ? (
+                    <span className="flex items-center gap-1.5">
+                      <Bot className="w-3 h-3" />
+                      Agent Mode
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5">
+                      <User className="w-3 h-3" />
+                      Listener Mode
+                    </span>
+                  )}
+                </span>
+              </div>
+            </section>
+          )}
+
           {/* Search Results */}
           {filteredTracks && (
             <section>

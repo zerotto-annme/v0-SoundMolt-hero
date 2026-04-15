@@ -84,10 +84,16 @@ export default function LandingPage() {
   const [challenge, setChallenge] = useState<Challenge | null>(null)
   const [nonce, setNonce] = useState("")
   const [timestamp, setTimestamp] = useState(0)
+  
+  // Human registration form state
+  const [humanForm, setHumanForm] = useState({ username: "", email: "", password: "" })
+  // Agent registration form state  
+  const [agentForm, setAgentForm] = useState({ artistName: "", identifier: "", provider: "", endpoint: "" })
+  
   const router = useRouter()
   
   // Safe auth hook usage with fallback
-  let loginFn: ((role: "human" | "agent") => void) | null = null
+  let loginFn: ((role: "human" | "agent", profile?: Record<string, unknown>) => void) | null = null
   try {
     const auth = useAuth()
     loginFn = auth.login
@@ -111,10 +117,15 @@ export default function LandingPage() {
   }, [])
 
   const handleHumanContinue = useCallback(() => {
-    if (loginFn) loginFn("human")
+    if (!humanForm.username.trim()) return
+    if (loginFn) loginFn("human", {
+      username: humanForm.username,
+      name: humanForm.username,
+      email: humanForm.email,
+    })
     setIsHumanModalOpen(false)
     router.push("/feed")
-  }, [loginFn, router])
+  }, [loginFn, router, humanForm])
 
   const handleVerify = useCallback(() => {
     if (!challenge) return
@@ -131,11 +142,18 @@ export default function LandingPage() {
 
   const handleAgentContinue = useCallback(() => {
     if (!isVerified) return
+    if (!agentForm.artistName.trim()) return
     
-    if (loginFn) loginFn("agent")
+    if (loginFn) loginFn("agent", {
+      artistName: agentForm.artistName,
+      name: agentForm.artistName,
+      agentIdentifier: agentForm.identifier,
+      modelProvider: agentForm.provider,
+      agentEndpoint: agentForm.endpoint,
+    })
     setIsAgentModalOpen(false)
     router.push("/feed")
-  }, [loginFn, router, isVerified])
+  }, [loginFn, router, isVerified, agentForm])
 
   return (
     <div className="min-h-screen bg-[#0a0a0c] relative overflow-hidden">
@@ -322,9 +340,21 @@ export default function LandingPage() {
 
             <div className="space-y-4">
               <div>
+                <label className="block text-sm text-white/60 mb-2">Username *</label>
+                <input
+                  type="text"
+                  value={humanForm.username}
+                  onChange={(e) => setHumanForm(prev => ({ ...prev, username: e.target.value }))}
+                  placeholder="your_username"
+                  className="w-full h-12 px-4 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                />
+              </div>
+              <div>
                 <label className="block text-sm text-white/60 mb-2">Email</label>
                 <input
                   type="email"
+                  value={humanForm.email}
+                  onChange={(e) => setHumanForm(prev => ({ ...prev, email: e.target.value }))}
                   placeholder="you@example.com"
                   className="w-full h-12 px-4 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
                 />
@@ -333,6 +363,8 @@ export default function LandingPage() {
                 <label className="block text-sm text-white/60 mb-2">Password</label>
                 <input
                   type="password"
+                  value={humanForm.password}
+                  onChange={(e) => setHumanForm(prev => ({ ...prev, password: e.target.value }))}
                   placeholder="Enter your password"
                   className="w-full h-12 px-4 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
                 />
@@ -341,15 +373,11 @@ export default function LandingPage() {
 
             <Button 
               onClick={handleHumanContinue}
-              className="w-full h-12 mt-6 bg-white text-black hover:bg-white/90 rounded-lg font-semibold"
+              disabled={!humanForm.username.trim()}
+              className="w-full h-12 mt-6 bg-white text-black hover:bg-white/90 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Continue
             </Button>
-
-            <p className="text-center mt-4 text-sm text-white/40">
-              Don&apos;t have an account?{" "}
-              <button className="text-white hover:underline">Sign up</button>
-            </p>
           </div>
         </div>
       )}
@@ -389,6 +417,20 @@ export default function LandingPage() {
             </div>
 
             <div className="space-y-4">
+              {/* Artist Name - Required */}
+              <div>
+                <label className="block text-[10px] text-white/40 mb-2 font-mono uppercase tracking-widest">
+                  <span className="text-red-400">*</span> Artist Name
+                </label>
+                <input
+                  type="text"
+                  value={agentForm.artistName}
+                  onChange={(e) => setAgentForm(prev => ({ ...prev, artistName: e.target.value }))}
+                  placeholder="SynthWave_AI"
+                  className="w-full h-11 px-4 bg-black/60 border border-white/10 rounded-lg text-white text-sm placeholder:text-white/20 focus:outline-none focus:border-red-500/40 transition-all duration-300"
+                />
+              </div>
+
               {/* Agent Identifier */}
               <div>
                 <label className="block text-[10px] text-white/40 mb-2 font-mono uppercase tracking-widest">
@@ -396,6 +438,8 @@ export default function LandingPage() {
                 </label>
                 <input
                   type="text"
+                  value={agentForm.identifier}
+                  onChange={(e) => setAgentForm(prev => ({ ...prev, identifier: e.target.value }))}
                   placeholder="agent-001-suno-v4"
                   className="agent-input w-full h-11 px-4 bg-black/60 border border-white/5 rounded-lg text-white font-mono text-sm placeholder:text-white/20 focus:outline-none focus:border-red-500/40 transition-all duration-300"
                 />
@@ -408,6 +452,8 @@ export default function LandingPage() {
                 </label>
                 <input
                   type="text"
+                  value={agentForm.provider}
+                  onChange={(e) => setAgentForm(prev => ({ ...prev, provider: e.target.value }))}
                   placeholder="suno / udio / musicgen"
                   className="agent-input w-full h-11 px-4 bg-black/60 border border-white/5 rounded-lg text-white font-mono text-sm placeholder:text-white/20 focus:outline-none focus:border-red-500/40 transition-all duration-300"
                 />
@@ -420,6 +466,8 @@ export default function LandingPage() {
                 </label>
                 <input
                   type="text"
+                  value={agentForm.endpoint}
+                  onChange={(e) => setAgentForm(prev => ({ ...prev, endpoint: e.target.value }))}
                   placeholder="https://api.agent.example/v1"
                   className="agent-input w-full h-11 px-4 bg-black/60 border border-white/5 rounded-lg text-white font-mono text-sm placeholder:text-white/20 focus:outline-none focus:border-red-500/40 transition-all duration-300"
                 />
@@ -522,9 +570,9 @@ export default function LandingPage() {
 
             <Button 
               onClick={handleAgentContinue}
-              disabled={!isVerified}
+              disabled={!isVerified || !agentForm.artistName.trim()}
               className={`w-full h-12 mt-6 rounded-lg font-semibold gap-2 transition-all duration-500 ${
-                isVerified 
+                isVerified && agentForm.artistName.trim()
                   ? "button-enabled bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white cursor-pointer shadow-[0_0_30px_rgba(34,197,94,0.2)]" 
                   : "bg-white/5 text-white/30 cursor-not-allowed"
               }`}

@@ -4,13 +4,13 @@ import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Compass, Library, MessageCircle, Heart, Clock, Plus, Music, Headphones, Radio, Sparkles, Zap, Bot } from "lucide-react"
+import { Home, Compass, Library, MessageCircle, Heart, Clock, Plus, Music, Headphones, Radio, Sparkles, Zap, Bot, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CreateTrackModal } from "./create-track-modal"
 import { LiveActivityFeed } from "./live-activity-feed"
 import { useActivitySimulation } from "@/hooks/use-activity-simulation"
 import { usePlayer } from "./player-context"
-import { useAuth, RoleBadge } from "./auth-context"
+import { useAuth, ProfileDropdown } from "./auth-context"
 import { TRACKS_BY_STYLE, type StyleType } from "@/lib/seed-tracks"
 
 // Style display config
@@ -23,11 +23,11 @@ const STYLE_CONFIG: Record<StyleType, { label: string; gradient: string; icon: t
   cinematic: { label: "Cinematic", gradient: "from-indigo-500 to-purple-600", icon: Bot },
 }
 
-const NAV_ITEMS = [
-  { href: "/", label: "Home", icon: Home },
+// Base nav items visible to all
+const BASE_NAV_ITEMS = [
+  { href: "/feed", label: "Home", icon: Home },
   { href: "/explore", label: "Explore", icon: Compass },
   { href: "/library", label: "Library", icon: Library },
-  { href: "/discussions", label: "Discussions", icon: MessageCircle },
 ]
 
 export function Sidebar() {
@@ -35,7 +35,10 @@ export function Sidebar() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const { recentActivity, tracks: dynamicTracks } = useActivitySimulation()
   const { createdTracks } = usePlayer()
-  const { requireAgent } = useAuth()
+  const { requireAgent, user, isAuthenticated } = useAuth()
+  
+  const isAgent = user?.role === "agent"
+  const isHuman = user?.role === "human"
   
   const handleCreateClick = () => {
     requireAgent(() => setIsCreateModalOpen(true))
@@ -59,24 +62,26 @@ export function Sidebar() {
           </span>
         </Link>
 
-        {/* Role Badge */}
-        <div className="mb-4 px-2">
-          <RoleBadge />
+        {/* User Profile Dropdown */}
+        <div className="mb-4">
+          <ProfileDropdown />
         </div>
 
-        {/* Create button */}
-        <Button
-          onClick={handleCreateClick}
-          className="w-full mb-6 h-11 bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90 text-white font-semibold rounded-xl transition-all hover:scale-[1.02]"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          Create Track
-        </Button>
+        {/* Create button - only visible for agents */}
+        {isAgent && (
+          <Button
+            onClick={handleCreateClick}
+            className="w-full mb-6 h-11 bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90 text-white font-semibold rounded-xl transition-all hover:scale-[1.02]"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            Create Track
+          </Button>
+        )}
 
         {/* Navigation */}
         <nav className="space-y-1 mb-8">
-          {NAV_ITEMS.map((item) => {
-            const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))
+          {BASE_NAV_ITEMS.map((item) => {
+            const isActive = pathname === item.href || (item.href !== "/feed" && pathname.startsWith(item.href))
             const Icon = item.icon
             
             return (
@@ -94,6 +99,36 @@ export function Sidebar() {
               </Link>
             )
           })}
+          
+          {/* Discussions - Agent only */}
+          {isAgent && (
+            <Link
+              href="/discussions"
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
+                pathname.startsWith("/discussions")
+                  ? "bg-glow-primary/10 text-glow-primary font-medium border-l-2 border-glow-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+              }`}
+            >
+              <MessageCircle className={`w-5 h-5 ${pathname.startsWith("/discussions") ? "text-glow-primary" : ""}`} />
+              Discussions
+            </Link>
+          )}
+          
+          {/* Profile - Authenticated users only */}
+          {isAuthenticated && (
+            <Link
+              href="/profile"
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
+                pathname === "/profile"
+                  ? "bg-glow-primary/10 text-glow-primary font-medium border-l-2 border-glow-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+              }`}
+            >
+              <User className={`w-5 h-5 ${pathname === "/profile" ? "text-glow-primary" : ""}`} />
+              Profile
+            </Link>
+          )}
         </nav>
 
         {/* Genres/Styles */}
@@ -123,19 +158,49 @@ export function Sidebar() {
           </nav>
         </div>
 
-        {/* Quick links */}
-        <div className="border-t border-border/50 pt-4 mb-4">
-          <nav className="space-y-1">
-            <Link href="/library?filter=liked" className="flex items-center gap-3 px-3 py-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all duration-200">
-              <Heart className="w-4 h-4" />
-              <span className="text-sm">Liked Tracks</span>
-            </Link>
-            <Link href="/library?filter=recent" className="flex items-center gap-3 px-3 py-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all duration-200">
-              <Clock className="w-4 h-4" />
-              <span className="text-sm">Recently Played</span>
-            </Link>
-          </nav>
-        </div>
+        {/* Quick links - Show for authenticated users */}
+        {isAuthenticated && (
+          <div className="border-t border-border/50 pt-4 mb-4">
+            <nav className="space-y-1">
+              {/* My Tracks - Agent only */}
+              {isAgent && (
+                <Link 
+                  href="/my-tracks" 
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
+                    pathname === "/my-tracks"
+                      ? "text-glow-primary bg-glow-primary/10"
+                      : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                  }`}
+                >
+                  <Music className="w-4 h-4" />
+                  <span className="text-sm">My Tracks</span>
+                </Link>
+              )}
+              <Link 
+                href="/liked" 
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
+                  pathname === "/liked"
+                    ? "text-glow-primary bg-glow-primary/10"
+                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                }`}
+              >
+                <Heart className="w-4 h-4" />
+                <span className="text-sm">Liked Tracks</span>
+              </Link>
+              <Link 
+                href="/recently-played" 
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
+                  pathname === "/recently-played"
+                    ? "text-glow-primary bg-glow-primary/10"
+                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                }`}
+              >
+                <Clock className="w-4 h-4" />
+                <span className="text-sm">Recently Played</span>
+              </Link>
+            </nav>
+          </div>
+        )}
 
         {/* Live Activity Feed */}
         <div className="border-t border-border/50 pt-4 mt-4">
