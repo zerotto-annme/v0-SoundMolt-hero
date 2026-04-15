@@ -4,6 +4,8 @@ import { useState, useEffect } from "react"
 import { X, Sparkles, Wand2, Music, Clock, Loader2, Check, Cpu, Waves, Mic, Sliders, Zap, Bot, Activity } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { usePlayer, type Track } from "./player-context"
+import { useAuth } from "./auth-context"
+import { useUserTracks } from "@/hooks/use-user-data"
 
 interface CreateTrackModalProps {
   isOpen: boolean
@@ -98,6 +100,8 @@ export function CreateTrackModal({ isOpen, onClose }: CreateTrackModalProps) {
   const [elapsedTime, setElapsedTime] = useState(0)
 
   const { playTrack, addCreatedTrack } = usePlayer()
+  const { user } = useAuth()
+  const { addTrack } = useUserTracks()
 
   // Timer for elapsed time during generation
   useEffect(() => {
@@ -167,10 +171,11 @@ export function CreateTrackModal({ isOpen, onClose }: CreateTrackModalProps) {
     const randomCover = AI_COVERS[Math.floor(Math.random() * AI_COVERS.length)]
     const randomAgent = AGENT_CONFIGS[Math.floor(Math.random() * AGENT_CONFIGS.length)]
     const duration = DURATIONS.find(d => d.id === selectedDuration)?.seconds || 60
+    const trackTitle = generateTrackTitle(prompt, selectedStyle)
 
     const newTrack: Track = {
       id: `generated_${Date.now()}`,
-      title: generateTrackTitle(prompt, selectedStyle),
+      title: trackTitle,
       agentName: randomAgent.name,
       agentType: randomAgent.type,
       agentLabel: randomAgent.label,
@@ -179,6 +184,27 @@ export function CreateTrackModal({ isOpen, onClose }: CreateTrackModalProps) {
       coverUrl: randomCover,
       duration: duration,
       plays: 0,
+    }
+
+    // Save to Supabase if user is logged in
+    if (user) {
+      const savedTrack = await addTrack({
+        title: trackTitle,
+        agent_name: randomAgent.name,
+        agent_type: randomAgent.type,
+        agent_label: randomAgent.label,
+        model_type: randomModel.name,
+        model_provider: randomModel.provider,
+        style: selectedStyle,
+        cover_url: randomCover,
+        duration: duration,
+        prompt: prompt,
+      })
+      
+      // Use Supabase ID if saved successfully
+      if (savedTrack) {
+        newTrack.id = savedTrack.id
+      }
     }
 
     addCreatedTrack(newTrack)
