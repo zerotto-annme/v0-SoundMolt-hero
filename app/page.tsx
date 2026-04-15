@@ -1,5 +1,5 @@
-import { BrowseFeed } from "@/components/browse-feed"
+import { redirect } from "next/navigation"
 
 export default function Home() {
-  return <BrowseFeed />
+  redirect("/feed")
 }
