@@ -80,10 +80,75 @@ export function Hero() {
             </span>
           </h1>
 
-          {/* Large centered crab mascot */}
+          {/* Large centered crab mascot with audio-reactive environment */}
           <div className="relative mb-8">
-            {/* Glow behind mascot */}
-            <div className="absolute inset-0 bg-red-500/20 rounded-full blur-3xl scale-125" />
+            {/* Outer pulsing glow aura */}
+            <div className="absolute inset-0 scale-[2] animate-pulse">
+              <div className="absolute inset-0 bg-red-500/15 rounded-full blur-[80px]" />
+            </div>
+            
+            {/* Mid glow layer */}
+            <div className="absolute inset-0 scale-150">
+              <div className="absolute inset-0 bg-red-600/25 rounded-full blur-3xl animate-pulse" style={{ animationDelay: "0.5s" }} />
+            </div>
+            
+            {/* Inner core glow */}
+            <div className="absolute inset-0 scale-110">
+              <div className="absolute inset-0 bg-red-500/30 rounded-full blur-2xl" />
+            </div>
+
+            {/* Animated frequency rings */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              {/* Ring 1 */}
+              <div className="absolute w-[120%] h-[120%] border border-red-500/20 rounded-full animate-ping" style={{ animationDuration: "3s" }} />
+              {/* Ring 2 */}
+              <div className="absolute w-[140%] h-[140%] border border-glow-primary/15 rounded-full animate-ping" style={{ animationDuration: "4s", animationDelay: "0.5s" }} />
+              {/* Ring 3 */}
+              <div className="absolute w-[160%] h-[160%] border border-glow-primary/10 rounded-full animate-ping" style={{ animationDuration: "5s", animationDelay: "1s" }} />
+            </div>
+
+            {/* Sound wave visualizer bars - left side */}
+            <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[140%] flex items-center gap-1">
+              {[0.6, 0.8, 1, 0.7, 0.5, 0.9, 0.4].map((height, i) => (
+                <div
+                  key={i}
+                  className="w-1 md:w-1.5 bg-gradient-to-t from-red-500/60 to-glow-primary/40 rounded-full animate-pulse"
+                  style={{
+                    height: `${height * 48}px`,
+                    animationDelay: `${i * 0.15}s`,
+                    animationDuration: "0.8s",
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* Sound wave visualizer bars - right side */}
+            <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-[140%] flex items-center gap-1">
+              {[0.4, 0.9, 0.5, 0.7, 1, 0.8, 0.6].map((height, i) => (
+                <div
+                  key={i}
+                  className="w-1 md:w-1.5 bg-gradient-to-t from-red-500/60 to-glow-primary/40 rounded-full animate-pulse"
+                  style={{
+                    height: `${height * 48}px`,
+                    animationDelay: `${i * 0.15}s`,
+                    animationDuration: "0.8s",
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* Floating music notes */}
+            <div className="absolute -top-4 -right-8 text-glow-primary/50 text-2xl animate-bounce" style={{ animationDuration: "2s" }}>
+              ♪
+            </div>
+            <div className="absolute -bottom-2 -left-6 text-red-400/50 text-xl animate-bounce" style={{ animationDuration: "2.5s", animationDelay: "0.3s" }}>
+              ♫
+            </div>
+            <div className="absolute top-1/4 -left-10 text-glow-primary/40 text-lg animate-bounce" style={{ animationDuration: "3s", animationDelay: "0.6s" }}>
+              ♪
+            </div>
+
+            {/* The crab mascot itself */}
             <CrabMascot size="lg" className="relative z-10 w-64 h-64 md:w-80 md:h-80" />
           </div>
 
