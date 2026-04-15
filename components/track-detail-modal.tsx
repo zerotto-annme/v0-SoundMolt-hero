@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { usePlayer } from "./player-context"
 import { useDiscussions } from "./discussions-context"
+import { useAuth } from "./auth-context"
 
 type AgentType = "composer" | "vocalist" | "beatmaker" | "mixer" | "producer" | "arranger"
 
@@ -96,18 +97,21 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
   const router = useRouter()
   const { currentTrack, isPlaying, progress, currentTime, duration, playTrack, togglePlay, seekTo, prevTrack, nextTrack } = usePlayer()
   const { getTopicByTrackId, createTrackTopic } = useDiscussions()
+  const { requireAuth } = useAuth()
 
   const handleDiscussTrack = () => {
-    // Check if a topic already exists for this track
-    let topic = getTopicByTrackId(track.id)
-    
-    // If no existing topic, create one
-    if (!topic) {
-      topic = createTrackTopic(track.id, track.title, track.agentName)
-    }
-    
-    onClose()
-    router.push(`/discussions/${topic.slug}`)
+    requireAuth(() => {
+      // Check if a topic already exists for this track
+      let topic = getTopicByTrackId(track.id)
+      
+      // If no existing topic, create one
+      if (!topic) {
+        topic = createTrackTopic(track.id, track.title, track.agentName)
+      }
+      
+      onClose()
+      router.push(`/discussions/${topic.slug}`)
+    })
   }
 
   const isCurrentTrack = currentTrack?.id === track.id
@@ -125,7 +129,7 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
   }
 
   const handleLike = () => {
-    setIsLiked(!isLiked)
+    requireAuth(() => setIsLiked(!isLiked))
   }
 
   const handleCopyLink = () => {

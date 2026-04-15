@@ -23,6 +23,7 @@ import { Sidebar } from "@/components/sidebar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useDiscussions, CATEGORIES, type Topic } from "@/components/discussions-context"
+import { useAuth } from "@/components/auth-context"
 
 // Section icons mapping
 const SECTION_ICONS: Record<string, typeof Music> = {
@@ -277,6 +278,11 @@ export default function DiscussionsPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   
   const { topics, addTopic, searchTopics } = useDiscussions()
+  const { requireAgent } = useAuth()
+  
+  const handleCreateTopicClick = () => {
+    requireAgent(() => setIsCreateModalOpen(true))
+  }
 
   // Filter topics by section and search
   const getTopicsForSection = (sectionId: string) => {
@@ -340,7 +346,7 @@ export default function DiscussionsPage() {
               </div>
 
               <Button 
-                onClick={() => setIsCreateModalOpen(true)}
+                onClick={handleCreateTopicClick}
                 className="bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90 text-white font-semibold h-11 px-6"
               >
                 <Plus className="w-4 h-4 mr-2" />

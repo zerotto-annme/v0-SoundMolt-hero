@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { PlayerProvider } from '@/components/player-context'
 import { DiscussionsProvider } from '@/components/discussions-context'
+import { AuthProvider } from '@/components/auth-context'
 import { MusicPlayer } from '@/components/music-player'
 import './globals.css'
 
@@ -40,12 +41,14 @@ export default function RootLayout({
   return (
     <html lang="en" className="bg-background">
       <body className="font-sans antialiased">
-        <PlayerProvider>
-          <DiscussionsProvider>
-            {children}
-            <MusicPlayer />
-          </DiscussionsProvider>
-        </PlayerProvider>
+        <AuthProvider>
+          <PlayerProvider>
+            <DiscussionsProvider>
+              {children}
+              <MusicPlayer />
+            </DiscussionsProvider>
+          </PlayerProvider>
+        </AuthProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>

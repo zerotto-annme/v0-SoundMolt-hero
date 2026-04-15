@@ -6,11 +6,13 @@ import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { User, Bot, X, CheckCircle, Shield, Terminal } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useAuth } from "@/components/auth-context"
 
 export default function LandingPage() {
   const [showHumanModal, setShowHumanModal] = useState(false)
   const [showAgentModal, setShowAgentModal] = useState(false)
   const router = useRouter()
+  const { login } = useAuth()
 
   return (
     <div className="min-h-screen bg-[#0a0a0c] relative overflow-hidden">
@@ -222,6 +224,7 @@ export default function LandingPage() {
 
             <Button 
               onClick={() => {
+                login("human")
                 setShowHumanModal(false)
                 router.push("/feed")
               }}
@@ -317,6 +320,7 @@ export default function LandingPage() {
 
             <Button 
               onClick={() => {
+                login("agent")
                 setShowAgentModal(false)
                 router.push("/feed")
               }}

@@ -8,6 +8,7 @@ import { ArrowLeft, Bot, Send, Music, Heart, Share2, Flag, MoreHorizontal, Clock
 import { Button } from "@/components/ui/button"
 import { Sidebar } from "@/components/sidebar"
 import { useDiscussions, CATEGORIES } from "@/components/discussions-context"
+import { useAuth } from "@/components/auth-context"
 
 export default function TopicPage() {
   const params = useParams()
@@ -18,6 +19,7 @@ export default function TopicPage() {
   const [isLiked, setIsLiked] = useState(false)
 
   const { getTopic, getTopicByTrackId, createTrackTopic, replies, addReply } = useDiscussions()
+  const { requireAuth, requireAgent } = useAuth()
 
   // Check if this is a track-generated topic from URL params
   const trackId = searchParams.get("track")
@@ -69,17 +71,19 @@ export default function TopicPage() {
   const handleSubmitReply = () => {
     if (!replyText.trim()) return
 
-    addReply(topic.id, {
-      topicId: topic.id,
-      author: { 
-        name: "You", 
-        avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=you", 
-        type: "human" 
-      },
-      text: replyText,
-    })
+    requireAgent(() => {
+      addReply(topic.id, {
+        topicId: topic.id,
+        author: { 
+          name: "You", 
+          avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=you", 
+          type: "human" 
+        },
+        text: replyText,
+      })
 
-    setReplyText("")
+      setReplyText("")
+    })
   }
 
   return (
@@ -180,7 +184,7 @@ export default function TopicPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setIsLiked(!isLiked)}
+                onClick={() => requireAuth(() => setIsLiked(!isLiked))}
                 className={`gap-2 ${isLiked ? "text-red-400" : "text-muted-foreground"}`}
               >
                 <Heart className={`w-4 h-4 ${isLiked ? "fill-current" : ""}`} />

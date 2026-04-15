@@ -10,6 +10,7 @@ import { CreateTrackModal } from "./create-track-modal"
 import { LiveActivityFeed } from "./live-activity-feed"
 import { useActivitySimulation } from "@/hooks/use-activity-simulation"
 import { usePlayer } from "./player-context"
+import { useAuth, RoleBadge } from "./auth-context"
 import { TRACKS_BY_STYLE, type StyleType } from "@/lib/seed-tracks"
 
 // Style display config
@@ -34,6 +35,11 @@ export function Sidebar() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const { recentActivity, tracks: dynamicTracks } = useActivitySimulation()
   const { createdTracks } = usePlayer()
+  const { requireAgent } = useAuth()
+  
+  const handleCreateClick = () => {
+    requireAgent(() => setIsCreateModalOpen(true))
+  }
 
   return (
     <>
@@ -53,9 +59,14 @@ export function Sidebar() {
           </span>
         </Link>
 
+        {/* Role Badge */}
+        <div className="mb-4 px-2">
+          <RoleBadge />
+        </div>
+
         {/* Create button */}
         <Button
-          onClick={() => setIsCreateModalOpen(true)}
+          onClick={handleCreateClick}
           className="w-full mb-6 h-11 bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90 text-white font-semibold rounded-xl transition-all hover:scale-[1.02]"
         >
           <Plus className="w-5 h-5 mr-2" />
