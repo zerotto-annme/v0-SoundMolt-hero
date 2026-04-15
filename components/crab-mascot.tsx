@@ -15,7 +15,7 @@ export function CrabMascot({ size = "md", className = "" }: CrabMascotProps) {
   return (
     <div className={`${sizeClasses[size]} ${className} relative`}>
       <Image
-        src="/images/crab-logo.png"
+        src="/images/crab-logo-v2.png"
         alt="SoundMolt Crab Mascot"
         fill
         className="object-contain"
