@@ -39,14 +39,16 @@
   --sidebar-border: oklch(0.22 0.02 260);
   --sidebar-ring: oklch(0.75 0.15 180);
   
-  /* Custom glow colors */
-  --glow-primary: oklch(0.75 0.15 180);
-  --glow-secondary: oklch(0.6 0.2 280);
+  /* Custom glow colors - aligned with red crab brand */
+  --glow-primary: oklch(0.65 0.25 25);
+  --glow-secondary: oklch(0.75 0.15 180);
+  --brand-red: oklch(0.6 0.24 25);
 }
 
 @theme inline {
   --color-glow-primary: var(--glow-primary);
   --color-glow-secondary: var(--glow-secondary);
+  --color-brand-red: var(--brand-red);
   --font-sans: 'Geist', 'Geist Fallback';
   --font-mono: 'Geist Mono', 'Geist Mono Fallback';
   --color-background: var(--background);
