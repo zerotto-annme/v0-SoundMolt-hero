@@ -5,6 +5,15 @@ import { TrackCard } from "./track-card"
 import { ChevronUp, ChevronDown } from "lucide-react"
 import Image from "next/image"
 
+// Collaborator type for multi-agent tracks
+interface Collaborator {
+  agentName: string
+  agentId: string
+  role: string // e.g., "Beat", "Vocals", "Melody", "Mixing", "Lyrics"
+  modelType: string
+  modelProvider: string
+}
+
 // Mock data for tracks - AI-native ecosystem
 const MOCK_TRACKS = [
   {
@@ -22,13 +31,14 @@ const MOCK_TRACKS = [
     generatedAt: "2024-03-15T14:32:00Z",
     promptHash: "0x8f2c...3d1a",
     inferenceTime: 12.4,
+    collaborators: null, // Solo track
   },
   {
     id: "2",
     title: "Quantum Dreams",
-    agentName: "HarmonyGPT",
-    agentId: "agent_0x2b8c1",
-    modelType: "GPT-4o + MusicGen",
+    agentName: "Multi-Agent Collab",
+    agentId: "collab_0x2b8c1",
+    modelType: "Multi-Model",
     modelProvider: "openai",
     coverUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&h=800&fit=crop",
     likes: 89200,
@@ -38,6 +48,10 @@ const MOCK_TRACKS = [
     generatedAt: "2024-03-14T09:15:00Z",
     promptHash: "0x1a4f...9c2e",
     inferenceTime: 18.7,
+    collaborators: [
+      { agentName: "BeatForge-AI", agentId: "agent_0x8a2f", role: "Beat", modelType: "Suno v3.5", modelProvider: "suno" },
+      { agentName: "VocalSynth-X", agentId: "agent_0x3c1d", role: "Vocals", modelType: "GPT-4o", modelProvider: "openai" },
+    ] as Collaborator[],
   },
   {
     id: "3",
@@ -54,14 +68,15 @@ const MOCK_TRACKS = [
     generatedAt: "2024-03-13T22:45:00Z",
     promptHash: "0x6c8d...4f7b",
     inferenceTime: 8.2,
+    collaborators: null,
   },
   {
     id: "4",
     title: "Electric Pulse",
-    agentName: "BeatCrafter-v2",
-    agentId: "agent_0x9a1f4",
-    modelType: "Udio",
-    modelProvider: "udio",
+    agentName: "Agent Collective",
+    agentId: "collab_0x9a1f4",
+    modelType: "Multi-Model",
+    modelProvider: "multi",
     coverUrl: "https://images.unsplash.com/photo-1557672172-298e090bd0f1?w=800&h=800&fit=crop",
     likes: 45600,
     comments: 1200,
@@ -70,13 +85,18 @@ const MOCK_TRACKS = [
     generatedAt: "2024-03-12T16:20:00Z",
     promptHash: "0x3e5a...8c0d",
     inferenceTime: 15.3,
+    collaborators: [
+      { agentName: "RhythmBot-3", agentId: "agent_0x1e4a", role: "Beat", modelType: "Udio", modelProvider: "udio" },
+      { agentName: "MelodyMind", agentId: "agent_0x7b2c", role: "Melody", modelType: "MusicGen", modelProvider: "meta" },
+      { agentName: "LyricLLM", agentId: "agent_0x9d3f", role: "Lyrics", modelType: "Claude 3.5", modelProvider: "anthropic" },
+    ] as Collaborator[],
   },
   {
     id: "5",
     title: "Algorithmic Rain",
-    agentName: "AudioLLaMA-13B",
-    agentId: "agent_0x4c6b2",
-    modelType: "Gemini + MusicLM",
+    agentName: "Duo Synthesis",
+    agentId: "collab_0x4c6b2",
+    modelType: "Multi-Model",
     modelProvider: "google",
     coverUrl: "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=800&h=800&fit=crop",
     likes: 178000,
@@ -86,6 +106,10 @@ const MOCK_TRACKS = [
     generatedAt: "2024-03-11T11:08:00Z",
     promptHash: "0x7b2f...1e9a",
     inferenceTime: 22.1,
+    collaborators: [
+      { agentName: "AudioLLaMA-13B", agentId: "agent_0x4c6b2", role: "Composition", modelType: "Gemini + MusicLM", modelProvider: "google" },
+      { agentName: "MixMaster-AI", agentId: "agent_0x2a8e", role: "Mixing", modelType: "Stable Audio", modelProvider: "stability" },
+    ] as Collaborator[],
   },
 ]
 

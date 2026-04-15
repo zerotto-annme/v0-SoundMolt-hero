@@ -2,7 +2,15 @@
 
 import { useState } from "react"
 import Image from "next/image"
-import { Heart, MessageCircle, Share2, Play, Pause, Bot, Cpu, Sparkles, Clock, Hash } from "lucide-react"
+import { Heart, MessageCircle, Share2, Play, Pause, Bot, Cpu, Sparkles, Clock, Hash, Users, Zap } from "lucide-react"
+
+interface Collaborator {
+  agentName: string
+  agentId: string
+  role: string
+  modelType: string
+  modelProvider: string
+}
 
 interface TrackCardProps {
   track: {
@@ -20,6 +28,7 @@ interface TrackCardProps {
     generatedAt: string
     promptHash: string
     inferenceTime: number
+    collaborators?: Collaborator[] | null
   }
   isActive: boolean
   onTogglePlay: () => void
@@ -40,6 +49,18 @@ const MODEL_BADGES: Record<string, string> = {
   anthropic: "bg-orange-500/20 text-orange-300 border-orange-500/30",
   google: "bg-blue-500/20 text-blue-300 border-blue-500/30",
   udio: "bg-rose-500/20 text-rose-300 border-rose-500/30",
+  meta: "bg-sky-500/20 text-sky-300 border-sky-500/30",
+  stability: "bg-violet-500/20 text-violet-300 border-violet-500/30",
+  multi: "bg-gradient-to-r from-purple-500/20 via-emerald-500/20 to-blue-500/20 text-white border-white/20",
+}
+
+const ROLE_COLORS: Record<string, string> = {
+  Beat: "text-purple-400",
+  Vocals: "text-emerald-400",
+  Melody: "text-blue-400",
+  Mixing: "text-violet-400",
+  Lyrics: "text-orange-400",
+  Composition: "text-cyan-400",
 }
 
 export function TrackCard({ track, isActive, onTogglePlay, isPlaying }: TrackCardProps) {
@@ -147,20 +168,57 @@ export function TrackCard({ track, isActive, onTogglePlay, isPlaying }: TrackCar
               {track.title}
             </h2>
             
-            {/* Agent info */}
-            <div className="flex items-center gap-3 mb-3">
-              {/* Agent avatar/icon */}
-              <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${modelColor} flex items-center justify-center`}>
-                <Bot className="w-4 h-4 text-white" />
+            {/* Collaboration info - if multiple agents */}
+            {track.collaborators && track.collaborators.length > 0 ? (
+              <div className="mb-3">
+                {/* Collab badge */}
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-gradient-to-r from-purple-500/20 via-cyan-500/20 to-emerald-500/20 border border-white/10">
+                    <Users className="w-3 h-3 text-cyan-400" />
+                    <span className="text-[10px] font-mono text-white/80">AGENT COLLABORATION</span>
+                    <Zap className="w-3 h-3 text-yellow-400" />
+                  </div>
+                </div>
+                
+                {/* Collaborator list */}
+                <div className="space-y-1.5">
+                  {track.collaborators.map((collab, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      {/* Role indicator */}
+                      <span className={`text-xs font-medium ${ROLE_COLORS[collab.role] || "text-white/60"}`}>
+                        {collab.role}
+                      </span>
+                      <span className="text-white/30">by</span>
+                      {/* Agent info */}
+                      <div className="flex items-center gap-1.5">
+                        <div className={`w-5 h-5 rounded bg-gradient-to-br ${MODEL_COLORS[collab.modelProvider] || modelColor} flex items-center justify-center`}>
+                          <Bot className="w-3 h-3 text-white" />
+                        </div>
+                        <span className="text-sm font-medium text-white">{collab.agentName}</span>
+                        <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${MODEL_BADGES[collab.modelProvider] || badgeColor}`}>
+                          {collab.modelType}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium text-white flex items-center gap-1.5">
-                  {track.agentName}
-                  <Sparkles className="w-3.5 h-3.5 text-glow-secondary" />
-                </span>
-                <span className="text-xs text-white/50 font-mono">{track.agentId}</span>
+            ) : (
+              /* Solo agent info */
+              <div className="flex items-center gap-3 mb-3">
+                {/* Agent avatar/icon */}
+                <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${modelColor} flex items-center justify-center`}>
+                  <Bot className="w-4 h-4 text-white" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium text-white flex items-center gap-1.5">
+                    {track.agentName}
+                    <Sparkles className="w-3.5 h-3.5 text-glow-secondary" />
+                  </span>
+                  <span className="text-xs text-white/50 font-mono">{track.agentId}</span>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* AI metadata row */}
             <div className="flex items-center gap-4 text-xs text-white/40 font-mono">
@@ -172,6 +230,12 @@ export function TrackCard({ track, isActive, onTogglePlay, isPlaying }: TrackCar
                 <Hash className="w-3 h-3" />
                 <span>{track.promptHash}</span>
               </div>
+              {track.collaborators && (
+                <div className="flex items-center gap-1">
+                  <Users className="w-3 h-3" />
+                  <span>{track.collaborators.length} agents</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
