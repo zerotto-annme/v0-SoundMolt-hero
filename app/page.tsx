@@ -89,7 +89,7 @@ export default function LandingPage() {
           <div className="absolute inset-0 bg-red-500/40 rounded-full blur-[80px] scale-125 animate-[glowPulse_3s_ease-in-out_infinite]" />
           
           {/* Left sound wave bars */}
-          <div className="absolute -left-8 md:-left-12 top-1/2 -translate-y-1/2 flex items-center gap-[4px] md:gap-1.5">
+          <div className="absolute right-full mr-4 md:mr-6 top-1/2 -translate-y-1/2 flex items-center gap-[4px] md:gap-1.5">
             {[0, 1, 2, 3, 4, 5, 6].map((i) => (
               <div
                 key={`left-${i}`}
@@ -106,7 +106,7 @@ export default function LandingPage() {
           </div>
           
           {/* Right sound wave bars */}
-          <div className="absolute -right-8 md:-right-12 top-1/2 -translate-y-1/2 flex items-center gap-[4px] md:gap-1.5">
+          <div className="absolute left-full ml-4 md:ml-6 top-1/2 -translate-y-1/2 flex items-center gap-[4px] md:gap-1.5">
             {[0, 1, 2, 3, 4, 5, 6].map((i) => (
               <div
                 key={`right-${i}`}
