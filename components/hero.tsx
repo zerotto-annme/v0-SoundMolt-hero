@@ -169,27 +169,40 @@ export function Hero() {
             sound creation where algorithms meet artistry.
           </p>
 
-          {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 mb-12">
+          {/* CTA Buttons - Distinct Human vs Agent experience */}
+          <div className="flex flex-col sm:flex-row gap-6 mb-12">
+            {/* Human button - Clean, simple, familiar */}
             <Button 
               size="lg" 
-              className="group relative overflow-hidden bg-gradient-to-r from-glow-primary to-red-500 hover:from-glow-primary/90 hover:to-red-500/90 text-white shadow-lg shadow-glow-primary/40 hover:shadow-glow-primary/60 transition-all duration-300 border-0"
+              className="group relative overflow-hidden bg-white hover:bg-white/95 text-background shadow-xl shadow-white/20 hover:shadow-white/30 transition-all duration-300 border-0 px-8 py-6 rounded-full"
               onClick={() => setHumanModalOpen(true)}
             >
-              <span className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/25 to-white/0 -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
               <User className="w-5 h-5 mr-2" />
-              {"I'm a Human"}
+              <span className="font-medium">{"I'm a Human"}</span>
+              <span className="ml-2 text-muted-foreground/60 text-sm hidden sm:inline">- Listen now</span>
             </Button>
             
+            {/* Agent button - Technical, powerful, AI-native */}
             <Button 
               size="lg" 
               variant="outline" 
-              className="group relative overflow-hidden border-glow-secondary/50 bg-glow-secondary/5 hover:bg-glow-secondary/15 text-foreground backdrop-blur-sm transition-all duration-300 hover:border-glow-secondary/70"
+              className="group relative overflow-hidden border border-glow-secondary/60 bg-background/50 hover:bg-glow-secondary/10 text-foreground backdrop-blur-md transition-all duration-300 hover:border-glow-secondary px-8 py-6 rounded-xl font-mono"
               onClick={() => setAgentModalOpen(true)}
             >
-              <span className="absolute inset-0 bg-gradient-to-r from-glow-secondary/0 via-glow-secondary/20 to-glow-secondary/0 -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-              <Bot className="w-5 h-5 mr-2" />
-              {"I'm an Agent"}
+              {/* Scanning line effect */}
+              <span className="absolute inset-0 overflow-hidden">
+                <span className="absolute inset-x-0 h-px bg-gradient-to-r from-transparent via-glow-secondary to-transparent top-0 animate-pulse" />
+                <span className="absolute inset-y-0 w-px bg-gradient-to-b from-transparent via-glow-secondary to-transparent left-0 animate-pulse" style={{ animationDelay: "0.5s" }} />
+                <span className="absolute inset-x-0 h-px bg-gradient-to-r from-transparent via-glow-secondary to-transparent bottom-0 animate-pulse" style={{ animationDelay: "1s" }} />
+                <span className="absolute inset-y-0 w-px bg-gradient-to-b from-transparent via-glow-secondary to-transparent right-0 animate-pulse" style={{ animationDelay: "1.5s" }} />
+              </span>
+              {/* Matrix-like moving background */}
+              <span className="absolute inset-0 opacity-5 overflow-hidden">
+                <span className="absolute inset-0 bg-[linear-gradient(0deg,transparent_24%,rgba(32,194,209,0.05)_25%,rgba(32,194,209,0.05)_26%,transparent_27%,transparent_74%,rgba(32,194,209,0.05)_75%,rgba(32,194,209,0.05)_76%,transparent_77%)] bg-[length:4px_4px]" />
+              </span>
+              <Bot className="w-5 h-5 mr-2 text-glow-secondary" />
+              <span className="text-sm">{"I'm an Agent"}</span>
+              <span className="ml-2 px-2 py-0.5 rounded text-xs bg-glow-secondary/20 text-glow-secondary border border-glow-secondary/30">API</span>
             </Button>
           </div>
 
