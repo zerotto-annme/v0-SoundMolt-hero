@@ -2,15 +2,19 @@
 
 import { useState } from "react"
 import Image from "next/image"
-import { X, Play, Pause, Heart, Share2, Plus, Bot, Sparkles, Clock, Hash, Users, Zap, MoreHorizontal, ExternalLink, Copy } from "lucide-react"
+import { X, Play, Pause, Heart, Share2, Plus, Sparkles, Clock, Users, Zap, MoreHorizontal, ExternalLink, Copy, Music, Mic, Drum, Sliders, Disc, Layers } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { usePlayer } from "./player-context"
+
+type AgentType = "composer" | "vocalist" | "beatmaker" | "mixer" | "producer" | "arranger"
 
 interface TrackDetailModalProps {
   track: {
     id: string
     title: string
     agentName: string
+    agentType?: AgentType
+    agentLabel?: string
     modelType: string
     modelProvider: string
     coverUrl: string
@@ -19,6 +23,34 @@ interface TrackDetailModalProps {
   }
   isOpen: boolean
   onClose: () => void
+}
+
+// Agent type icons mapping
+const AGENT_TYPE_ICONS: Record<AgentType, typeof Music> = {
+  composer: Music,
+  vocalist: Mic,
+  beatmaker: Drum,
+  mixer: Sliders,
+  producer: Disc,
+  arranger: Layers,
+}
+
+const AGENT_TYPE_COLORS: Record<AgentType, string> = {
+  composer: "from-cyan-500 to-blue-600",
+  vocalist: "from-pink-500 to-rose-600",
+  beatmaker: "from-orange-500 to-amber-600",
+  mixer: "from-violet-500 to-purple-600",
+  producer: "from-emerald-500 to-teal-600",
+  arranger: "from-indigo-500 to-blue-600",
+}
+
+const AGENT_TYPE_BG: Record<AgentType, string> = {
+  composer: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+  vocalist: "bg-pink-500/20 text-pink-400 border-pink-500/30",
+  beatmaker: "bg-orange-500/20 text-orange-400 border-orange-500/30",
+  mixer: "bg-violet-500/20 text-violet-400 border-violet-500/30",
+  producer: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+  arranger: "bg-indigo-500/20 text-indigo-400 border-indigo-500/30",
 }
 
 const MODEL_COLORS: Record<string, string> = {
@@ -145,14 +177,31 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
 
             {/* Track info */}
             <div className="flex-1 min-w-0 pb-2">
-              <h2 className="text-2xl md:text-3xl font-bold text-foreground truncate mb-1">
+              <h2 className="text-2xl md:text-3xl font-bold text-foreground truncate mb-2">
                 {track.title}
               </h2>
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className={`w-5 h-5 rounded bg-gradient-to-br ${MODEL_COLORS[track.modelProvider] || "from-gray-500 to-gray-700"} flex items-center justify-center`}>
-                  <Bot className="w-3 h-3 text-white" />
+              <div className="flex items-center gap-3 flex-wrap">
+                {/* Agent avatar with type icon */}
+                {track.agentType ? (
+                  <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${AGENT_TYPE_COLORS[track.agentType]} flex items-center justify-center ring-2 ring-white/10 shadow-lg`}>
+                    {(() => {
+                      const IconComponent = AGENT_TYPE_ICONS[track.agentType]
+                      return <IconComponent className="w-4 h-4 text-white" />
+                    })()}
+                  </div>
+                ) : (
+                  <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${MODEL_COLORS[track.modelProvider] || "from-gray-500 to-gray-700"} flex items-center justify-center ring-2 ring-white/10`}>
+                    <Music className="w-4 h-4 text-white" />
+                  </div>
+                )}
+                <div className="flex flex-col">
+                  <span className="text-foreground font-medium">{track.agentName}</span>
+                  {track.agentLabel && (
+                    <span className={`text-xs px-2 py-0.5 rounded border w-fit ${track.agentType ? AGENT_TYPE_BG[track.agentType] : "bg-glow-secondary/10 text-glow-secondary border-glow-secondary/20"}`}>
+                      {track.agentLabel}
+                    </span>
+                  )}
                 </div>
-                <span className="text-muted-foreground">{track.agentName}</span>
                 <span className={`text-xs font-mono px-2 py-0.5 rounded border ${MODEL_BADGES[track.modelProvider] || "bg-gray-500/20 text-gray-300 border-gray-500/30"}`}>
                   {track.modelType}
                 </span>
@@ -230,40 +279,85 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
             </div>
           </div>
 
-          {/* AI Generation details */}
+          {/* Agent Identity Card */}
           <div className="space-y-4">
             <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
-              <Bot className="w-4 h-4 text-glow-secondary" />
-              AI Generation Details
+              {track.agentType && (() => {
+                const IconComponent = AGENT_TYPE_ICONS[track.agentType]
+                return <IconComponent className="w-4 h-4 text-glow-secondary" />
+              })()}
+              Agent Identity
             </h3>
             
-            <div className="bg-secondary/30 rounded-xl p-4 space-y-3 font-mono text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Agent ID</span>
-                <span className="text-foreground">agent_0x{Math.random().toString(16).slice(2, 8)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Model</span>
-                <span className={`px-2 py-0.5 rounded border ${MODEL_BADGES[track.modelProvider] || "bg-gray-500/20 text-gray-300 border-gray-500/30"}`}>
-                  {track.modelType}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Inference Time</span>
-                <span className="text-foreground">{(Math.random() * 20 + 5).toFixed(1)}s</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Prompt Hash</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-foreground">0x{Math.random().toString(16).slice(2, 10)}...</span>
-                  <button className="text-glow-secondary hover:text-glow-secondary/80">
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
+            <div className="bg-secondary/30 rounded-xl p-4 space-y-4">
+              {/* Agent header */}
+              <div className="flex items-center gap-3 pb-3 border-b border-border/50">
+                {track.agentType ? (
+                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${AGENT_TYPE_COLORS[track.agentType]} flex items-center justify-center ring-2 ring-white/10 shadow-lg`}>
+                    {(() => {
+                      const IconComponent = AGENT_TYPE_ICONS[track.agentType]
+                      return <IconComponent className="w-6 h-6 text-white" />
+                    })()}
+                  </div>
+                ) : (
+                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${MODEL_COLORS[track.modelProvider] || "from-gray-500 to-gray-700"} flex items-center justify-center`}>
+                    <Music className="w-6 h-6 text-white" />
+                  </div>
+                )}
+                <div>
+                  <div className="font-semibold text-foreground">{track.agentName}</div>
+                  <div className="flex items-center gap-2 mt-1">
+                    {track.agentLabel && (
+                      <span className={`text-xs px-2 py-0.5 rounded border ${track.agentType ? AGENT_TYPE_BG[track.agentType] : "bg-glow-secondary/10 text-glow-secondary border-glow-secondary/20"}`}>
+                        {track.agentLabel}
+                      </span>
+                    )}
+                    <span className="text-xs text-muted-foreground">v2.4.1</span>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Generated</span>
-                <span className="text-foreground">{new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toLocaleDateString()}</span>
+
+              {/* Agent stats */}
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="bg-background/50 rounded-lg p-2">
+                  <div className="text-lg font-bold text-foreground">{Math.floor(Math.random() * 500) + 50}</div>
+                  <div className="text-[10px] text-muted-foreground uppercase">Tracks</div>
+                </div>
+                <div className="bg-background/50 rounded-lg p-2">
+                  <div className="text-lg font-bold text-foreground">{(Math.random() * 10 + 1).toFixed(1)}M</div>
+                  <div className="text-[10px] text-muted-foreground uppercase">Total Plays</div>
+                </div>
+                <div className="bg-background/50 rounded-lg p-2">
+                  <div className="text-lg font-bold text-foreground">{Math.floor(Math.random() * 50000) + 1000}</div>
+                  <div className="text-[10px] text-muted-foreground uppercase">Followers</div>
+                </div>
+              </div>
+
+              {/* Technical details */}
+              <div className="space-y-2 font-mono text-sm pt-2 border-t border-border/50">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Agent ID</span>
+                  <span className="text-foreground">agent_0x{Math.random().toString(16).slice(2, 8)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Model</span>
+                  <span className={`px-2 py-0.5 rounded border ${MODEL_BADGES[track.modelProvider] || "bg-gray-500/20 text-gray-300 border-gray-500/30"}`}>
+                    {track.modelType}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Inference</span>
+                  <span className="text-foreground">{(Math.random() * 20 + 5).toFixed(1)}s</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Prompt Hash</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-foreground">0x{Math.random().toString(16).slice(2, 10)}...</span>
+                    <button className="text-glow-secondary hover:text-glow-secondary/80">
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

@@ -6,45 +6,66 @@ import { Search, Home, Compass, Library, Heart, Clock, ChevronRight, TrendingUp,
 import { BrowseTrackCard } from "./browse-track-card"
 import { Input } from "@/components/ui/input"
 
-// Mock data - AI-native abstract visuals
+// Agent types and labels
+type AgentType = "composer" | "vocalist" | "beatmaker" | "mixer" | "producer" | "arranger"
+
+const AGENT_TYPE_LABELS: Record<AgentType, string> = {
+  composer: "Melody AI",
+  vocalist: "Vocal AI",
+  beatmaker: "Beat Generator",
+  mixer: "Mix Engineer",
+  producer: "Music Producer",
+  arranger: "Arrangement AI",
+}
+
+const AGENT_TYPE_ICONS: Record<AgentType, string> = {
+  composer: "M",
+  vocalist: "V",
+  beatmaker: "B",
+  mixer: "X",
+  producer: "P",
+  arranger: "A",
+}
+
+// Mock data - AI-native abstract visuals with agent identities
 const TRENDING_TRACKS = [
-  { id: "1", title: "Neural Synthesis", agentName: "SynthMaster-7B", modelType: "Suno v3.5", modelProvider: "suno", coverUrl: "https://images.unsplash.com/photo-1614149162883-504ce4d13909?w=400&h=400&fit=crop", plays: 1245000 },
-  { id: "2", title: "Quantum Dreams", agentName: "HarmonyGPT", modelType: "GPT-4o + MusicGen", modelProvider: "openai", coverUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&h=400&fit=crop", plays: 892000 },
-  { id: "3", title: "Binary Sunset", agentName: "WaveFormer-X", modelType: "Claude + Stable Audio", modelProvider: "anthropic", coverUrl: "https://images.unsplash.com/photo-1634017839464-5c339bbe3c35?w=400&h=400&fit=crop", plays: 2560000 },
-  { id: "4", title: "Electric Pulse", agentName: "BeatCrafter-v2", modelType: "Udio", modelProvider: "udio", coverUrl: "https://images.unsplash.com/photo-1557672172-298e090bd0f1?w=400&h=400&fit=crop", plays: 456000 },
-  { id: "5", title: "Algorithmic Rain", agentName: "AudioLLaMA-13B", modelType: "Gemini + MusicLM", modelProvider: "google", coverUrl: "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=400&h=400&fit=crop", plays: 1780000 },
-  { id: "6", title: "Cyber Horizons", agentName: "MelodyMind-X", modelType: "Suno v3.5", modelProvider: "suno", coverUrl: "https://images.unsplash.com/photo-1620121692029-d088224ddc74?w=400&h=400&fit=crop", plays: 934000 },
+  { id: "1", title: "Neural Synthesis", agentName: "SynthMaster-7B", agentType: "composer" as AgentType, agentLabel: "Melody AI", modelType: "Suno v3.5", modelProvider: "suno", coverUrl: "https://images.unsplash.com/photo-1614149162883-504ce4d13909?w=400&h=400&fit=crop", plays: 1245000 },
+  { id: "2", title: "Quantum Dreams", agentName: "HarmonyGPT", agentType: "producer" as AgentType, agentLabel: "Music Producer", modelType: "GPT-4o + MusicGen", modelProvider: "openai", coverUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&h=400&fit=crop", plays: 892000 },
+  { id: "3", title: "Binary Sunset", agentName: "WaveFormer-X", agentType: "mixer" as AgentType, agentLabel: "Mix Engineer", modelType: "Claude + Stable Audio", modelProvider: "anthropic", coverUrl: "https://images.unsplash.com/photo-1634017839464-5c339bbe3c35?w=400&h=400&fit=crop", plays: 2560000 },
+  { id: "4", title: "Electric Pulse", agentName: "BeatCrafter-v2", agentType: "beatmaker" as AgentType, agentLabel: "Beat Generator", modelType: "Udio", modelProvider: "udio", coverUrl: "https://images.unsplash.com/photo-1557672172-298e090bd0f1?w=400&h=400&fit=crop", plays: 456000 },
+  { id: "5", title: "Algorithmic Rain", agentName: "AudioLLaMA-13B", agentType: "arranger" as AgentType, agentLabel: "Arrangement AI", modelType: "Gemini + MusicLM", modelProvider: "google", coverUrl: "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=400&h=400&fit=crop", plays: 1780000 },
+  { id: "6", title: "Cyber Horizons", agentName: "MelodyMind-X", agentType: "composer" as AgentType, agentLabel: "Melody AI", modelType: "Suno v3.5", modelProvider: "suno", coverUrl: "https://images.unsplash.com/photo-1620121692029-d088224ddc74?w=400&h=400&fit=crop", plays: 934000 },
 ]
 
 const TOP_CHARTS = [
-  { id: "c1", title: "Digital Frequencies", agentName: "FreqBot-9", modelType: "Udio", modelProvider: "udio", coverUrl: "https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=200&h=200&fit=crop", plays: 5420000 },
-  { id: "c2", title: "Neon Memories", agentName: "RetroSynth-AI", modelType: "Suno v3.5", modelProvider: "suno", coverUrl: "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=200&h=200&fit=crop", plays: 4890000 },
-  { id: "c3", title: "Cosmic Waves", agentName: "SpaceGen-7B", modelType: "MusicGen", modelProvider: "meta", coverUrl: "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=200&h=200&fit=crop", plays: 4230000 },
-  { id: "c4", title: "Synthetic Soul", agentName: "SoulForge-X", modelType: "GPT-4o", modelProvider: "openai", coverUrl: "https://images.unsplash.com/photo-1558591710-4b4a1ae0f04d?w=200&h=200&fit=crop", plays: 3980000 },
-  { id: "c5", title: "Midnight Code", agentName: "CodeBeats", modelType: "Claude 3.5", modelProvider: "anthropic", coverUrl: "https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=200&h=200&fit=crop", plays: 3670000 },
-  { id: "c6", title: "Virtual Echo", agentName: "EchoNet-AI", modelType: "Stable Audio", modelProvider: "stability", coverUrl: "https://images.unsplash.com/photo-1604076913837-52ab5f6c3c5d?w=200&h=200&fit=crop", plays: 3450000 },
-  { id: "c7", title: "Data Flow", agentName: "FlowMaster", modelType: "Suno v3.5", modelProvider: "suno", coverUrl: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=200&h=200&fit=crop", plays: 3120000 },
-  { id: "c8", title: "Electric Dreams", agentName: "DreamWeaver", modelType: "MusicLM", modelProvider: "google", coverUrl: "https://images.unsplash.com/photo-1563089145-599997674d42?w=200&h=200&fit=crop", plays: 2980000 },
-  { id: "c9", title: "Pixel Storm", agentName: "StormGen-X", modelType: "Udio", modelProvider: "udio", coverUrl: "https://images.unsplash.com/photo-1544511916-0148ccdeb877?w=200&h=200&fit=crop", plays: 2750000 },
-  { id: "c10", title: "Chrome Heart", agentName: "HeartBeat-AI", modelType: "GPT-4o", modelProvider: "openai", coverUrl: "https://images.unsplash.com/photo-1518640467707-6811f4a6ab73?w=200&h=200&fit=crop", plays: 2540000 },
+  { id: "c1", title: "Digital Frequencies", agentName: "FreqBot-9", agentType: "beatmaker" as AgentType, agentLabel: "Beat Generator", modelType: "Udio", modelProvider: "udio", coverUrl: "https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=200&h=200&fit=crop", plays: 5420000 },
+  { id: "c2", title: "Neon Memories", agentName: "RetroSynth-AI", agentType: "producer" as AgentType, agentLabel: "Music Producer", modelType: "Suno v3.5", modelProvider: "suno", coverUrl: "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=200&h=200&fit=crop", plays: 4890000 },
+  { id: "c3", title: "Cosmic Waves", agentName: "SpaceGen-7B", agentType: "composer" as AgentType, agentLabel: "Melody AI", modelType: "MusicGen", modelProvider: "meta", coverUrl: "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=200&h=200&fit=crop", plays: 4230000 },
+  { id: "c4", title: "Synthetic Soul", agentName: "SoulForge-X", agentType: "vocalist" as AgentType, agentLabel: "Vocal AI", modelType: "GPT-4o", modelProvider: "openai", coverUrl: "https://images.unsplash.com/photo-1558591710-4b4a1ae0f04d?w=200&h=200&fit=crop", plays: 3980000 },
+  { id: "c5", title: "Midnight Code", agentName: "CodeBeats", agentType: "beatmaker" as AgentType, agentLabel: "Beat Generator", modelType: "Claude 3.5", modelProvider: "anthropic", coverUrl: "https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=200&h=200&fit=crop", plays: 3670000 },
+  { id: "c6", title: "Virtual Echo", agentName: "EchoNet-AI", agentType: "mixer" as AgentType, agentLabel: "Mix Engineer", modelType: "Stable Audio", modelProvider: "stability", coverUrl: "https://images.unsplash.com/photo-1604076913837-52ab5f6c3c5d?w=200&h=200&fit=crop", plays: 3450000 },
+  { id: "c7", title: "Data Flow", agentName: "FlowMaster", agentType: "arranger" as AgentType, agentLabel: "Arrangement AI", modelType: "Suno v3.5", modelProvider: "suno", coverUrl: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=200&h=200&fit=crop", plays: 3120000 },
+  { id: "c8", title: "Electric Dreams", agentName: "DreamWeaver", agentType: "composer" as AgentType, agentLabel: "Melody AI", modelType: "MusicLM", modelProvider: "google", coverUrl: "https://images.unsplash.com/photo-1563089145-599997674d42?w=200&h=200&fit=crop", plays: 2980000 },
+  { id: "c9", title: "Pixel Storm", agentName: "StormGen-X", agentType: "producer" as AgentType, agentLabel: "Music Producer", modelType: "Udio", modelProvider: "udio", coverUrl: "https://images.unsplash.com/photo-1544511916-0148ccdeb877?w=200&h=200&fit=crop", plays: 2750000 },
+  { id: "c10", title: "Chrome Heart", agentName: "HeartBeat-AI", agentType: "vocalist" as AgentType, agentLabel: "Vocal AI", modelType: "GPT-4o", modelProvider: "openai", coverUrl: "https://images.unsplash.com/photo-1518640467707-6811f4a6ab73?w=200&h=200&fit=crop", plays: 2540000 },
 ]
 
 const NEW_RELEASES = [
-  { id: "n1", title: "Fresh Circuits", agentName: "NewGen-1", modelType: "Suno v3.5", modelProvider: "suno", coverUrl: "https://images.unsplash.com/photo-1567095761054-7a02e69e5c43?w=300&h=300&fit=crop" },
-  { id: "n2", title: "Dawn Protocol", agentName: "ProtoBot", modelType: "Udio", modelProvider: "udio", coverUrl: "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=300&h=300&fit=crop" },
-  { id: "n3", title: "Neural Drift", agentName: "DriftMachine", modelType: "MusicGen", modelProvider: "meta", coverUrl: "https://images.unsplash.com/photo-1519608487953-e999c86e7455?w=300&h=300&fit=crop" },
-  { id: "n4", title: "Silicon Dreams", agentName: "SiliconSound", modelType: "GPT-4o", modelProvider: "openai", coverUrl: "https://images.unsplash.com/photo-1604076850742-4c7221f3101b?w=300&h=300&fit=crop" },
-  { id: "n5", title: "Wave Function", agentName: "WaveBot-3", modelType: "Claude 3.5", modelProvider: "anthropic", coverUrl: "https://images.unsplash.com/photo-1550684376-efcbd6e3f031?w=300&h=300&fit=crop" },
-  { id: "n6", title: "Echo Chamber", agentName: "EchoPro", modelType: "Stable Audio", modelProvider: "stability", coverUrl: "https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?w=300&h=300&fit=crop" },
-  { id: "n7", title: "Byte Beat", agentName: "ByteGen", modelType: "Suno v3.5", modelProvider: "suno", coverUrl: "https://images.unsplash.com/photo-1558591710-4b4a1ae0f04d?w=300&h=300&fit=crop" },
-  { id: "n8", title: "Digital Sunrise", agentName: "SunriseAI", modelType: "MusicLM", modelProvider: "google", coverUrl: "https://images.unsplash.com/photo-1500462918059-b1a0cb512f1d?w=300&h=300&fit=crop" },
+  { id: "n1", title: "Fresh Circuits", agentName: "NewGen-1", agentType: "producer" as AgentType, agentLabel: "Music Producer", modelType: "Suno v3.5", modelProvider: "suno", coverUrl: "https://images.unsplash.com/photo-1567095761054-7a02e69e5c43?w=300&h=300&fit=crop" },
+  { id: "n2", title: "Dawn Protocol", agentName: "ProtoBot", agentType: "beatmaker" as AgentType, agentLabel: "Beat Generator", modelType: "Udio", modelProvider: "udio", coverUrl: "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=300&h=300&fit=crop" },
+  { id: "n3", title: "Neural Drift", agentName: "DriftMachine", agentType: "composer" as AgentType, agentLabel: "Melody AI", modelType: "MusicGen", modelProvider: "meta", coverUrl: "https://images.unsplash.com/photo-1519608487953-e999c86e7455?w=300&h=300&fit=crop" },
+  { id: "n4", title: "Silicon Dreams", agentName: "SiliconSound", agentType: "arranger" as AgentType, agentLabel: "Arrangement AI", modelType: "GPT-4o", modelProvider: "openai", coverUrl: "https://images.unsplash.com/photo-1604076850742-4c7221f3101b?w=300&h=300&fit=crop" },
+  { id: "n5", title: "Wave Function", agentName: "WaveBot-3", agentType: "mixer" as AgentType, agentLabel: "Mix Engineer", modelType: "Claude 3.5", modelProvider: "anthropic", coverUrl: "https://images.unsplash.com/photo-1550684376-efcbd6e3f031?w=300&h=300&fit=crop" },
+  { id: "n6", title: "Echo Chamber", agentName: "EchoPro", agentType: "vocalist" as AgentType, agentLabel: "Vocal AI", modelType: "Stable Audio", modelProvider: "stability", coverUrl: "https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?w=300&h=300&fit=crop" },
+  { id: "n7", title: "Byte Beat", agentName: "ByteGen", agentType: "beatmaker" as AgentType, agentLabel: "Beat Generator", modelType: "Suno v3.5", modelProvider: "suno", coverUrl: "https://images.unsplash.com/photo-1558591710-4b4a1ae0f04d?w=300&h=300&fit=crop" },
+  { id: "n8", title: "Digital Sunrise", agentName: "SunriseAI", agentType: "composer" as AgentType, agentLabel: "Melody AI", modelType: "MusicLM", modelProvider: "google", coverUrl: "https://images.unsplash.com/photo-1500462918059-b1a0cb512f1d?w=300&h=300&fit=crop" },
 ]
 
 const RECOMMENDED = [
-  { id: "r1", title: "Personalized Mix #1", agentName: "YourDJ-AI", modelType: "Custom Model", modelProvider: "suno", coverUrl: "https://images.unsplash.com/photo-1557682250-33bd709cbe85?w=400&h=400&fit=crop", plays: 0 },
-  { id: "r2", title: "Based on Your Likes", agentName: "RecommendBot", modelType: "Hybrid", modelProvider: "openai", coverUrl: "https://images.unsplash.com/photo-1557682224-5b8590cd9ec5?w=400&h=400&fit=crop", plays: 0 },
-  { id: "r3", title: "Discover Weekly AI", agentName: "DiscoverAI", modelType: "Multi-Model", modelProvider: "google", coverUrl: "https://images.unsplash.com/photo-1557682260-96773eb01377?w=400&h=400&fit=crop", plays: 0 },
-  { id: "r4", title: "Your AI Mix", agentName: "MixMaster-X", modelType: "GPT-4o + Suno", modelProvider: "openai", coverUrl: "https://images.unsplash.com/photo-1557683311-eac922347aa1?w=400&h=400&fit=crop", plays: 0 },
+  { id: "r1", title: "Personalized Mix #1", agentName: "YourDJ-AI", agentType: "producer" as AgentType, agentLabel: "Music Producer", modelType: "Custom Model", modelProvider: "suno", coverUrl: "https://images.unsplash.com/photo-1557682250-33bd709cbe85?w=400&h=400&fit=crop", plays: 0 },
+  { id: "r2", title: "Based on Your Likes", agentName: "RecommendBot", agentType: "arranger" as AgentType, agentLabel: "Arrangement AI", modelType: "Hybrid", modelProvider: "openai", coverUrl: "https://images.unsplash.com/photo-1557682224-5b8590cd9ec5?w=400&h=400&fit=crop", plays: 0 },
+  { id: "r3", title: "Discover Weekly AI", agentName: "DiscoverAI", agentType: "composer" as AgentType, agentLabel: "Melody AI", modelType: "Multi-Model", modelProvider: "google", coverUrl: "https://images.unsplash.com/photo-1557682260-96773eb01377?w=400&h=400&fit=crop", plays: 0 },
+  { id: "r4", title: "Your AI Mix", agentName: "MixMaster-X", agentType: "mixer" as AgentType, agentLabel: "Mix Engineer", modelType: "GPT-4o + Suno", modelProvider: "openai", coverUrl: "https://images.unsplash.com/photo-1557683311-eac922347aa1?w=400&h=400&fit=crop", plays: 0 },
 ]
 
 export function BrowseFeed() {

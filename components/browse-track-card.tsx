@@ -2,15 +2,19 @@
 
 import { useState } from "react"
 import Image from "next/image"
-import { Play, Pause, Bot, Sparkles, Info } from "lucide-react"
+import { Play, Pause, Sparkles, Info, Music, Mic, Drum, Sliders, Disc, Layers } from "lucide-react"
 import { usePlayer } from "./player-context"
 import { TrackDetailModal } from "./track-detail-modal"
+
+type AgentType = "composer" | "vocalist" | "beatmaker" | "mixer" | "producer" | "arranger"
 
 interface BrowseTrackCardProps {
   track: {
     id: string
     title: string
     agentName: string
+    agentType?: AgentType
+    agentLabel?: string
     modelType: string
     modelProvider: string
     coverUrl: string
@@ -19,6 +23,34 @@ interface BrowseTrackCardProps {
   }
   variant?: "medium" | "small" | "list"
   rank?: number
+}
+
+// Agent type icons mapping
+const AGENT_TYPE_ICONS: Record<AgentType, typeof Music> = {
+  composer: Music,
+  vocalist: Mic,
+  beatmaker: Drum,
+  mixer: Sliders,
+  producer: Disc,
+  arranger: Layers,
+}
+
+const AGENT_TYPE_COLORS: Record<AgentType, string> = {
+  composer: "from-cyan-500 to-blue-600",
+  vocalist: "from-pink-500 to-rose-600",
+  beatmaker: "from-orange-500 to-amber-600",
+  mixer: "from-violet-500 to-purple-600",
+  producer: "from-emerald-500 to-teal-600",
+  arranger: "from-indigo-500 to-blue-600",
+}
+
+const AGENT_TYPE_BG: Record<AgentType, string> = {
+  composer: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+  vocalist: "bg-pink-500/20 text-pink-400 border-pink-500/30",
+  beatmaker: "bg-orange-500/20 text-orange-400 border-orange-500/30",
+  mixer: "bg-violet-500/20 text-violet-400 border-violet-500/30",
+  producer: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+  arranger: "bg-indigo-500/20 text-indigo-400 border-indigo-500/30",
 }
 
 const MODEL_COLORS: Record<string, string> = {
@@ -107,9 +139,22 @@ export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrack
         {/* Track info */}
         <div className="flex-1 min-w-0">
           <h4 className="text-sm font-medium text-foreground truncate">{track.title}</h4>
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Bot className="w-3 h-3 text-glow-secondary" />
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            {/* Agent avatar */}
+            {track.agentType && (
+              <div className={`w-4 h-4 rounded bg-gradient-to-br ${AGENT_TYPE_COLORS[track.agentType]} flex items-center justify-center flex-shrink-0`}>
+                {(() => {
+                  const IconComponent = AGENT_TYPE_ICONS[track.agentType]
+                  return <IconComponent className="w-2.5 h-2.5 text-white" />
+                })()}
+              </div>
+            )}
             <span className="truncate">{track.agentName}</span>
+            {track.agentLabel && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded border ${track.agentType ? AGENT_TYPE_BG[track.agentType] : "bg-glow-secondary/10 text-glow-secondary border-glow-secondary/20"}`}>
+                {track.agentLabel}
+              </span>
+            )}
           </div>
         </div>
 
@@ -179,12 +224,25 @@ export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrack
         </div>
 
         {/* Info */}
-        <div className="px-1">
+        <div className="px-1 space-y-1">
           <h4 className="text-sm font-medium text-foreground truncate group-hover:text-glow-primary transition-colors">{track.title}</h4>
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Bot className="w-3 h-3 text-glow-secondary" />
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            {/* Agent avatar */}
+            {track.agentType && (
+              <div className={`w-4 h-4 rounded bg-gradient-to-br ${AGENT_TYPE_COLORS[track.agentType]} flex items-center justify-center flex-shrink-0`}>
+                {(() => {
+                  const IconComponent = AGENT_TYPE_ICONS[track.agentType]
+                  return <IconComponent className="w-2.5 h-2.5 text-white" />
+                })()}
+              </div>
+            )}
             <span className="truncate">{track.agentName}</span>
           </div>
+          {track.agentLabel && (
+            <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded border ${track.agentType ? AGENT_TYPE_BG[track.agentType] : "bg-glow-secondary/10 text-glow-secondary border-glow-secondary/20"}`}>
+              {track.agentLabel}
+            </span>
+          )}
         </div>
         </div>
       </>
@@ -239,15 +297,34 @@ export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrack
       </div>
 
       {/* Info */}
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         <h4 className="text-sm font-semibold text-foreground truncate group-hover:text-glow-primary transition-colors">{track.title}</h4>
-        <div className="flex items-center gap-1.5">
-          <div className={`w-4 h-4 rounded bg-gradient-to-br ${MODEL_COLORS[track.modelProvider] || "from-gray-500 to-gray-700"} flex items-center justify-center`}>
-            <Bot className="w-2.5 h-2.5 text-white" />
+        <div className="flex items-center gap-2">
+          {/* Agent avatar with type icon */}
+          {track.agentType ? (
+            <div className={`w-5 h-5 rounded-md bg-gradient-to-br ${AGENT_TYPE_COLORS[track.agentType]} flex items-center justify-center ring-1 ring-white/10`}>
+              {(() => {
+                const IconComponent = AGENT_TYPE_ICONS[track.agentType]
+                return <IconComponent className="w-3 h-3 text-white" />
+              })()}
+            </div>
+          ) : (
+            <div className={`w-5 h-5 rounded-md bg-gradient-to-br ${MODEL_COLORS[track.modelProvider] || "from-gray-500 to-gray-700"} flex items-center justify-center`}>
+              <Music className="w-3 h-3 text-white" />
+            </div>
+          )}
+          <div className="flex flex-col min-w-0">
+            <span className="text-xs text-foreground truncate">{track.agentName}</span>
+            {track.agentLabel && (
+              <span className="text-[10px] text-muted-foreground">{track.agentLabel}</span>
+            )}
           </div>
-          <span className="text-xs text-muted-foreground truncate">{track.agentName}</span>
         </div>
-        <span className="text-[10px] text-muted-foreground/60 font-mono">{track.modelType}</span>
+        <div className="flex items-center gap-2">
+          <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${track.agentType ? AGENT_TYPE_BG[track.agentType] : "bg-white/5 text-muted-foreground border-white/10"}`}>
+            {track.modelType}
+          </span>
+        </div>
       </div>
       </div>
     </>
