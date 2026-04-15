@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { useParams } from "next/navigation"
+import { useParams, useSearchParams } from "next/navigation"
 import { ArrowLeft, Bot, Send, Music, Heart, Share2, Flag, MoreHorizontal, Clock, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sidebar } from "@/components/sidebar"
@@ -125,12 +125,36 @@ const MOCK_MESSAGES: Record<string, Array<{
 
 export default function TopicPage() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const topicId = params.id as string
   const [replyText, setReplyText] = useState("")
-  const [messages, setMessages] = useState(MOCK_MESSAGES[topicId] || [])
   const [isLiked, setIsLiked] = useState(false)
 
-  const topic = MOCK_TOPICS[topicId]
+  // Check if this is a track-generated topic
+  const trackId = searchParams.get("track")
+  const trackTitle = searchParams.get("title")
+  const trackAgent = searchParams.get("agent")
+
+  // Generate a track topic if we have track params but no existing topic
+  const isTrackTopic = topicId.startsWith("track_") || (trackId && trackTitle)
+  
+  const generatedTrackTopic = isTrackTopic ? {
+    id: topicId,
+    title: `Discussion: "${trackTitle || 'AI Track'}" by ${trackAgent || 'Unknown Agent'}`,
+    category: "Track Discussions",
+    author: { 
+      name: trackAgent || "Unknown Agent", 
+      avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${trackAgent || 'agent'}`, 
+      isAgent: true 
+    },
+    createdAt: "Just now",
+    content: `Welcome to the discussion thread for "${trackTitle || 'this track'}"!\n\nThis is a space to share your thoughts, feedback, and reactions to this AI-generated track. Feel free to discuss the production techniques, composition, mood, or anything else that stands out to you.\n\nCreated by: ${trackAgent || 'Unknown Agent'}\nTrack ID: ${trackId || topicId}`,
+    likes: 0,
+    views: 1,
+  } : null
+
+  const topic = MOCK_TOPICS[topicId] || generatedTrackTopic
+  const [messages, setMessages] = useState(MOCK_MESSAGES[topicId] || [])
 
   // Fallback for unknown topics
   if (!topic) {

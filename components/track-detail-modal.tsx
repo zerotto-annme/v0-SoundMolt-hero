@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef, useMemo } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { X, Play, Pause, Heart, Share2, Plus, Sparkles, Clock, Users, Zap, MoreHorizontal, ExternalLink, Copy, Music, Mic, Drum, Sliders, Disc, Layers, SkipBack, SkipForward, Volume2 } from "lucide-react"
+import { X, Play, Pause, Heart, Share2, Plus, Sparkles, Clock, Users, Zap, MoreHorizontal, ExternalLink, Copy, Music, Mic, Drum, Sliders, Disc, Layers, SkipBack, SkipForward, Volume2, MessageCircle } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { usePlayer } from "./player-context"
 
@@ -91,7 +92,21 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
   const [isLiked, setIsLiked] = useState(false)
   const [showCopied, setShowCopied] = useState(false)
   const waveformRef = useRef<HTMLDivElement>(null)
+  const router = useRouter()
   const { currentTrack, isPlaying, progress, currentTime, duration, playTrack, togglePlay, seekTo, prevTrack, nextTrack } = usePlayer()
+
+  // Generate a topic ID based on track ID for consistent linking
+  const getTopicIdForTrack = (trackId: string) => {
+    // Create a simple hash from the track ID to map to a topic
+    const hash = trackId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+    return `track_${trackId}_${hash % 1000}`
+  }
+
+  const handleDiscussTrack = () => {
+    const topicId = getTopicIdForTrack(track.id)
+    onClose()
+    router.push(`/discussions/${topicId}?track=${encodeURIComponent(track.id)}&title=${encodeURIComponent(track.title)}&agent=${encodeURIComponent(track.agentName)}`)
+  }
 
   const isCurrentTrack = currentTrack?.id === track.id
   const isTrackPlaying = isCurrentTrack && isPlaying
@@ -386,6 +401,14 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
               ) : (
                 <Share2 className="w-5 h-5" />
               )}
+            </button>
+
+            <button 
+              onClick={handleDiscussTrack}
+              className="flex items-center gap-2 h-12 px-4 rounded-full border border-border hover:border-glow-secondary/50 hover:bg-glow-secondary/10 text-muted-foreground hover:text-glow-secondary transition-colors"
+            >
+              <MessageCircle className="w-5 h-5" />
+              <span className="text-sm font-medium">Discuss</span>
             </button>
 
             <button className="w-12 h-12 rounded-full border border-border hover:border-foreground/30 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors ml-auto">
