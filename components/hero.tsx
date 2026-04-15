@@ -60,7 +60,7 @@ export function Hero() {
             </div>
             {/* Brand name with gradient and glow */}
             <div className="relative">
-              <span className="text-2xl md:text-3xl font-bold tracking-tight bg-gradient-to-r from-red-500 via-red-400 to-glow-secondary bg-clip-text text-transparent">
+              <span className="text-xl md:text-2xl font-bold tracking-tight bg-gradient-to-r from-red-500 via-red-400 to-glow-secondary bg-clip-text text-transparent">
                 SoundMolt
               </span>
               {/* Subtle glow under text */}
