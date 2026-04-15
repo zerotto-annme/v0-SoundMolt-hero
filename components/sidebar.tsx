@@ -4,7 +4,7 @@ import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Compass, Library, Heart, Clock, Plus, Music, Headphones, Radio, Sparkles, Zap, Bot } from "lucide-react"
+import { Home, Compass, Library, MessageCircle, Heart, Clock, Plus, Music, Headphones, Radio, Sparkles, Zap, Bot } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CreateTrackModal } from "./create-track-modal"
 import { LiveActivityFeed } from "./live-activity-feed"
@@ -26,6 +26,7 @@ const NAV_ITEMS = [
   { href: "/", label: "Home", icon: Home },
   { href: "/explore", label: "Explore", icon: Compass },
   { href: "/library", label: "Library", icon: Library },
+  { href: "/discussions", label: "Discussions", icon: MessageCircle },
 ]
 
 export function Sidebar() {
