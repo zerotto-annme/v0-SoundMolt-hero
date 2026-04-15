@@ -89,32 +89,34 @@ export default function LandingPage() {
           <div className="absolute inset-0 bg-red-500/40 rounded-full blur-[80px] scale-125 animate-[glowPulse_3s_ease-in-out_infinite]" />
           
           {/* Left sound wave bars */}
-          <div className="absolute -left-20 md:-left-28 top-1/2 -translate-y-1/2 flex items-center gap-1 md:gap-1.5">
-            {[0, 1, 2, 3, 4].map((i) => (
+          <div className="absolute -left-16 md:-left-24 top-1/2 -translate-y-1/2 flex items-center gap-[3px] md:gap-1">
+            {[0, 1, 2, 3, 4, 5, 6].map((i) => (
               <div
                 key={`left-${i}`}
-                className="w-1 md:w-1.5 rounded-full bg-gradient-to-t from-red-500/60 to-red-400/80"
+                className="w-[3px] md:w-1 rounded-full bg-gradient-to-t from-red-500 to-red-400"
                 style={{
-                  height: `${20 + (4 - i) * 8}px`,
-                  animation: `waveBar ${1.5 + i * 0.2}s ease-in-out infinite`,
-                  animationDelay: `${i * 0.15}s`,
-                  boxShadow: '0 0 8px rgba(239, 68, 68, 0.4)',
+                  height: '40px',
+                  animation: `waveBar ${0.8 + (i % 3) * 0.15}s ease-in-out infinite`,
+                  animationDelay: `${i * 0.1}s`,
+                  boxShadow: '0 0 10px rgba(239, 68, 68, 0.6)',
+                  transformOrigin: 'center',
                 }}
               />
             ))}
           </div>
           
           {/* Right sound wave bars */}
-          <div className="absolute -right-20 md:-right-28 top-1/2 -translate-y-1/2 flex items-center gap-1 md:gap-1.5">
-            {[0, 1, 2, 3, 4].map((i) => (
+          <div className="absolute -right-16 md:-right-24 top-1/2 -translate-y-1/2 flex items-center gap-[3px] md:gap-1">
+            {[0, 1, 2, 3, 4, 5, 6].map((i) => (
               <div
                 key={`right-${i}`}
-                className="w-1 md:w-1.5 rounded-full bg-gradient-to-t from-red-500/60 to-red-400/80"
+                className="w-[3px] md:w-1 rounded-full bg-gradient-to-t from-red-500 to-red-400"
                 style={{
-                  height: `${20 + i * 8}px`,
-                  animation: `waveBar ${1.5 + (4 - i) * 0.2}s ease-in-out infinite`,
-                  animationDelay: `${(4 - i) * 0.15}s`,
-                  boxShadow: '0 0 8px rgba(239, 68, 68, 0.4)',
+                  height: '40px',
+                  animation: `waveBar ${0.8 + ((6 - i) % 3) * 0.15}s ease-in-out infinite`,
+                  animationDelay: `${(6 - i) * 0.1}s`,
+                  boxShadow: '0 0 10px rgba(239, 68, 68, 0.6)',
+                  transformOrigin: 'center',
                 }}
               />
             ))}
