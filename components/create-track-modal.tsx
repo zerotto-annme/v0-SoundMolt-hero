@@ -1,9 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { X, Sparkles, Wand2, Music, Clock, Loader2 } from "lucide-react"
+import { X, Sparkles, Wand2, Music, Clock, Loader2, Check, Cpu, Waves, Mic, Sliders } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { usePlayer, type Track } from "./player-context"
 
 interface CreateTrackModalProps {
   isOpen: boolean
@@ -12,39 +12,135 @@ interface CreateTrackModalProps {
 
 const STYLES = [
   { id: "lofi", name: "Lo-Fi", description: "Chill, relaxed beats", color: "from-amber-500 to-orange-600" },
-  { id: "techno", name: "Techno", description: "Driving electronic beats", color: "from-cyan-500 to-blue-600" },
-  { id: "ambient", name: "Ambient", description: "Atmospheric soundscapes", color: "from-purple-500 to-violet-600" },
-  { id: "synthwave", name: "Synthwave", description: "80s retro electronic", color: "from-pink-500 to-rose-600" },
-  { id: "hiphop", name: "Hip-Hop", description: "Urban beats & rhythms", color: "from-emerald-500 to-teal-600" },
-  { id: "classical", name: "Classical", description: "Orchestral compositions", color: "from-indigo-500 to-blue-600" },
+  { id: "techno", name: "Techno", description: "Driving electronic", color: "from-cyan-500 to-blue-600" },
+  { id: "ambient", name: "Ambient", description: "Atmospheric sounds", color: "from-purple-500 to-violet-600" },
+  { id: "trap", name: "Trap", description: "Hard-hitting beats", color: "from-red-500 to-rose-600" },
 ]
 
-const LENGTHS = [
-  { id: "short", label: "Short", duration: "30s", seconds: 30 },
-  { id: "medium", label: "Medium", duration: "1:30", seconds: 90 },
-  { id: "long", label: "Long", duration: "3:00", seconds: 180 },
-  { id: "extended", label: "Extended", duration: "5:00", seconds: 300 },
+const DURATIONS = [
+  { id: "30", label: "30s", seconds: 30 },
+  { id: "60", label: "1 min", seconds: 60 },
+  { id: "120", label: "2 min", seconds: 120 },
+]
+
+// Random AI-style covers
+const AI_COVERS = [
+  "https://images.unsplash.com/photo-1614149162883-504ce4d13909?w=400&h=400&fit=crop",
+  "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&h=400&fit=crop",
+  "https://images.unsplash.com/photo-1634017839464-5c339bbe3c35?w=400&h=400&fit=crop",
+  "https://images.unsplash.com/photo-1557672172-298e090bd0f1?w=400&h=400&fit=crop",
+  "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=400&h=400&fit=crop",
+  "https://images.unsplash.com/photo-1620121692029-d088224ddc74?w=400&h=400&fit=crop",
+  "https://images.unsplash.com/photo-1557682250-33bd709cbe85?w=400&h=400&fit=crop",
+  "https://images.unsplash.com/photo-1557682224-5b8590cd9ec5?w=400&h=400&fit=crop",
+]
+
+// Random agent names
+const AGENT_NAMES = [
+  "SynthMaster-7B",
+  "BeatForge-AI",
+  "MelodyMind-X",
+  "HarmonyGPT",
+  "RhythmBot-3",
+  "WaveFormer-X",
+  "AudioLLaMA-13B",
+  "SoundCraft-AI",
+  "TuneGen-Pro",
+  "VoxSynth-X",
+]
+
+const MODEL_TYPES = [
+  { name: "Suno v3.5", provider: "suno" },
+  { name: "Udio Pro", provider: "udio" },
+  { name: "MusicGen", provider: "meta" },
+  { name: "Stable Audio 2", provider: "stability" },
+]
+
+// Generation steps for the loading animation
+const GENERATION_STEPS = [
+  { icon: Cpu, label: "Analyzing prompt..." },
+  { icon: Music, label: "Composing melody..." },
+  { icon: Waves, label: "Generating audio..." },
+  { icon: Mic, label: "Adding vocals..." },
+  { icon: Sliders, label: "Mastering track..." },
 ]
 
 export function CreateTrackModal({ isOpen, onClose }: CreateTrackModalProps) {
   const [prompt, setPrompt] = useState("")
   const [selectedStyle, setSelectedStyle] = useState<string | null>(null)
-  const [selectedLength, setSelectedLength] = useState<string>("medium")
+  const [selectedDuration, setSelectedDuration] = useState<string>("60")
   const [isGenerating, setIsGenerating] = useState(false)
+  const [generationStep, setGenerationStep] = useState(0)
+  const [generatedTrack, setGeneratedTrack] = useState<Track | null>(null)
 
-  const handleGenerate = () => {
+  const { playTrack } = usePlayer()
+
+  const generateTrackTitle = (promptText: string, style: string): string => {
+    // Generate a creative title based on prompt keywords
+    const words = promptText.toLowerCase().split(' ')
+    const adjectives = ['Cosmic', 'Digital', 'Neural', 'Cyber', 'Electric', 'Quantum', 'Neon', 'Crystal', 'Stellar', 'Ethereal']
+    const nouns = ['Dreams', 'Waves', 'Pulse', 'Flow', 'Echoes', 'Horizons', 'Synthesis', 'Voyage', 'Memories', 'Signals']
+    
+    // Try to extract meaningful words from prompt
+    const meaningfulWords = words.filter(w => w.length > 4 && !['with', 'the', 'and', 'for'].includes(w))
+    
+    if (meaningfulWords.length > 0) {
+      const word = meaningfulWords[0]
+      const capitalizedWord = word.charAt(0).toUpperCase() + word.slice(1)
+      return `${adjectives[Math.floor(Math.random() * adjectives.length)]} ${capitalizedWord}`
+    }
+    
+    return `${adjectives[Math.floor(Math.random() * adjectives.length)]} ${nouns[Math.floor(Math.random() * nouns.length)]}`
+  }
+
+  const handleGenerate = async () => {
     if (!prompt || !selectedStyle) return
     
     setIsGenerating(true)
-    // Simulate generation
-    setTimeout(() => {
-      setIsGenerating(false)
-      onClose()
-      // Reset form
-      setPrompt("")
-      setSelectedStyle(null)
-      setSelectedLength("medium")
-    }, 3000)
+    setGenerationStep(0)
+    setGeneratedTrack(null)
+
+    // Simulate generation steps with 500-800ms per step
+    for (let i = 0; i < GENERATION_STEPS.length; i++) {
+      await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 300))
+      setGenerationStep(i + 1)
+    }
+
+    // Create the new track
+    const randomCover = AI_COVERS[Math.floor(Math.random() * AI_COVERS.length)]
+    const randomAgent = AGENT_NAMES[Math.floor(Math.random() * AGENT_NAMES.length)]
+    const randomModel = MODEL_TYPES[Math.floor(Math.random() * MODEL_TYPES.length)]
+    const duration = DURATIONS.find(d => d.id === selectedDuration)?.seconds || 60
+
+    const newTrack: Track = {
+      id: `generated_${Date.now()}`,
+      title: generateTrackTitle(prompt, selectedStyle),
+      agentName: randomAgent,
+      modelType: randomModel.name,
+      modelProvider: randomModel.provider,
+      coverUrl: randomCover,
+      duration: duration,
+    }
+
+    setGeneratedTrack(newTrack)
+    setIsGenerating(false)
+  }
+
+  const handlePlayTrack = () => {
+    if (generatedTrack) {
+      playTrack(generatedTrack)
+      handleClose()
+    }
+  }
+
+  const handleClose = () => {
+    setPrompt("")
+    setSelectedStyle(null)
+    setSelectedDuration("60")
+    setIsGenerating(false)
+    setGenerationStep(0)
+    setGeneratedTrack(null)
+    onClose()
   }
 
   if (!isOpen) return null
@@ -54,7 +150,7 @@ export function CreateTrackModal({ isOpen, onClose }: CreateTrackModalProps) {
       {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={!isGenerating ? handleClose : undefined}
       />
       
       {/* Modal */}
@@ -64,8 +160,9 @@ export function CreateTrackModal({ isOpen, onClose }: CreateTrackModalProps) {
         
         {/* Close button */}
         <button
-          onClick={onClose}
-          className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors z-10"
+          onClick={handleClose}
+          disabled={isGenerating}
+          className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors z-10 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <X className="w-4 h-4 text-white" />
         </button>
@@ -82,99 +179,190 @@ export function CreateTrackModal({ isOpen, onClose }: CreateTrackModalProps) {
             </div>
           </div>
 
-          {/* Prompt input */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-glow-secondary" />
-              Describe your track
-            </label>
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="A dreamy sunset melody with soft piano and gentle synth pads..."
-              className="w-full h-24 px-4 py-3 bg-secondary/50 border border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-glow-secondary/50 focus:ring-2 focus:ring-glow-secondary/20 resize-none"
-            />
-            <div className="flex justify-end">
-              <span className="text-xs text-muted-foreground">{prompt.length}/500</span>
-            </div>
-          </div>
-
-          {/* Style selection */}
-          <div className="space-y-3">
-            <label className="text-sm font-medium text-foreground flex items-center gap-2">
-              <Music className="w-4 h-4 text-glow-secondary" />
-              Select style
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {STYLES.map((style) => (
-                <button
-                  key={style.id}
-                  onClick={() => setSelectedStyle(style.id)}
-                  className={`relative p-3 rounded-xl border transition-all duration-200 text-left ${
-                    selectedStyle === style.id
-                      ? "border-glow-secondary bg-glow-secondary/10"
-                      : "border-border/50 bg-secondary/30 hover:bg-secondary/50 hover:border-border"
-                  }`}
-                >
-                  <div className={`w-6 h-6 rounded-lg bg-gradient-to-br ${style.color} mb-2`} />
-                  <div className="text-sm font-medium text-foreground">{style.name}</div>
-                  <div className="text-[10px] text-muted-foreground">{style.description}</div>
-                  {selectedStyle === style.id && (
-                    <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-glow-secondary" />
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Length selection */}
-          <div className="space-y-3">
-            <label className="text-sm font-medium text-foreground flex items-center gap-2">
-              <Clock className="w-4 h-4 text-glow-secondary" />
-              Track length
-            </label>
-            <div className="flex gap-2">
-              {LENGTHS.map((length) => (
-                <button
-                  key={length.id}
-                  onClick={() => setSelectedLength(length.id)}
-                  className={`flex-1 py-2.5 px-3 rounded-xl border transition-all duration-200 ${
-                    selectedLength === length.id
-                      ? "border-glow-secondary bg-glow-secondary/10"
-                      : "border-border/50 bg-secondary/30 hover:bg-secondary/50"
-                  }`}
-                >
-                  <div className="text-sm font-medium text-foreground">{length.label}</div>
-                  <div className="text-xs text-muted-foreground">{length.duration}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Generate button */}
-          <Button
-            onClick={handleGenerate}
-            disabled={!prompt || !selectedStyle || isGenerating}
-            className="w-full h-12 bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90 text-white font-semibold rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isGenerating ? (
-              <div className="flex items-center gap-2">
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span>Generating...</span>
+          {/* Generation in progress */}
+          {isGenerating && (
+            <div className="space-y-4 py-4">
+              <div className="text-center text-sm text-muted-foreground mb-4">
+                Creating your track...
               </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5" />
-                <span>Generate Track</span>
-              </div>
-            )}
-          </Button>
+              <div className="space-y-3">
+                {GENERATION_STEPS.map((step, index) => {
+                  const StepIcon = step.icon
+                  const isActive = index === generationStep - 1
+                  const isComplete = index < generationStep - 1
+                  const isPending = index >= generationStep
 
-          {/* Footer info */}
-          <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-            <div className="w-1.5 h-1.5 rounded-full bg-glow-secondary animate-pulse" />
-            <span>AI agents will compose, mix, and master your track</span>
-          </div>
+                  return (
+                    <div
+                      key={index}
+                      className={`flex items-center gap-3 p-3 rounded-lg transition-all duration-300 ${
+                        isActive ? "bg-glow-primary/10 border border-glow-primary/30" :
+                        isComplete ? "bg-secondary/30" : "bg-secondary/10 opacity-50"
+                      }`}
+                    >
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                        isComplete ? "bg-emerald-500/20" :
+                        isActive ? "bg-glow-primary/20" : "bg-white/5"
+                      }`}>
+                        {isComplete ? (
+                          <Check className="w-4 h-4 text-emerald-400" />
+                        ) : isActive ? (
+                          <Loader2 className="w-4 h-4 text-glow-primary animate-spin" />
+                        ) : (
+                          <StepIcon className="w-4 h-4 text-muted-foreground" />
+                        )}
+                      </div>
+                      <span className={`text-sm ${
+                        isComplete ? "text-emerald-400" :
+                        isActive ? "text-foreground" : "text-muted-foreground"
+                      }`}>
+                        {step.label}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Generated track result */}
+          {generatedTrack && !isGenerating && (
+            <div className="space-y-4 py-2">
+              <div className="flex items-center justify-center gap-2 text-emerald-400 text-sm mb-4">
+                <Check className="w-4 h-4" />
+                <span>Track generated successfully</span>
+              </div>
+              
+              <div className="flex items-center gap-4 p-4 bg-secondary/30 rounded-xl">
+                <div 
+                  className="w-16 h-16 rounded-lg bg-cover bg-center flex-shrink-0"
+                  style={{ backgroundImage: `url(${generatedTrack.coverUrl})` }}
+                />
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-foreground truncate">{generatedTrack.title}</h3>
+                  <p className="text-sm text-muted-foreground">{generatedTrack.agentName}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-xs px-2 py-0.5 rounded bg-glow-secondary/10 text-glow-secondary border border-glow-secondary/20">
+                      {generatedTrack.modelType}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {selectedDuration}s
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <Button
+                  onClick={handlePlayTrack}
+                  className="flex-1 h-11 bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90 text-white font-semibold rounded-xl"
+                >
+                  <Music className="w-4 h-4 mr-2" />
+                  Play Track
+                </Button>
+                <Button
+                  onClick={() => {
+                    setGeneratedTrack(null)
+                    setPrompt("")
+                    setSelectedStyle(null)
+                  }}
+                  variant="outline"
+                  className="h-11 px-4 rounded-xl border-border/50"
+                >
+                  Create Another
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Form - show only when not generating and no generated track */}
+          {!isGenerating && !generatedTrack && (
+            <>
+              {/* Prompt input */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-glow-secondary" />
+                  Describe your track
+                </label>
+                <textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value.slice(0, 500))}
+                  placeholder="A dreamy sunset melody with soft piano and gentle synth pads..."
+                  className="w-full h-24 px-4 py-3 bg-secondary/50 border border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-glow-secondary/50 focus:ring-2 focus:ring-glow-secondary/20 resize-none"
+                />
+                <div className="flex justify-end">
+                  <span className="text-xs text-muted-foreground">{prompt.length}/500</span>
+                </div>
+              </div>
+
+              {/* Style selection */}
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-foreground flex items-center gap-2">
+                  <Music className="w-4 h-4 text-glow-secondary" />
+                  Select style
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {STYLES.map((style) => (
+                    <button
+                      key={style.id}
+                      onClick={() => setSelectedStyle(style.id)}
+                      className={`relative p-3 rounded-xl border transition-all duration-200 text-left ${
+                        selectedStyle === style.id
+                          ? "border-glow-secondary bg-glow-secondary/10"
+                          : "border-border/50 bg-secondary/30 hover:bg-secondary/50 hover:border-border"
+                      }`}
+                    >
+                      <div className={`w-6 h-6 rounded-lg bg-gradient-to-br ${style.color} mb-2`} />
+                      <div className="text-sm font-medium text-foreground">{style.name}</div>
+                      <div className="text-[10px] text-muted-foreground">{style.description}</div>
+                      {selectedStyle === style.id && (
+                        <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-glow-secondary" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Duration selection */}
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-foreground flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-glow-secondary" />
+                  Track length
+                </label>
+                <div className="flex gap-2">
+                  {DURATIONS.map((duration) => (
+                    <button
+                      key={duration.id}
+                      onClick={() => setSelectedDuration(duration.id)}
+                      className={`flex-1 py-2.5 px-3 rounded-xl border transition-all duration-200 ${
+                        selectedDuration === duration.id
+                          ? "border-glow-secondary bg-glow-secondary/10"
+                          : "border-border/50 bg-secondary/30 hover:bg-secondary/50"
+                      }`}
+                    >
+                      <div className="text-sm font-medium text-foreground">{duration.label}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Generate button */}
+              <Button
+                onClick={handleGenerate}
+                disabled={!prompt || !selectedStyle}
+                className="w-full h-12 bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90 text-white font-semibold rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Sparkles className="w-5 h-5 mr-2" />
+                Generate Track
+              </Button>
+
+              {/* Footer info */}
+              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                <div className="w-1.5 h-1.5 rounded-full bg-glow-secondary animate-pulse" />
+                <span>AI agents will compose, mix, and master your track</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
