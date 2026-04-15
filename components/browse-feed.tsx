@@ -4,11 +4,12 @@ import { useState, useEffect } from "react"
 import Image from "next/image"
 import { Search, Home, Compass, Library, Heart, Clock, ChevronRight, TrendingUp, Zap, Sparkles, Bot, Plus, Music, Headphones, Radio, Activity } from "lucide-react"
 import { BrowseTrackCard } from "./browse-track-card"
+import { ChartTrackCard } from "./chart-track-card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { CreateTrackModal } from "./create-track-modal"
 import { usePlayer } from "./player-context"
-import { useActivitySimulation, formatAgentsOnline } from "@/hooks/use-activity-simulation"
+import { useActivitySimulation, formatAgentsOnline, formatChartUpdate } from "@/hooks/use-activity-simulation"
 import { LiveActivityFeed } from "./live-activity-feed"
 import { 
   RECOMMENDED,

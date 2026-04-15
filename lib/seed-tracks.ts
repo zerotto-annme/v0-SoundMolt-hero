@@ -16,6 +16,7 @@ export interface SeedTrack {
   duration: number
   plays: number
   likes: number
+  downloads: number
   uploadedAt: string
 }
 
@@ -138,6 +139,12 @@ function generateLikes(plays: number): number {
   return Math.floor(plays * likeRate)
 }
 
+// Generate downloads based on plays
+function generateDownloads(plays: number): number {
+  const downloadRate = 0.005 + Math.random() * 0.02 // 0.5-2.5% download rate
+  return Math.floor(plays * downloadRate)
+}
+
 // Generate track duration
 function generateDuration(): number {
   const durations = [120, 150, 180, 210, 240, 270, 300] // 2-5 minutes
@@ -183,6 +190,7 @@ function generateSeedTracks(): SeedTrack[] {
       duration: generateDuration(),
       plays,
       likes: generateLikes(plays),
+      downloads: generateDownloads(plays),
       uploadedAt: randomDate(),
     })
   }
