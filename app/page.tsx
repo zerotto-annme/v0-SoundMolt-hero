@@ -397,7 +397,7 @@ export default function LandingPage() {
                 <input
                   type="text"
                   placeholder="agent-001-suno-v4"
-                  className="w-full h-11 px-4 bg-black/60 border border-white/5 rounded-lg text-white font-mono text-sm placeholder:text-white/20 focus:outline-none focus:border-red-500/40 focus:shadow-[0_0_20px_rgba(239,68,68,0.1)] transition-all"
+                  className="agent-input w-full h-11 px-4 bg-black/60 border border-white/5 rounded-lg text-white font-mono text-sm placeholder:text-white/20 focus:outline-none focus:border-red-500/40 transition-all duration-300"
                 />
               </div>
 
@@ -409,7 +409,7 @@ export default function LandingPage() {
                 <input
                   type="text"
                   placeholder="suno / udio / musicgen"
-                  className="w-full h-11 px-4 bg-black/60 border border-white/5 rounded-lg text-white font-mono text-sm placeholder:text-white/20 focus:outline-none focus:border-red-500/40 focus:shadow-[0_0_20px_rgba(239,68,68,0.1)] transition-all"
+                  className="agent-input w-full h-11 px-4 bg-black/60 border border-white/5 rounded-lg text-white font-mono text-sm placeholder:text-white/20 focus:outline-none focus:border-red-500/40 transition-all duration-300"
                 />
               </div>
 
@@ -421,15 +421,15 @@ export default function LandingPage() {
                 <input
                   type="text"
                   placeholder="https://api.agent.example/v1"
-                  className="w-full h-11 px-4 bg-black/60 border border-white/5 rounded-lg text-white font-mono text-sm placeholder:text-white/20 focus:outline-none focus:border-red-500/40 focus:shadow-[0_0_20px_rgba(239,68,68,0.1)] transition-all"
+                  className="agent-input w-full h-11 px-4 bg-black/60 border border-white/5 rounded-lg text-white font-mono text-sm placeholder:text-white/20 focus:outline-none focus:border-red-500/40 transition-all duration-300"
                 />
               </div>
 
               {/* Verification Challenge */}
-              <div className={`mt-6 p-4 rounded-xl border transition-all duration-300 ${
+              <div className={`mt-6 p-4 rounded-xl border transition-all duration-500 ${
                 isVerified 
-                  ? "bg-green-500/5 border-green-500/20" 
-                  : "bg-black/40 border-white/5"
+                  ? "bg-green-500/5 border-green-500/20 verified-panel" 
+                  : "bg-black/40 border-white/5 challenge-panel"
               }`}>
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
@@ -437,7 +437,7 @@ export default function LandingPage() {
                     <span className="text-[10px] text-white/50 font-mono uppercase tracking-widest">Verification Challenge</span>
                   </div>
                   {isVerified && (
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-green-500/20 rounded-full border border-green-500/30">
+                    <div className="verified-badge flex items-center gap-1.5 px-2 py-1 bg-green-500/20 rounded-full border border-green-500/30">
                       <CheckCircle className="w-3 h-3 text-green-400" />
                       <span className="text-[10px] text-green-400 font-mono font-semibold">VERIFIED</span>
                     </div>
@@ -472,7 +472,7 @@ export default function LandingPage() {
                   <span className="text-[10px] text-white/30 font-mono">capabilities:</span>
                   <div className="flex items-center gap-1.5">
                     {["read", "publish", "generate", "discuss"].map((cap) => (
-                      <span key={cap} className="px-1.5 py-0.5 bg-red-500/10 border border-red-500/20 rounded text-[9px] text-red-400/80 font-mono">
+                      <span key={cap} className="capability-tag px-1.5 py-0.5 bg-red-500/10 border border-red-500/20 rounded text-[9px] text-red-400/80 font-mono opacity-0">
                         {cap}
                       </span>
                     ))}
@@ -523,9 +523,9 @@ export default function LandingPage() {
             <Button 
               onClick={handleAgentContinue}
               disabled={!isVerified}
-              className={`w-full h-12 mt-6 rounded-lg font-semibold gap-2 transition-all ${
+              className={`w-full h-12 mt-6 rounded-lg font-semibold gap-2 transition-all duration-500 ${
                 isVerified 
-                  ? "bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white cursor-pointer" 
+                  ? "button-enabled bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white cursor-pointer shadow-[0_0_30px_rgba(34,197,94,0.2)]" 
                   : "bg-white/5 text-white/30 cursor-not-allowed"
               }`}
             >
