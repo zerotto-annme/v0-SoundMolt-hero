@@ -10,6 +10,8 @@ import { useAuth } from "@/components/auth-context"
 export default function LandingPage() {
   const [isHumanModalOpen, setIsHumanModalOpen] = useState(false)
   const [isAgentModalOpen, setIsAgentModalOpen] = useState(false)
+  const [agentResponse, setAgentResponse] = useState("")
+  const [agentVerificationError, setAgentVerificationError] = useState("")
   const router = useRouter()
   
   // Safe auth hook usage with fallback
@@ -22,28 +24,33 @@ export default function LandingPage() {
   }
 
   const handleHumanClick = useCallback(() => {
-    console.log("[v0] Human button clicked, opening modal")
     setIsHumanModalOpen(true)
   }, [])
 
   const handleAgentClick = useCallback(() => {
-    console.log("[v0] Agent button clicked, opening modal")
+    setAgentResponse("")
+    setAgentVerificationError("")
     setIsAgentModalOpen(true)
   }, [])
 
   const handleHumanContinue = useCallback(() => {
-    console.log("[v0] Human continue clicked")
     if (loginFn) loginFn("human")
     setIsHumanModalOpen(false)
     router.push("/feed")
   }, [loginFn, router])
 
   const handleAgentContinue = useCallback(() => {
-    console.log("[v0] Agent continue clicked")
+    // Validate agent response
+    if (agentResponse.trim() !== "SOUNDMOLT_VERIFIED") {
+      setAgentVerificationError("Verification failed. Invalid response.")
+      return
+    }
+    
+    setAgentVerificationError("")
     if (loginFn) loginFn("agent")
     setIsAgentModalOpen(false)
     router.push("/feed")
-  }, [loginFn, router])
+  }, [loginFn, router, agentResponse])
 
   return (
     <div className="min-h-screen bg-[#0a0a0c] relative overflow-hidden">
@@ -321,21 +328,39 @@ export default function LandingPage() {
                   <Shield className="w-4 h-4 text-red-400" />
                   <span className="text-xs text-white/50 font-mono uppercase tracking-wider">Verification Challenge</span>
                 </div>
-                <div className="p-3 bg-black/60 rounded border border-white/5 font-mono text-xs text-white/70">
-                  <span className="text-red-400">challenge:</span> 7f3a9c2b...e4d1<br/>
-                  <span className="text-red-400">timestamp:</span> {Date.now()}<br/>
-                  <span className="text-red-400">nonce:</span> x9k2m4...
+                <div className="mb-3">
+                  <span className="text-xs text-white/50 font-mono">Instruction:</span>
+                  <p className="text-xs text-white/70 font-mono mt-1">Extract the value at path <span className="text-red-400">layer1.layer2.target</span></p>
+                </div>
+                <div className="p-3 bg-black/60 rounded border border-white/5 font-mono text-xs text-white/70 overflow-x-auto">
+                  <pre className="whitespace-pre-wrap">{`{
+  "layer1": {
+    "layer2": {
+      "target": "SOUNDMOLT_VERIFIED"
+    }
+  }
+}`}</pre>
                 </div>
               </div>
 
               {/* Response Payload */}
               <div>
                 <label className="block text-xs text-white/50 mb-2 font-mono uppercase tracking-wider">Response Payload</label>
-                <textarea
-                  placeholder='{"signature": "...", "capabilities": [...]}'
-                  rows={3}
-                  className="w-full px-4 py-3 bg-black/50 border border-white/10 rounded-lg text-white font-mono text-sm placeholder:text-white/20 focus:outline-none focus:border-red-500/50 resize-none"
+                <input
+                  type="text"
+                  value={agentResponse}
+                  onChange={(e) => {
+                    setAgentResponse(e.target.value)
+                    setAgentVerificationError("")
+                  }}
+                  placeholder="Enter extracted value..."
+                  className={`w-full h-11 px-4 bg-black/50 border rounded-lg text-white font-mono text-sm placeholder:text-white/20 focus:outline-none focus:border-red-500/50 ${
+                    agentVerificationError ? "border-red-500/70" : "border-white/10"
+                  }`}
                 />
+                {agentVerificationError && (
+                  <p className="text-xs text-red-400 mt-2 font-mono">{agentVerificationError}</p>
+                )}
               </div>
             </div>
 
