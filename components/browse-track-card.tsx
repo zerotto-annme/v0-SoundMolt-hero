@@ -3,6 +3,7 @@
 import { useState } from "react"
 import Image from "next/image"
 import { Play, Pause, Bot, Sparkles } from "lucide-react"
+import { usePlayer } from "./player-context"
 
 interface BrowseTrackCardProps {
   track: {
@@ -13,10 +14,10 @@ interface BrowseTrackCardProps {
     modelProvider: string
     coverUrl: string
     plays?: number
+    duration?: number
   }
   variant?: "medium" | "small" | "list"
   rank?: number
-  onPlay?: () => void
 }
 
 const MODEL_COLORS: Record<string, string> = {
@@ -29,13 +30,20 @@ const MODEL_COLORS: Record<string, string> = {
   stability: "from-violet-500 to-violet-700",
 }
 
-export function BrowseTrackCard({ track, variant = "medium", rank, onPlay }: BrowseTrackCardProps) {
+export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrackCardProps) {
   const [isHovered, setIsHovered] = useState(false)
-  const [isPlaying, setIsPlaying] = useState(false)
+  const { currentTrack, isPlaying, playTrack, togglePlay } = usePlayer()
 
-  const handlePlay = () => {
-    setIsPlaying(!isPlaying)
-    onPlay?.()
+  const isCurrentTrack = currentTrack?.id === track.id
+  const isTrackPlaying = isCurrentTrack && isPlaying
+
+  const handlePlay = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (isCurrentTrack) {
+      togglePlay()
+    } else {
+      playTrack(track)
+    }
   }
 
   const formatPlays = (num?: number) => {
@@ -49,7 +57,7 @@ export function BrowseTrackCard({ track, variant = "medium", rank, onPlay }: Bro
   if (variant === "list") {
     return (
       <div
-        className="group flex items-center gap-4 p-2 rounded-lg hover:bg-white/5 transition-all duration-200 cursor-pointer"
+        className={`group flex items-center gap-4 p-2 rounded-lg hover:bg-white/5 transition-all duration-200 cursor-pointer ${isCurrentTrack ? "bg-glow-primary/10" : ""}`}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         onClick={handlePlay}
@@ -62,15 +70,15 @@ export function BrowseTrackCard({ track, variant = "medium", rank, onPlay }: Bro
         )}
 
         {/* Cover with play button */}
-        <div className="relative w-12 h-12 rounded overflow-hidden flex-shrink-0">
+        <div className={`relative w-12 h-12 rounded overflow-hidden flex-shrink-0 ${isCurrentTrack ? "ring-2 ring-glow-primary" : ""}`}>
           <Image
             src={track.coverUrl}
             alt={track.title}
             fill
             className="object-cover"
           />
-          <div className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity duration-200 ${isHovered ? "opacity-100" : "opacity-0"}`}>
-            {isPlaying ? (
+          <div className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity duration-200 ${isHovered || isTrackPlaying ? "opacity-100" : "opacity-0"}`}>
+            {isTrackPlaying ? (
               <Pause className="w-5 h-5 text-white" fill="white" />
             ) : (
               <Play className="w-5 h-5 text-white" fill="white" />
@@ -105,13 +113,13 @@ export function BrowseTrackCard({ track, variant = "medium", rank, onPlay }: Bro
   if (variant === "small") {
     return (
       <div
-        className="group flex flex-col gap-2 p-2 rounded-lg hover:bg-white/5 transition-all duration-200 cursor-pointer"
+        className={`group flex flex-col gap-2 p-2 rounded-lg hover:bg-white/5 transition-all duration-200 cursor-pointer ${isCurrentTrack ? "bg-glow-primary/10" : ""}`}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         onClick={handlePlay}
       >
         {/* Cover */}
-        <div className="relative aspect-square rounded-lg overflow-hidden">
+        <div className={`relative aspect-square rounded-lg overflow-hidden ${isCurrentTrack ? "ring-2 ring-glow-primary" : ""}`}>
           <Image
             src={track.coverUrl}
             alt={track.title}
@@ -127,11 +135,12 @@ export function BrowseTrackCard({ track, variant = "medium", rank, onPlay }: Bro
 
           {/* Play button */}
           <button
+            onClick={handlePlay}
             className={`absolute bottom-2 right-2 w-10 h-10 rounded-full bg-glow-primary flex items-center justify-center shadow-lg shadow-glow-primary/30 transition-all duration-300 ${
-              isHovered ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
+              isHovered || isTrackPlaying ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
             }`}
           >
-            {isPlaying ? (
+            {isTrackPlaying ? (
               <Pause className="w-4 h-4 text-white" fill="white" />
             ) : (
               <Play className="w-4 h-4 text-white ml-0.5" fill="white" />
@@ -154,13 +163,13 @@ export function BrowseTrackCard({ track, variant = "medium", rank, onPlay }: Bro
   // Medium variant (default) for horizontal scroll
   return (
     <div
-      className="group flex flex-col gap-3 p-3 rounded-xl bg-card/50 hover:bg-card transition-all duration-300 cursor-pointer min-w-[180px] w-[180px]"
+      className={`group flex flex-col gap-3 p-3 rounded-xl bg-card/50 hover:bg-card transition-all duration-300 cursor-pointer min-w-[180px] w-[180px] ${isCurrentTrack ? "bg-glow-primary/10 ring-1 ring-glow-primary/30" : ""}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onClick={handlePlay}
     >
       {/* Cover */}
-      <div className="relative aspect-square rounded-lg overflow-hidden">
+      <div className={`relative aspect-square rounded-lg overflow-hidden ${isCurrentTrack ? "ring-2 ring-glow-primary" : ""}`}>
         <Image
           src={track.coverUrl}
           alt={track.title}
@@ -179,11 +188,12 @@ export function BrowseTrackCard({ track, variant = "medium", rank, onPlay }: Bro
 
         {/* Play button */}
         <button
+          onClick={handlePlay}
           className={`absolute bottom-3 right-3 w-12 h-12 rounded-full bg-glow-primary flex items-center justify-center shadow-xl shadow-glow-primary/40 transition-all duration-300 hover:scale-105 active:scale-95 ${
-            isHovered ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
+            isHovered || isTrackPlaying ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
           }`}
         >
-          {isPlaying ? (
+          {isTrackPlaying ? (
             <Pause className="w-5 h-5 text-white" fill="white" />
           ) : (
             <Play className="w-5 h-5 text-white ml-0.5" fill="white" />

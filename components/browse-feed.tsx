@@ -150,8 +150,8 @@ export function BrowseFeed() {
           </div>
         </header>
 
-        {/* Content */}
-        <div className="px-4 md:px-8 py-6 space-y-10">
+        {/* Content - with bottom padding for player */}
+        <div className="px-4 md:px-8 py-6 pb-28 space-y-10">
           {/* Hero section */}
           <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-glow-primary/20 via-background to-glow-secondary/20 p-6 md:p-8">
             <div className="absolute inset-0 bg-[linear-gradient(to_right,transparent_0%,rgba(255,255,255,0.03)_50%,transparent_100%)] animate-pulse" style={{ animationDuration: "3s" }} />
