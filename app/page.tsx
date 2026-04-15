@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import Link from "next/link"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { User, Bot, X, CheckCircle, Shield, Terminal } from "lucide-react"
@@ -9,8 +8,8 @@ import { Button } from "@/components/ui/button"
 import { useAuth } from "@/components/auth-context"
 
 export default function LandingPage() {
-  const [showHumanModal, setShowHumanModal] = useState(false)
-  const [showAgentModal, setShowAgentModal] = useState(false)
+  const [isHumanModalOpen, setIsHumanModalOpen] = useState(false)
+  const [isAgentModalOpen, setIsAgentModalOpen] = useState(false)
   const router = useRouter()
   const { login } = useAuth()
 
@@ -59,7 +58,7 @@ export default function LandingPage() {
           </span>
         </div>
         <button 
-          onClick={() => setShowHumanModal(true)}
+          onClick={() => setIsHumanModalOpen(true)}
           className="text-sm text-white/60 hover:text-white transition-colors px-4 py-2 border border-white/20 rounded-lg hover:border-white/40"
         >
           Login
@@ -137,10 +136,7 @@ export default function LandingPage() {
         <div className="flex flex-col sm:flex-row items-center gap-4 mb-16">
           <Button 
             size="lg" 
-            onClick={() => {
-              console.log("[v0] Human button clicked")
-              setShowHumanModal(true)
-            }}
+            onClick={() => setIsHumanModalOpen(true)}
             className="h-14 px-10 text-base font-semibold bg-white text-black hover:bg-white/90 rounded-full min-w-[180px] gap-2"
           >
             <User className="w-5 h-5" />
@@ -149,10 +145,7 @@ export default function LandingPage() {
           <Button 
             size="lg" 
             variant="outline"
-            onClick={() => {
-              console.log("[v0] Agent button clicked")
-              setShowAgentModal(true)
-            }}
+            onClick={() => setIsAgentModalOpen(true)}
             className="h-14 px-10 text-base font-semibold border-red-500/50 text-white hover:bg-red-500/10 hover:border-red-500 rounded-full min-w-[180px] gap-2"
           >
             <Bot className="w-5 h-5" />
@@ -180,17 +173,17 @@ export default function LandingPage() {
       </main>
 
       {/* Human Modal */}
-      {showHumanModal && (
+      {isHumanModalOpen && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-          onClick={() => setShowHumanModal(false)}
+          onClick={() => setIsHumanModalOpen(false)}
         >
           <div 
             className="relative w-full max-w-md mx-4 bg-[#111113] border border-white/10 rounded-2xl p-8"
             onClick={(e) => e.stopPropagation()}
           >
             <button 
-              onClick={() => setShowHumanModal(false)}
+              onClick={() => setIsHumanModalOpen(false)}
               className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors"
             >
               <X className="w-5 h-5" />
@@ -226,7 +219,7 @@ export default function LandingPage() {
             <Button 
               onClick={() => {
                 login("human")
-                setShowHumanModal(false)
+                setIsHumanModalOpen(false)
                 router.push("/feed")
               }}
               className="w-full h-12 mt-6 bg-white text-black hover:bg-white/90 rounded-lg font-semibold"
@@ -243,17 +236,17 @@ export default function LandingPage() {
       )}
 
       {/* Agent Modal */}
-      {showAgentModal && (
+      {isAgentModalOpen && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-          onClick={() => setShowAgentModal(false)}
+          onClick={() => setIsAgentModalOpen(false)}
         >
           <div 
             className="relative w-full max-w-lg mx-4 bg-[#111113] border border-white/10 rounded-2xl p-8"
             onClick={(e) => e.stopPropagation()}
           >
             <button 
-              onClick={() => setShowAgentModal(false)}
+              onClick={() => setIsAgentModalOpen(false)}
               className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors"
             >
               <X className="w-5 h-5" />
@@ -322,7 +315,7 @@ export default function LandingPage() {
             <Button 
               onClick={() => {
                 login("agent")
-                setShowAgentModal(false)
+                setIsAgentModalOpen(false)
                 router.push("/feed")
               }}
               className="w-full h-12 mt-6 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white rounded-lg font-semibold gap-2"
