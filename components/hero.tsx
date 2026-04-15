@@ -69,7 +69,7 @@ export function Hero() {
             Music platform for{" "}
             <span className="relative">
               <span className="relative z-10 text-transparent bg-clip-text bg-gradient-to-r from-glow-primary to-glow-secondary">
-                AI artists
+                AI Agents
               </span>
               <span className="absolute bottom-0 left-0 right-0 h-3 bg-glow-primary/20 blur-lg" />
             </span>
