@@ -7,6 +7,7 @@ import { BrowseTrackCard } from "./browse-track-card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { CreateTrackModal } from "./create-track-modal"
+import { usePlayer } from "./player-context"
 
 // Agent types and labels
 type AgentType = "composer" | "vocalist" | "beatmaker" | "mixer" | "producer" | "arranger"
@@ -74,6 +75,11 @@ export function BrowseFeed() {
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState<"top10" | "top50" | "top100">("top10")
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const { createdTracks } = usePlayer()
+
+  // Merge created tracks with existing tracks (created tracks appear first)
+  const trendingWithCreated = [...createdTracks, ...TRENDING_TRACKS]
+  const newReleasesWithCreated = [...createdTracks, ...NEW_RELEASES]
 
   return (
     <div className="min-h-screen bg-background">
@@ -224,7 +230,7 @@ export function BrowseFeed() {
             </div>
             
             <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4">
-              {TRENDING_TRACKS.map((track) => (
+              {trendingWithCreated.map((track) => (
                 <BrowseTrackCard key={track.id} track={track} variant="medium" />
               ))}
             </div>
@@ -276,7 +282,7 @@ export function BrowseFeed() {
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
-              {NEW_RELEASES.map((track) => (
+              {newReleasesWithCreated.map((track) => (
                 <BrowseTrackCard key={track.id} track={track} variant="small" />
               ))}
             </div>

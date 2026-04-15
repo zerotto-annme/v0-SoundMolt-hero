@@ -35,18 +35,20 @@ const AI_COVERS = [
   "https://images.unsplash.com/photo-1557682224-5b8590cd9ec5?w=400&h=400&fit=crop",
 ]
 
-// Random agent names
-const AGENT_NAMES = [
-  "SynthMaster-7B",
-  "BeatForge-AI",
-  "MelodyMind-X",
-  "HarmonyGPT",
-  "RhythmBot-3",
-  "WaveFormer-X",
-  "AudioLLaMA-13B",
-  "SoundCraft-AI",
-  "TuneGen-Pro",
-  "VoxSynth-X",
+// Random agent configurations
+type AgentType = "composer" | "vocalist" | "beatmaker" | "mixer" | "producer" | "arranger"
+
+const AGENT_CONFIGS = [
+  { name: "SynthMaster-7B", type: "composer" as AgentType, label: "Melody AI" },
+  { name: "BeatForge-AI", type: "beatmaker" as AgentType, label: "Beat Generator" },
+  { name: "MelodyMind-X", type: "composer" as AgentType, label: "Melody AI" },
+  { name: "HarmonyGPT", type: "producer" as AgentType, label: "Music Producer" },
+  { name: "RhythmBot-3", type: "beatmaker" as AgentType, label: "Beat Generator" },
+  { name: "WaveFormer-X", type: "mixer" as AgentType, label: "Mix Engineer" },
+  { name: "AudioLLaMA-13B", type: "arranger" as AgentType, label: "Arrangement AI" },
+  { name: "SoundCraft-AI", type: "producer" as AgentType, label: "Music Producer" },
+  { name: "TuneGen-Pro", type: "composer" as AgentType, label: "Melody AI" },
+  { name: "VoxSynth-X", type: "vocalist" as AgentType, label: "Vocal AI" },
 ]
 
 const MODEL_TYPES = [
@@ -73,7 +75,7 @@ export function CreateTrackModal({ isOpen, onClose }: CreateTrackModalProps) {
   const [generationStep, setGenerationStep] = useState(0)
   const [generatedTrack, setGeneratedTrack] = useState<Track | null>(null)
 
-  const { playTrack } = usePlayer()
+  const { playTrack, addCreatedTrack } = usePlayer()
 
   const generateTrackTitle = (promptText: string, style: string): string => {
     // Generate a creative title based on prompt keywords
@@ -108,20 +110,26 @@ export function CreateTrackModal({ isOpen, onClose }: CreateTrackModalProps) {
 
     // Create the new track
     const randomCover = AI_COVERS[Math.floor(Math.random() * AI_COVERS.length)]
-    const randomAgent = AGENT_NAMES[Math.floor(Math.random() * AGENT_NAMES.length)]
+    const randomAgent = AGENT_CONFIGS[Math.floor(Math.random() * AGENT_CONFIGS.length)]
     const randomModel = MODEL_TYPES[Math.floor(Math.random() * MODEL_TYPES.length)]
     const duration = DURATIONS.find(d => d.id === selectedDuration)?.seconds || 60
 
     const newTrack: Track = {
       id: `generated_${Date.now()}`,
       title: generateTrackTitle(prompt, selectedStyle),
-      agentName: randomAgent,
+      agentName: randomAgent.name,
+      agentType: randomAgent.type,
+      agentLabel: randomAgent.label,
       modelType: randomModel.name,
       modelProvider: randomModel.provider,
       coverUrl: randomCover,
       duration: duration,
+      plays: 0,
     }
 
+    // Add to created tracks list
+    addCreatedTrack(newTrack)
+    
     setGeneratedTrack(newTrack)
     setIsGenerating(false)
   }

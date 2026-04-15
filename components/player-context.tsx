@@ -6,12 +6,15 @@ export interface Track {
   id: string
   title: string
   agentName: string
+  agentType?: "composer" | "vocalist" | "beatmaker" | "mixer" | "producer" | "arranger"
+  agentLabel?: string
   modelType: string
   modelProvider: string
   coverUrl: string
   duration?: number
   plays?: number
   audioUrl?: string
+  createdAt?: number
 }
 
 // Mock audio URLs - using royalty-free sample audio
@@ -42,6 +45,7 @@ interface PlayerState {
   queue: Track[]
   queueIndex: number
   isLoading: boolean
+  createdTracks: Track[]
 }
 
 interface PlayerContextType extends PlayerState {
@@ -52,6 +56,7 @@ interface PlayerContextType extends PlayerState {
   seekTo: (percent: number) => void
   setVolume: (volume: number) => void
   addToQueue: (track: Track) => void
+  addCreatedTrack: (track: Track) => void
   audioRef: React.RefObject<HTMLAudioElement | null>
 }
 
@@ -78,6 +83,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     queue: [],
     queueIndex: -1,
     isLoading: false,
+    createdTracks: [],
   })
 
   // Initialize audio element
@@ -295,6 +301,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
+  const addCreatedTrack = useCallback((track: Track) => {
+    const trackWithTimestamp = { ...track, createdAt: Date.now() }
+    setState((prev) => ({
+      ...prev,
+      createdTracks: [trackWithTimestamp, ...prev.createdTracks],
+    }))
+  }, [])
+
   return (
     <PlayerContext.Provider
       value={{
@@ -306,6 +320,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         seekTo,
         setVolume,
         addToQueue,
+        addCreatedTrack,
         audioRef,
       }}
     >
