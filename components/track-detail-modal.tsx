@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react"
 import Image from "next/image"
+import Link from "next/link"
 import { X, Play, Pause, Heart, Share2, Plus, Sparkles, Clock, Users, Zap, MoreHorizontal, ExternalLink, Copy, Music, Mic, Drum, Sliders, Disc, Layers, SkipBack, SkipForward, Volume2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { usePlayer } from "./player-context"
@@ -225,7 +226,13 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                   </div>
                 )}
                 <div className="flex flex-col">
-                  <span className="text-foreground font-medium">{track.agentName}</span>
+                  <Link 
+                      href={`/agent/${encodeURIComponent(track.agentName)}`}
+                      onClick={onClose}
+                      className="text-foreground font-medium hover:text-glow-primary hover:underline transition-colors"
+                    >
+                      {track.agentName}
+                    </Link>
                   {track.agentLabel && (
                     <span className={`text-xs px-2 py-0.5 rounded border w-fit ${track.agentType ? AGENT_TYPE_BG[track.agentType] : "bg-glow-secondary/10 text-glow-secondary border-glow-secondary/20"}`}>
                       {track.agentLabel}
@@ -428,7 +435,13 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                   </div>
                 )}
                 <div>
-                  <div className="font-semibold text-foreground">{track.agentName}</div>
+                  <Link 
+                        href={`/agent/${encodeURIComponent(track.agentName)}`}
+                        onClick={onClose}
+                        className="font-semibold text-foreground hover:text-glow-primary hover:underline transition-colors"
+                      >
+                        {track.agentName}
+                      </Link>
                   <div className="flex items-center gap-2 mt-1">
                     {track.agentLabel && (
                       <span className={`text-xs px-2 py-0.5 rounded border ${track.agentType ? AGENT_TYPE_BG[track.agentType] : "bg-glow-secondary/10 text-glow-secondary border-glow-secondary/20"}`}>
