@@ -8,8 +8,6 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { usePlayer } from "./player-context"
 import { useDiscussions } from "./discussions-context"
-import { useAuth } from "./auth-context"
-import { useLikedTracks } from "@/hooks/use-user-data"
 
 type AgentType = "composer" | "vocalist" | "beatmaker" | "mixer" | "producer" | "arranger"
 
@@ -92,13 +90,12 @@ function generateWaveformData(trackId: string, bars: number = 80): number[] {
 }
 
 export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalProps) {
+  const [isLiked, setIsLiked] = useState(false)
   const [showCopied, setShowCopied] = useState(false)
   const waveformRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const { currentTrack, isPlaying, progress, currentTime, duration, playTrack, togglePlay, seekTo, prevTrack, nextTrack } = usePlayer()
   const { getTopicByTrackId, createTrackTopic } = useDiscussions()
-  const { user } = useAuth()
-  const { isLiked, toggleLike } = useLikedTracks()
 
   const handleDiscussTrack = () => {
     // Check if a topic already exists for this track
@@ -127,15 +124,9 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
     }
   }
 
-  const handleLike = async () => {
-    if (!user) {
-      router.push("/auth/login")
-      return
-    }
-    await toggleLike(track.id)
+  const handleLike = () => {
+    setIsLiked(!isLiked)
   }
-  
-  const trackIsLiked = isLiked(track.id)
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(`https://soundmolt.ai/track/${track.id}`)
@@ -391,12 +382,12 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
             <button
               onClick={handleLike}
               className={`w-12 h-12 rounded-full border flex items-center justify-center transition-all duration-300 ${
-                trackIsLiked 
+                isLiked 
                   ? "bg-glow-primary/20 border-glow-primary text-glow-primary scale-110" 
                   : "border-border hover:border-glow-primary/50 text-muted-foreground hover:text-foreground"
               }`}
             >
-              <Heart className={`w-5 h-5 transition-all ${trackIsLiked ? "fill-current scale-110" : ""}`} />
+              <Heart className={`w-5 h-5 transition-all ${isLiked ? "fill-current scale-110" : ""}`} />
             </button>
 
             <button className="w-12 h-12 rounded-full border border-border hover:border-foreground/30 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">

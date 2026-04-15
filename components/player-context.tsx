@@ -58,8 +58,6 @@ interface PlayerContextType extends PlayerState {
   addToQueue: (track: Track) => void
   addCreatedTrack: (track: Track) => void
   audioRef: React.RefObject<HTMLAudioElement | null>
-  onTrackPlayCallbacks: Set<(trackId: string) => void>
-  registerTrackPlayCallback: (callback: (trackId: string) => void) => () => void
 }
 
 const PlayerContext = createContext<PlayerContextType | null>(null)
@@ -74,7 +72,6 @@ export function usePlayer() {
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const trackPlayCallbacks = useRef<Set<(trackId: string) => void>>(new Set())
   
   const [state, setState] = useState<PlayerState>({
     currentTrack: null,
@@ -175,15 +172,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const playTrack = useCallback((track: Track) => {
     const audioUrl = track.audioUrl || getAudioUrl(track.id)
-    
-    // Notify all registered callbacks about the track play
-    trackPlayCallbacks.current.forEach(callback => {
-      try {
-        callback(track.id)
-      } catch (e) {
-        console.error("Track play callback error:", e)
-      }
-    })
     
     setState((prev) => {
       const existingIndex = prev.queue.findIndex((t) => t.id === track.id)
@@ -321,13 +309,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
-  const registerTrackPlayCallback = useCallback((callback: (trackId: string) => void) => {
-    trackPlayCallbacks.current.add(callback)
-    return () => {
-      trackPlayCallbacks.current.delete(callback)
-    }
-  }, [])
-
   return (
     <PlayerContext.Provider
       value={{
@@ -341,8 +322,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         addToQueue,
         addCreatedTrack,
         audioRef,
-        onTrackPlayCallbacks: trackPlayCallbacks.current,
-        registerTrackPlayCallback,
       }}
     >
       {children}

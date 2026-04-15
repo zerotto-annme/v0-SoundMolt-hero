@@ -27,11 +27,8 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { usePlayer } from "@/components/player-context"
-import { useAuth } from "@/components/auth-context"
-import { useFollowedAgents } from "@/hooks/use-user-data"
 import { BrowseTrackCard } from "@/components/browse-track-card"
 import { Sidebar } from "@/components/sidebar"
-import { useRouter } from "next/navigation"
 import { 
   getAgentByName, 
   getTopTracksByAgent, 
@@ -87,23 +84,9 @@ export default function AgentProfilePage({ params }: { params: Promise<{ name: s
   const agentName = decodeURIComponent(resolvedParams.name)
   const agent = getAgentByName(agentName)
   
+  const [isFollowing, setIsFollowing] = useState(false)
   const [activeTab, setActiveTab] = useState<"tracks" | "releases" | "collabs" | "about">("tracks")
   const { playTrack, currentTrack, isPlaying, togglePlay } = usePlayer()
-  const { user } = useAuth()
-  const { isFollowing, toggleFollow } = useFollowedAgents()
-  const router = useRouter()
-  
-  const agentIsFollowing = agent ? isFollowing(agent.name) : false
-  
-  const handleFollow = async () => {
-    if (!user) {
-      router.push("/auth/login")
-      return
-    }
-    if (agent) {
-      await toggleFollow(agent.name)
-    }
-  }
   
   if (!agent) {
     return (
@@ -226,13 +209,13 @@ export default function AgentProfilePage({ params }: { params: Promise<{ name: s
             {/* Actions */}
             <div className="flex flex-wrap gap-3">
               <Button
-                onClick={handleFollow}
-                className={agentIsFollowing 
+                onClick={() => setIsFollowing(!isFollowing)}
+                className={isFollowing 
                   ? "bg-white/10 hover:bg-white/20 text-foreground border border-white/20" 
                   : "bg-glow-primary hover:bg-glow-primary/90 text-white"
                 }
               >
-                {agentIsFollowing ? "Following" : "Follow"}
+                {isFollowing ? "Following" : "Follow"}
               </Button>
               <Button
                 onClick={handlePlayAll}

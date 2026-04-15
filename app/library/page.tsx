@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, Suspense, useMemo } from "react"
+import { useState, Suspense } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { 
@@ -21,19 +21,16 @@ import {
   Drum,
   Sliders,
   Disc,
-  Layers,
-  LogIn,
-  Trash2
+  Layers
 } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
+import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useActivitySimulation } from "@/hooks/use-activity-simulation"
 import { usePlayer, type Track } from "@/components/player-context"
 import { CreateTrackModal } from "@/components/create-track-modal"
-import { AGENTS, type Agent } from "@/lib/agents"
-import { formatPlays, SEED_TRACKS, type SeedTrack } from "@/lib/seed-tracks"
-import { useAuth } from "@/components/auth-context"
-import { useLibraryData, type UserTrack } from "@/hooks/use-user-data"
+import { AGENTS, formatFollowers, type Agent } from "@/lib/agents"
+import { formatPlays, type SeedTrack } from "@/lib/seed-tracks"
 
 type AgentType = "composer" | "vocalist" | "beatmaker" | "mixer" | "producer" | "arranger"
 
@@ -56,37 +53,15 @@ const AGENT_TYPE_COLORS: Record<AgentType, string> = {
   arranger: "from-indigo-500 to-blue-600",
 }
 
-// Convert UserTrack to Track for player
-function userTrackToTrack(ut: UserTrack): Track {
-  return {
-    id: ut.id,
-    title: ut.title,
-    agentName: ut.agent_name,
-    agentType: (ut.agent_type || "producer") as AgentType,
-    agentLabel: ut.agent_label || "",
-    modelType: ut.model_type,
-    modelProvider: ut.model_provider,
-    style: ut.style as Track["style"],
-    coverUrl: ut.cover_url || "/images/ai-cover-1.jpg",
-    duration: ut.duration || 60,
-    plays: 0,
-    likes: 0,
-    downloads: 0,
-    uploadedAt: ut.created_at,
-  }
-}
-
 // List track item component
 function TrackListItem({ 
   track, 
   index,
-  showIndex = true,
-  onDelete
+  showIndex = true 
 }: { 
   track: Track | SeedTrack
   index: number
-  showIndex?: boolean
-  onDelete?: () => void 
+  showIndex?: boolean 
 }) {
   const { currentTrack, isPlaying, playTrack, togglePlay } = usePlayer()
   const isCurrentTrack = currentTrack?.id === track.id
@@ -151,23 +126,10 @@ function TrackListItem({
       </span>
 
       {/* Plays */}
-      {"plays" in track && track.plays > 0 && (
+      {"plays" in track && (
         <span className="text-xs text-muted-foreground hidden md:block w-20 text-right">
           {formatPlays(track.plays)}
         </span>
-      )}
-
-      {/* Delete button (for user tracks) */}
-      {onDelete && (
-        <button 
-          onClick={(e) => {
-            e.stopPropagation()
-            onDelete()
-          }}
-          className="p-2 rounded-full opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-muted-foreground hover:text-red-400 transition-all"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
       )}
 
       {/* More button */}
@@ -264,95 +226,21 @@ function PlaylistCard({
   )
 }
 
-// Login prompt component
-function LoginPrompt() {
-  return (
-    <div className="min-h-screen bg-background">
-      <Sidebar />
-      <main className="lg:ml-64 min-h-screen pb-32">
-        <div className="flex flex-col items-center justify-center min-h-[60vh] p-6">
-          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-glow-primary/20 to-glow-secondary/20 flex items-center justify-center mb-6">
-            <LogIn className="w-10 h-10 text-glow-primary" />
-          </div>
-          <h1 className="text-3xl font-bold text-foreground mb-3">Sign in to view your Library</h1>
-          <p className="text-muted-foreground text-center max-w-md mb-6">
-            Create an account to save your liked tracks, follow AI agents, and access your generated music.
-          </p>
-          <div className="flex gap-3">
-            <Link href="/auth/login">
-              <Button variant="outline" size="lg">
-                Sign In
-              </Button>
-            </Link>
-            <Link href="/auth/sign-up">
-              <Button size="lg" className="bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90 text-white">
-                Create Account
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </main>
-    </div>
-  )
-}
-
 function LibraryContent() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
-  const { user } = useAuth()
-  const { userTracks, likedTracks, followedAgents, recentlyPlayed, loading } = useLibraryData()
   const { tracks: dynamicTracks } = useActivitySimulation()
   const { createdTracks, playTrack } = usePlayer()
 
-  // Convert user tracks to playable format
-  const myGeneratedTracks = useMemo(() => {
-    return userTracks.tracks.map(userTrackToTrack)
-  }, [userTracks.tracks])
-
-  // Get liked track data from seed tracks
-  const likedTrackData = useMemo(() => {
-    return SEED_TRACKS.filter(track => likedTracks.isLiked(track.id))
-  }, [likedTracks])
-
-  // Get recently played track data from seed tracks
-  const recentlyPlayedData = useMemo(() => {
-    return recentlyPlayed.recentTrackIds
-      .map(id => SEED_TRACKS.find(t => t.id === id))
-      .filter((t): t is SeedTrack => t !== undefined)
-      .slice(0, 10)
-  }, [recentlyPlayed.recentTrackIds])
-
-  // Get followed agents data
-  const followedAgentData = useMemo(() => {
-    return AGENTS.filter(agent => followedAgents.isFollowing(agent.name))
-  }, [followedAgents])
+  // Simulated data for demo
+  const likedTracks = dynamicTracks.filter((_, i) => i % 3 === 0).slice(0, 8)
+  const recentlyPlayed = dynamicTracks.slice(0, 6)
+  const followedAgents = AGENTS.slice(0, 6)
 
   // Play all function
   const handlePlayAll = (tracks: (Track | SeedTrack)[]) => {
     if (tracks.length > 0) {
       playTrack(tracks[0] as Track)
     }
-  }
-
-  // Delete user track
-  const handleDeleteTrack = async (trackId: string) => {
-    await userTracks.deleteTrack(trackId)
-  }
-
-  // Show login prompt if not authenticated
-  if (!user) {
-    return <LoginPrompt />
-  }
-
-  // Show loading state
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background">
-        <Sidebar />
-        <main className="lg:ml-64 min-h-screen pb-32 flex items-center justify-center">
-          <div className="animate-pulse text-muted-foreground">Loading your library...</div>
-        </main>
-      </div>
-    )
   }
 
   return (
@@ -369,7 +257,7 @@ function LibraryContent() {
                 <p className="text-sm text-muted-foreground mb-1">Your personal space</p>
                 <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-2">Library</h1>
                 <p className="text-muted-foreground">
-                  {myGeneratedTracks.length} created tracks, {likedTracks.likeCount} liked, {followedAgents.followCount} agents followed
+                  {createdTracks.length} created tracks, {likedTracks.length} liked, {followedAgents.length} agents followed
                 </p>
               </div>
               <Button
@@ -394,14 +282,14 @@ function LibraryContent() {
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-foreground">My Generated Tracks</h2>
-                  <p className="text-sm text-muted-foreground">{myGeneratedTracks.length} tracks you created with AI</p>
+                  <p className="text-sm text-muted-foreground">{createdTracks.length} tracks you created with AI</p>
                 </div>
               </div>
-              {myGeneratedTracks.length > 0 && (
+              {createdTracks.length > 0 && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => handlePlayAll(myGeneratedTracks)}
+                  onClick={() => handlePlayAll(createdTracks)}
                   className="text-glow-primary hover:text-glow-primary hover:bg-glow-primary/10"
                 >
                   <Play className="w-4 h-4 mr-2" />
@@ -410,15 +298,10 @@ function LibraryContent() {
               )}
             </div>
 
-            {myGeneratedTracks.length > 0 ? (
+            {createdTracks.length > 0 ? (
               <div className="bg-card/30 rounded-xl border border-border/30 overflow-hidden">
-                {myGeneratedTracks.map((track, index) => (
-                  <TrackListItem 
-                    key={track.id} 
-                    track={track} 
-                    index={index}
-                    onDelete={() => handleDeleteTrack(track.id)}
-                  />
+                {createdTracks.map((track, index) => (
+                  <TrackListItem key={track.id} track={track} index={index} />
                 ))}
               </div>
             ) : (
@@ -450,35 +333,31 @@ function LibraryContent() {
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-foreground">Liked Tracks</h2>
-                  <p className="text-sm text-muted-foreground">{likedTrackData.length} tracks you love</p>
+                  <p className="text-sm text-muted-foreground">{likedTracks.length} tracks you love</p>
                 </div>
               </div>
-              {likedTrackData.length > 0 && (
+              <div className="flex items-center gap-2">
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => handlePlayAll(likedTrackData)}
+                  onClick={() => handlePlayAll(likedTracks)}
                   className="text-pink-400 hover:text-pink-400 hover:bg-pink-500/10"
                 >
                   <Play className="w-4 h-4 mr-2" />
                   Play All
                 </Button>
-              )}
+                <Button variant="ghost" size="sm" className="text-muted-foreground">
+                  See All
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
             </div>
 
-            {likedTrackData.length > 0 ? (
-              <div className="bg-card/30 rounded-xl border border-border/30 overflow-hidden">
-                {likedTrackData.map((track, index) => (
-                  <TrackListItem key={track.id} track={track} index={index} />
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 bg-card/30 rounded-xl border border-border/30">
-                <Heart className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-                <p className="text-sm text-muted-foreground">No liked tracks yet</p>
-                <p className="text-xs text-muted-foreground mt-1">Like tracks to save them here</p>
-              </div>
-            )}
+            <div className="bg-card/30 rounded-xl border border-border/30 overflow-hidden">
+              {likedTracks.map((track, index) => (
+                <TrackListItem key={track.id} track={track} index={index} />
+              ))}
+            </div>
           </section>
 
           {/* Recently Played */}
@@ -493,21 +372,17 @@ function LibraryContent() {
                   <p className="text-sm text-muted-foreground">Pick up where you left off</p>
                 </div>
               </div>
+              <Button variant="ghost" size="sm" className="text-muted-foreground">
+                See All
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
             </div>
 
-            {recentlyPlayedData.length > 0 ? (
-              <div className="bg-card/30 rounded-xl border border-border/30 overflow-hidden">
-                {recentlyPlayedData.map((track, index) => (
-                  <TrackListItem key={`${track.id}-${index}`} track={track} index={index} showIndex={false} />
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 bg-card/30 rounded-xl border border-border/30">
-                <Clock className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-                <p className="text-sm text-muted-foreground">No recently played tracks</p>
-                <p className="text-xs text-muted-foreground mt-1">Start listening to build your history</p>
-              </div>
-            )}
+            <div className="bg-card/30 rounded-xl border border-border/30 overflow-hidden">
+              {recentlyPlayed.map((track, index) => (
+                <TrackListItem key={track.id} track={track} index={index} showIndex={false} />
+              ))}
+            </div>
           </section>
 
           {/* My Playlists */}
@@ -526,6 +401,7 @@ function LibraryContent() {
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               <PlaylistCard title="Create Playlist" trackCount={0} isEmpty />
+              {/* Placeholder playlists - empty state for now */}
             </div>
           </section>
 
@@ -538,7 +414,7 @@ function LibraryContent() {
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-foreground">Followed AI Agents</h2>
-                  <p className="text-sm text-muted-foreground">{followedAgentData.length} agents you follow</p>
+                  <p className="text-sm text-muted-foreground">{followedAgents.length} agents you follow</p>
                 </div>
               </div>
               <Link href="/explore" className="flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -547,21 +423,11 @@ function LibraryContent() {
               </Link>
             </div>
 
-            {followedAgentData.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {followedAgentData.map((agent) => (
-                  <FollowedAgentCard key={agent.id} agent={agent} />
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 bg-card/30 rounded-xl border border-border/30">
-                <Users className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-                <p className="text-sm text-muted-foreground">No followed agents yet</p>
-                <Link href="/explore" className="text-xs text-glow-primary hover:underline mt-1 inline-block">
-                  Discover AI agents to follow
-                </Link>
-              </div>
-            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {followedAgents.map((agent) => (
+                <FollowedAgentCard key={agent.id} agent={agent} />
+              ))}
+            </div>
           </section>
 
           {/* Quick Stats */}
@@ -570,22 +436,22 @@ function LibraryContent() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="text-center p-4 bg-background/50 rounded-lg">
                 <Sparkles className="w-6 h-6 text-glow-primary mx-auto mb-2" />
-                <div className="text-2xl font-bold text-foreground">{myGeneratedTracks.length}</div>
+                <div className="text-2xl font-bold text-foreground">{createdTracks.length}</div>
                 <div className="text-xs text-muted-foreground">Tracks Created</div>
               </div>
               <div className="text-center p-4 bg-background/50 rounded-lg">
                 <Heart className="w-6 h-6 text-pink-500 mx-auto mb-2" />
-                <div className="text-2xl font-bold text-foreground">{likedTracks.likeCount}</div>
+                <div className="text-2xl font-bold text-foreground">{likedTracks.length}</div>
                 <div className="text-xs text-muted-foreground">Liked Tracks</div>
               </div>
               <div className="text-center p-4 bg-background/50 rounded-lg">
                 <Clock className="w-6 h-6 text-cyan-500 mx-auto mb-2" />
-                <div className="text-2xl font-bold text-foreground">{recentlyPlayedData.length}</div>
+                <div className="text-2xl font-bold text-foreground">{recentlyPlayed.length}</div>
                 <div className="text-xs text-muted-foreground">Recently Played</div>
               </div>
               <div className="text-center p-4 bg-background/50 rounded-lg">
                 <Users className="w-6 h-6 text-emerald-500 mx-auto mb-2" />
-                <div className="text-2xl font-bold text-foreground">{followedAgents.followCount}</div>
+                <div className="text-2xl font-bold text-foreground">{followedAgents.length}</div>
                 <div className="text-xs text-muted-foreground">Agents Followed</div>
               </div>
             </div>
