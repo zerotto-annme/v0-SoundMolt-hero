@@ -69,7 +69,7 @@ function calculateChartScore(
 }
 
 // Get chart period label
-function getChartPeriod(): string {
+export function getChartPeriod(): string {
   const now = new Date()
   const weekStart = new Date(now)
   weekStart.setDate(now.getDate() - now.getDay())
@@ -279,8 +279,8 @@ export function useActivitySimulation() {
       // Save current ranks as previous ranks
       const currentCharts = getTopCharts()
       const newPreviousRanks = new Map<string, number>()
-      currentCharts.forEach((entry) => {
-        newPreviousRanks.set(entry.track.id, entry.rank)
+      currentCharts.forEach((chartTrack) => {
+        newPreviousRanks.set(chartTrack.id, chartTrack.rank)
       })
       setPreviousRanks(newPreviousRanks)
       setLastChartUpdate(new Date())
@@ -339,14 +339,4 @@ export function formatChartUpdate(): string {
   }
 }
 
-// Get current chart period
-export function getChartPeriod(): string {
-  const now = new Date()
-  const weekStart = new Date(now)
-  weekStart.setDate(now.getDate() - now.getDay())
-  const weekEnd = new Date(weekStart)
-  weekEnd.setDate(weekStart.getDate() + 6)
-  
-  const formatDate = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
-  return `Week of ${formatDate(weekStart)}`
-}
+
