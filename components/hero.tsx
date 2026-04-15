@@ -51,7 +51,7 @@ export function Hero() {
           <div className="flex items-center gap-3">
             {/* Small crab logo mark */}
             <CrabMascot size="sm" />
-            <span className="text-2xl font-bold text-red-500 tracking-tight">
+            <span className="text-[1.725rem] font-bold text-red-500 tracking-tight">
               SoundMolt
             </span>
           </div>
