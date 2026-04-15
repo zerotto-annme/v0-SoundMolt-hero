@@ -275,13 +275,16 @@ export function MusicFeed() {
         {MOCK_TRACKS.map((track, index) => (
           <div
             key={track.id}
-            className={`absolute inset-0 transition-all duration-500 ease-out ${
+            className={`absolute inset-0 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${
               index === currentIndex
-                ? "opacity-100 translate-y-0 scale-100"
+                ? "opacity-100 translate-y-0 scale-100 z-20"
                 : index < currentIndex
-                ? "opacity-0 -translate-y-full scale-95"
-                : "opacity-0 translate-y-full scale-95"
+                ? "opacity-0 -translate-y-[120%] scale-90 blur-sm z-10"
+                : "opacity-0 translate-y-[120%] scale-90 blur-sm z-10"
             }`}
+            style={{
+              transitionProperty: 'transform, opacity, filter',
+            }}
           >
             <TrackCard
               track={track}
@@ -298,24 +301,29 @@ export function MusicFeed() {
         <button
           onClick={goToPrev}
           disabled={currentIndex === 0}
-          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 ${
+          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 active:scale-90 ${
             currentIndex === 0
               ? "opacity-30 cursor-not-allowed"
-              : "bg-white/10 hover:bg-white/20"
+              : "bg-white/10 hover:bg-white/20 hover:scale-110"
           }`}
         >
-          <ChevronUp className="w-6 h-6 text-white" />
+          <ChevronUp className="w-6 h-6 text-white transition-transform duration-300 group-hover:-translate-y-0.5" />
         </button>
         
-        {/* Track position indicator */}
-        <div className="flex flex-col items-center gap-1">
+        {/* Track position indicator with glow */}
+        <div className="flex flex-col items-center gap-1.5">
           {MOCK_TRACKS.map((_, index) => (
-            <div
+            <button
               key={index}
-              className={`w-1 rounded-full transition-all duration-300 ${
+              onClick={() => {
+                setCurrentIndex(index)
+                setProgress(0)
+                setIsPlaying(true)
+              }}
+              className={`rounded-full transition-all duration-500 ease-out cursor-pointer ${
                 index === currentIndex
-                  ? "h-6 bg-glow-primary"
-                  : "h-2 bg-white/30"
+                  ? "w-1.5 h-8 bg-glow-primary shadow-lg shadow-glow-primary/50"
+                  : "w-1 h-2 bg-white/30 hover:bg-white/50 hover:h-3"
               }`}
             />
           ))}
@@ -324,13 +332,13 @@ export function MusicFeed() {
         <button
           onClick={goToNext}
           disabled={currentIndex === MOCK_TRACKS.length - 1}
-          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 ${
+          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 active:scale-90 ${
             currentIndex === MOCK_TRACKS.length - 1
               ? "opacity-30 cursor-not-allowed"
-              : "bg-white/10 hover:bg-white/20"
+              : "bg-white/10 hover:bg-white/20 hover:scale-110"
           }`}
         >
-          <ChevronDown className="w-6 h-6 text-white" />
+          <ChevronDown className="w-6 h-6 text-white transition-transform duration-300 group-hover:translate-y-0.5" />
         </button>
       </div>
 
@@ -344,7 +352,7 @@ export function MusicFeed() {
         
         {/* Progress bar */}
         <div 
-          className="relative h-1 bg-white/20 rounded-full overflow-hidden cursor-pointer group"
+          className="relative h-1.5 bg-white/20 rounded-full overflow-hidden cursor-pointer group hover:h-2 transition-all duration-200"
           onClick={(e) => {
             const rect = e.currentTarget.getBoundingClientRect()
             const percent = ((e.clientX - rect.left) / rect.width) * 100
@@ -352,18 +360,26 @@ export function MusicFeed() {
           }}
         >
           {/* Buffered indicator */}
-          <div className="absolute inset-y-0 left-0 bg-white/30 rounded-full" style={{ width: `${Math.min(progress + 20, 100)}%` }} />
+          <div className="absolute inset-y-0 left-0 bg-white/20 rounded-full transition-all duration-300" style={{ width: `${Math.min(progress + 20, 100)}%` }} />
           
-          {/* Current progress */}
+          {/* Current progress with glow */}
           <div 
-            className="absolute inset-y-0 left-0 bg-gradient-to-r from-glow-primary to-glow-secondary rounded-full transition-all duration-100"
+            className="absolute inset-y-0 left-0 bg-gradient-to-r from-glow-primary to-glow-secondary rounded-full transition-all duration-100 shadow-sm shadow-glow-primary/50"
             style={{ width: `${progress}%` }}
           />
           
+          {/* Animated glow at progress head */}
+          {isPlaying && (
+            <div 
+              className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-glow-primary/50 rounded-full blur-sm animate-pulse"
+              style={{ left: `calc(${progress}% - 8px)` }}
+            />
+          )}
+          
           {/* Hover handle */}
           <div 
-            className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
-            style={{ left: `calc(${progress}% - 6px)` }}
+            className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-lg scale-75 group-hover:scale-100"
+            style={{ left: `calc(${progress}% - 8px)` }}
           />
         </div>
 
