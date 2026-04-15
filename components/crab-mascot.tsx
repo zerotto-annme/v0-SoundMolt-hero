@@ -18,7 +18,7 @@ export function CrabMascot({ size = "md", className = "" }: CrabMascotProps) {
         src="/images/crab-logo.png"
         alt="SoundMolt Crab Mascot"
         fill
-        className="object-contain mix-blend-multiply"
+        className="object-contain"
         priority
       />
     </div>
