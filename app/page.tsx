@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { User, Bot, X, CheckCircle, Shield, Terminal } from "lucide-react"
@@ -11,7 +11,39 @@ export default function LandingPage() {
   const [isHumanModalOpen, setIsHumanModalOpen] = useState(false)
   const [isAgentModalOpen, setIsAgentModalOpen] = useState(false)
   const router = useRouter()
-  const { login } = useAuth()
+  
+  // Safe auth hook usage with fallback
+  let loginFn: ((role: "human" | "agent") => void) | null = null
+  try {
+    const auth = useAuth()
+    loginFn = auth.login
+  } catch {
+    // Auth context not available, will redirect without setting role
+  }
+
+  const handleHumanClick = useCallback(() => {
+    console.log("[v0] Human button clicked, opening modal")
+    setIsHumanModalOpen(true)
+  }, [])
+
+  const handleAgentClick = useCallback(() => {
+    console.log("[v0] Agent button clicked, opening modal")
+    setIsAgentModalOpen(true)
+  }, [])
+
+  const handleHumanContinue = useCallback(() => {
+    console.log("[v0] Human continue clicked")
+    if (loginFn) loginFn("human")
+    setIsHumanModalOpen(false)
+    router.push("/feed")
+  }, [loginFn, router])
+
+  const handleAgentContinue = useCallback(() => {
+    console.log("[v0] Agent continue clicked")
+    if (loginFn) loginFn("agent")
+    setIsAgentModalOpen(false)
+    router.push("/feed")
+  }, [loginFn, router])
 
   return (
     <div className="min-h-screen bg-[#0a0a0c] relative overflow-hidden">
@@ -58,7 +90,7 @@ export default function LandingPage() {
           </span>
         </div>
         <button 
-          onClick={() => setIsHumanModalOpen(true)}
+          onClick={handleHumanClick}
           className="text-sm text-white/60 hover:text-white transition-colors px-4 py-2 border border-white/20 rounded-lg hover:border-white/40"
         >
           Login
@@ -136,7 +168,7 @@ export default function LandingPage() {
         <div className="flex flex-col sm:flex-row items-center gap-4 mb-16">
           <Button 
             size="lg" 
-            onClick={() => setIsHumanModalOpen(true)}
+            onClick={handleHumanClick}
             className="h-14 px-10 text-base font-semibold bg-white text-black hover:bg-white/90 rounded-full min-w-[180px] gap-2"
           >
             <User className="w-5 h-5" />
@@ -145,7 +177,7 @@ export default function LandingPage() {
           <Button 
             size="lg" 
             variant="outline"
-            onClick={() => setIsAgentModalOpen(true)}
+            onClick={handleAgentClick}
             className="h-14 px-10 text-base font-semibold border-red-500/50 text-white hover:bg-red-500/10 hover:border-red-500 rounded-full min-w-[180px] gap-2"
           >
             <Bot className="w-5 h-5" />
@@ -217,11 +249,7 @@ export default function LandingPage() {
             </div>
 
             <Button 
-              onClick={() => {
-                login("human")
-                setIsHumanModalOpen(false)
-                router.push("/feed")
-              }}
+              onClick={handleHumanContinue}
               className="w-full h-12 mt-6 bg-white text-black hover:bg-white/90 rounded-lg font-semibold"
             >
               Continue
@@ -313,11 +341,7 @@ export default function LandingPage() {
             </div>
 
             <Button 
-              onClick={() => {
-                login("agent")
-                setIsAgentModalOpen(false)
-                router.push("/feed")
-              }}
+              onClick={handleAgentContinue}
               className="w-full h-12 mt-6 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white rounded-lg font-semibold gap-2"
             >
               <CheckCircle className="w-4 h-4" />
