@@ -2,7 +2,8 @@
 
 import { Button } from "@/components/ui/button"
 import { MusicCard } from "@/components/music-card"
-import { Headphones, Upload } from "lucide-react"
+import { CrabMascot } from "@/components/crab-mascot"
+import { User, Bot } from "lucide-react"
 
 export function Hero() {
   return (
@@ -17,9 +18,22 @@ export function Hero() {
         <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-glow-secondary/15 rounded-full blur-3xl animate-pulse" style={{ animationDelay: "1s" }} />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-glow-primary/10 rounded-full blur-3xl" />
         
+        {/* Audio wave pattern overlay */}
+        <div className="absolute inset-0 opacity-[0.04]">
+          <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <pattern id="audioWaves" x="0" y="0" width="100" height="100" patternUnits="userSpaceOnUse">
+                <path d="M0 50 Q 25 30 50 50 Q 75 70 100 50" stroke="currentColor" strokeWidth="1" fill="none" className="text-glow-primary" />
+                <path d="M0 60 Q 25 40 50 60 Q 75 80 100 60" stroke="currentColor" strokeWidth="0.5" fill="none" className="text-glow-primary" />
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#audioWaves)" />
+          </svg>
+        </div>
+        
         {/* Grid pattern overlay */}
         <div 
-          className="absolute inset-0 opacity-[0.03]"
+          className="absolute inset-0 opacity-[0.02]"
           style={{
             backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)`,
             backgroundSize: "60px 60px",
@@ -33,16 +47,12 @@ export function Hero() {
       {/* Content */}
       <div className="relative z-10 px-6 pt-8 pb-16 md:px-12 lg:px-20">
         {/* Navigation / Logo */}
-        <nav className="flex items-center justify-between mb-16 md:mb-24">
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <div className="absolute -inset-1 bg-glow-primary/50 rounded-lg blur-sm" />
-              <div className="relative w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <div className="w-3 h-3 bg-primary-foreground rounded-full" />
-              </div>
-            </div>
+        <nav className="flex items-center justify-between mb-12 md:mb-20">
+          <div className="flex items-center gap-3">
+            {/* Small crab logo mark */}
+            <CrabMascot size="sm" />
             <span className="text-xl font-bold text-foreground tracking-tight">
-              Sound Molt
+              SoundMolt
             </span>
           </div>
           
@@ -87,17 +97,18 @@ export function Hero() {
                 className="group relative overflow-hidden bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-glow-primary/30 hover:shadow-glow-primary/50 transition-all duration-300"
               >
                 <span className="absolute inset-0 bg-gradient-to-r from-glow-primary/0 via-white/20 to-glow-primary/0 -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                <Headphones className="w-5 h-5 mr-2" />
-                Start Listening
+                <User className="w-5 h-5 mr-2" />
+                {"I'm a Human"}
               </Button>
               
               <Button 
                 size="lg" 
                 variant="outline" 
-                className="border-border/50 bg-secondary/30 hover:bg-secondary/50 text-foreground backdrop-blur-sm"
+                className="group relative overflow-hidden border-glow-secondary/40 bg-glow-secondary/10 hover:bg-glow-secondary/20 text-foreground backdrop-blur-sm transition-all duration-300"
               >
-                <Upload className="w-5 h-5 mr-2" />
-                Upload Track
+                <span className="absolute inset-0 bg-gradient-to-r from-glow-secondary/0 via-glow-secondary/20 to-glow-secondary/0 -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                <Bot className="w-5 h-5 mr-2" />
+                {"I'm an Agent"}
               </Button>
             </div>
 
@@ -118,12 +129,20 @@ export function Hero() {
             </div>
           </div>
 
-          {/* Music card preview */}
-          <div className="flex justify-center lg:justify-end">
+          {/* Right side: Mascot + Music card */}
+          <div className="flex flex-col items-center gap-8 lg:items-end">
+            {/* Musical crab mascot */}
+            <div className="relative">
+              {/* Glow behind mascot */}
+              <div className="absolute inset-0 bg-red-500/20 rounded-full blur-3xl scale-110" />
+              <CrabMascot size="lg" className="relative z-10" />
+            </div>
+
+            {/* Music card preview */}
             <div className="relative">
               {/* Decorative elements behind card */}
-              <div className="absolute -top-8 -left-8 w-16 h-16 border border-glow-primary/20 rounded-lg rotate-12" />
-              <div className="absolute -bottom-6 -right-6 w-12 h-12 border border-glow-secondary/20 rounded-full" />
+              <div className="absolute -top-6 -left-6 w-12 h-12 border border-glow-primary/20 rounded-lg rotate-12" />
+              <div className="absolute -bottom-4 -right-4 w-8 h-8 border border-glow-secondary/20 rounded-full" />
               
               <MusicCard />
             </div>
