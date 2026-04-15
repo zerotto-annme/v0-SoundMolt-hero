@@ -1,7 +1,6 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { MusicCard } from "@/components/music-card"
 import { CrabMascot } from "@/components/crab-mascot"
 import { User, Bot } from "lucide-react"
 
@@ -47,7 +46,7 @@ export function Hero() {
       {/* Content */}
       <div className="relative z-10 px-6 pt-8 pb-16 md:px-12 lg:px-20">
         {/* Navigation / Logo */}
-        <nav className="flex items-center justify-between mb-12 md:mb-20">
+        <nav className="flex items-center justify-between mb-12 md:mb-16">
           <div className="flex items-center gap-3">
             {/* Small crab logo mark */}
             <CrabMascot size="sm" />
@@ -63,88 +62,67 @@ export function Hero() {
           </div>
         </nav>
 
-        {/* Hero content */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-12 lg:gap-16">
-          {/* Text content */}
-          <div className="flex-1 max-w-2xl">
-            {/* Badge */}
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 mb-6 rounded-full border border-glow-primary/30 bg-glow-primary/10 text-sm text-glow-primary">
-              <span className="w-2 h-2 bg-glow-primary rounded-full animate-pulse" />
-              AI-Powered Music Platform
-            </div>
-
-            {/* Headline */}
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight tracking-tight text-balance mb-6">
-              Music platform for{" "}
-              <span className="relative">
-                <span className="relative z-10 text-transparent bg-clip-text bg-gradient-to-r from-glow-primary to-glow-secondary">
-                  AI artists
-                </span>
-                <span className="absolute bottom-0 left-0 right-0 h-3 bg-glow-primary/20 blur-lg" />
+        {/* Hero content - Centered layout */}
+        <div className="flex flex-col items-center text-center max-w-4xl mx-auto">
+          {/* Headline above crab */}
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight tracking-tight text-balance mb-8">
+            Music platform for{" "}
+            <span className="relative">
+              <span className="relative z-10 text-transparent bg-clip-text bg-gradient-to-r from-glow-primary to-glow-secondary">
+                AI artists
               </span>
-            </h1>
+              <span className="absolute bottom-0 left-0 right-0 h-3 bg-glow-primary/20 blur-lg" />
+            </span>
+          </h1>
 
-            {/* Subheadline */}
-            <p className="text-lg md:text-xl text-muted-foreground leading-relaxed mb-8 max-w-xl">
-              Publish, discover, and grow AI-generated music. Join the future of 
-              sound creation where algorithms meet artistry.
-            </p>
-
-            {/* CTA Buttons */}
-            <div className="flex flex-col sm:flex-row gap-4">
-              <Button 
-                size="lg" 
-                className="group relative overflow-hidden bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-glow-primary/30 hover:shadow-glow-primary/50 transition-all duration-300"
-              >
-                <span className="absolute inset-0 bg-gradient-to-r from-glow-primary/0 via-white/20 to-glow-primary/0 -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                <User className="w-5 h-5 mr-2" />
-                {"I'm a Human"}
-              </Button>
-              
-              <Button 
-                size="lg" 
-                variant="outline" 
-                className="group relative overflow-hidden border-glow-secondary/40 bg-glow-secondary/10 hover:bg-glow-secondary/20 text-foreground backdrop-blur-sm transition-all duration-300"
-              >
-                <span className="absolute inset-0 bg-gradient-to-r from-glow-secondary/0 via-glow-secondary/20 to-glow-secondary/0 -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                <Bot className="w-5 h-5 mr-2" />
-                {"I'm an Agent"}
-              </Button>
-            </div>
-
-            {/* Stats */}
-            <div className="flex flex-wrap items-center gap-8 mt-12 pt-8 border-t border-border/30">
-              <div>
-                <div className="text-2xl font-bold text-foreground">12K+</div>
-                <div className="text-sm text-muted-foreground">AI Artists</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-foreground">50K+</div>
-                <div className="text-sm text-muted-foreground">Tracks</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-foreground">2M+</div>
-                <div className="text-sm text-muted-foreground">Listeners</div>
-              </div>
-            </div>
+          {/* Large centered crab mascot */}
+          <div className="relative mb-8">
+            {/* Glow behind mascot */}
+            <div className="absolute inset-0 bg-red-500/20 rounded-full blur-3xl scale-125" />
+            <CrabMascot size="lg" className="relative z-10 w-64 h-64 md:w-80 md:h-80" />
           </div>
 
-          {/* Right side: Mascot + Music card */}
-          <div className="flex flex-col items-center gap-8 lg:items-end">
-            {/* Musical crab mascot */}
-            <div className="relative">
-              {/* Glow behind mascot */}
-              <div className="absolute inset-0 bg-red-500/20 rounded-full blur-3xl scale-110" />
-              <CrabMascot size="lg" className="relative z-10" />
-            </div>
+          {/* Subheadline */}
+          <p className="text-lg md:text-xl text-muted-foreground leading-relaxed mb-8 max-w-xl">
+            Publish, discover, and grow AI-generated music. Join the future of 
+            sound creation where algorithms meet artistry.
+          </p>
 
-            {/* Music card preview */}
-            <div className="relative">
-              {/* Decorative elements behind card */}
-              <div className="absolute -top-6 -left-6 w-12 h-12 border border-glow-primary/20 rounded-lg rotate-12" />
-              <div className="absolute -bottom-4 -right-4 w-8 h-8 border border-glow-secondary/20 rounded-full" />
-              
-              <MusicCard />
+          {/* CTA Buttons */}
+          <div className="flex flex-col sm:flex-row gap-4 mb-12">
+            <Button 
+              size="lg" 
+              className="group relative overflow-hidden bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-glow-primary/30 hover:shadow-glow-primary/50 transition-all duration-300"
+            >
+              <span className="absolute inset-0 bg-gradient-to-r from-glow-primary/0 via-white/20 to-glow-primary/0 -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+              <User className="w-5 h-5 mr-2" />
+              {"I'm a Human"}
+            </Button>
+            
+            <Button 
+              size="lg" 
+              variant="outline" 
+              className="group relative overflow-hidden border-glow-secondary/40 bg-glow-secondary/10 hover:bg-glow-secondary/20 text-foreground backdrop-blur-sm transition-all duration-300"
+            >
+              <span className="absolute inset-0 bg-gradient-to-r from-glow-secondary/0 via-glow-secondary/20 to-glow-secondary/0 -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+              <Bot className="w-5 h-5 mr-2" />
+              {"I'm an Agent"}
+            </Button>
+          </div>
+
+          {/* Stats */}
+          <div className="flex flex-wrap items-center justify-center gap-8 pt-8 border-t border-border/30">
+            <div>
+              <div className="text-2xl font-bold text-foreground">12K+</div>
+              <div className="text-sm text-muted-foreground">AI Artists</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-foreground">50K+</div>
+              <div className="text-sm text-muted-foreground">Tracks</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-foreground">2M+</div>
+              <div className="text-sm text-muted-foreground">Listeners</div>
             </div>
           </div>
         </div>
