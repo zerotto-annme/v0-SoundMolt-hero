@@ -2,21 +2,69 @@
 
 import { useAuth } from "@/components/auth-context"
 import { Sidebar } from "@/components/sidebar"
-import { Music, Plus, Play, MoreHorizontal, Edit2, Trash2 } from "lucide-react"
+import { 
+  Music, Plus, Play, MoreHorizontal, Edit2, Trash2, Heart, 
+  BarChart3, Globe, Pause, X, Check
+} from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
-import { usePlayer } from "@/components/player-context"
+import { usePlayer, type Track } from "@/components/player-context"
 import { CreateTrackModal } from "@/components/create-track-modal"
 import { Button } from "@/components/ui/button"
 import Image from "next/image"
 import { formatPlays } from "@/lib/seed-tracks"
+
+interface TrackActionsMenuProps {
+  track: Track
+  onEdit: () => void
+  onDelete: () => void
+  onPublish: () => void
+  isOpen: boolean
+  onClose: () => void
+}
+
+function TrackActionsMenu({ track, onEdit, onDelete, onPublish, isOpen, onClose }: TrackActionsMenuProps) {
+  if (!isOpen) return null
+  
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div className="absolute right-0 top-full mt-1 w-48 bg-[#1a1a1c] border border-white/10 rounded-xl shadow-xl z-50 overflow-hidden">
+        <button 
+          onClick={onEdit}
+          className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors"
+        >
+          <Edit2 className="w-4 h-4" />
+          Edit Track
+        </button>
+        <button 
+          onClick={onPublish}
+          className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors"
+        >
+          <Globe className="w-4 h-4" />
+          Publish
+        </button>
+        <button 
+          onClick={onDelete}
+          className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+        >
+          <Trash2 className="w-4 h-4" />
+          Delete
+        </button>
+      </div>
+    </>
+  )
+}
 
 export default function MyTracksPage() {
   const { user, isAuthenticated } = useAuth()
   const router = useRouter()
   const [isHydrated, setIsHydrated] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
-  const { createdTracks, playTrack } = usePlayer()
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null)
+  const [likedTracks, setLikedTracks] = useState<Set<string>>(new Set())
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const { createdTracks, playTrack, currentTrack, isPlaying, togglePlay, removeCreatedTrack } = usePlayer()
 
   useEffect(() => {
     setIsHydrated(true)
@@ -40,6 +88,35 @@ export default function MyTracksPage() {
     )
   }
 
+  const handleLike = (trackId: string) => {
+    setLikedTracks(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(trackId)) {
+        newSet.delete(trackId)
+      } else {
+        newSet.add(trackId)
+      }
+      return newSet
+    })
+  }
+
+  const handlePlayPause = (track: Track) => {
+    if (currentTrack?.id === track.id) {
+      togglePlay()
+    } else {
+      playTrack(track)
+    }
+  }
+
+  const handleDelete = (trackId: string) => {
+    removeCreatedTrack(trackId)
+    setDeleteConfirmId(null)
+    setActiveMenuId(null)
+  }
+
+  const totalPlays = createdTracks.reduce((sum, track) => sum + (track.plays || 0), 0)
+  const totalLikes = likedTracks.size
+
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
@@ -57,7 +134,9 @@ export default function MyTracksPage() {
               <div>
                 <p className="text-sm text-white/50 mb-1">Your Collection</p>
                 <h1 className="text-4xl font-bold text-white">My Tracks</h1>
-                <p className="text-white/50 text-sm mt-2">{createdTracks.length} tracks created</p>
+                <p className="text-white/50 text-sm mt-2">
+                  {createdTracks.length} tracks | {formatPlays(totalPlays)} plays
+                </p>
               </div>
             </div>
             
@@ -76,58 +155,158 @@ export default function MyTracksPage() {
           {createdTracks.length > 0 ? (
             <div className="space-y-2">
               {/* Table Header */}
-              <div className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-4 px-4 py-2 text-xs text-white/40 uppercase tracking-wider border-b border-border/30">
+              <div className="grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-4 px-4 py-2 text-xs text-white/40 uppercase tracking-wider border-b border-border/30">
                 <div className="w-12">#</div>
                 <div>Title</div>
-                <div className="w-24 text-right">Plays</div>
-                <div className="w-24 text-right">Likes</div>
-                <div className="w-12"></div>
+                <div className="w-20 text-right">Plays</div>
+                <div className="w-20 text-right">Likes</div>
+                <div className="w-20 text-right">Stats</div>
+                <div className="w-24"></div>
               </div>
               
               {/* Track List */}
-              {createdTracks.map((track, index) => (
-                <div 
-                  key={track.id}
-                  className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-4 items-center px-4 py-3 rounded-lg hover:bg-white/5 transition-colors group"
-                >
-                  <div className="w-12 text-white/40 text-sm group-hover:hidden">{index + 1}</div>
-                  <button 
-                    onClick={() => playTrack(track)}
-                    className="w-12 hidden group-hover:flex items-center justify-center"
+              {createdTracks.map((track, index) => {
+                const isCurrentPlaying = currentTrack?.id === track.id && isPlaying
+                const isLiked = likedTracks.has(track.id)
+                const isDeleting = deleteConfirmId === track.id
+
+                return (
+                  <div 
+                    key={track.id}
+                    className={`grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-4 items-center px-4 py-3 rounded-lg transition-colors group ${
+                      isCurrentPlaying ? "bg-glow-primary/10" : "hover:bg-white/5"
+                    }`}
                   >
-                    <Play className="w-4 h-4 text-white fill-current" />
-                  </button>
-                  
-                  <div className="flex items-center gap-3">
-                    <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-white/5">
-                      <Image
-                        src={track.coverArt}
-                        alt={track.title}
-                        fill
-                        className="object-cover"
-                      />
+                    {/* Track number / Play button */}
+                    <div className="w-12">
+                      <span className="text-white/40 text-sm group-hover:hidden">
+                        {index + 1}
+                      </span>
+                      <button 
+                        onClick={() => handlePlayPause(track)}
+                        className="hidden group-hover:flex items-center justify-center w-8 h-8 rounded-full bg-glow-primary/20 hover:bg-glow-primary/30 transition-colors"
+                      >
+                        {isCurrentPlaying ? (
+                          <Pause className="w-4 h-4 text-glow-primary fill-current" />
+                        ) : (
+                          <Play className="w-4 h-4 text-glow-primary fill-current ml-0.5" />
+                        )}
+                      </button>
                     </div>
-                    <div>
-                      <p className="font-medium text-white">{track.title}</p>
-                      <p className="text-sm text-white/50">{track.style}</p>
+                    
+                    {/* Track info */}
+                    <div className="flex items-center gap-3">
+                      <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-white/5 flex-shrink-0">
+                        {track.coverArt ? (
+                          <Image
+                            src={track.coverArt}
+                            alt={track.title}
+                            fill
+                            className="object-cover"
+                          />
+                        ) : track.coverUrl ? (
+                          <Image
+                            src={track.coverUrl}
+                            alt={track.title}
+                            fill
+                            className="object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Music className="w-5 h-5 text-white/30" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className={`font-medium truncate ${isCurrentPlaying ? "text-glow-primary" : "text-white"}`}>
+                          {track.title}
+                        </p>
+                        <p className="text-sm text-white/50 truncate">
+                          {track.style || track.agentLabel || "AI Generated"}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {/* Plays */}
+                    <div className="w-20 text-right text-sm text-white/50">
+                      {formatPlays(track.plays || 0)}
+                    </div>
+                    
+                    {/* Likes */}
+                    <div className="w-20 text-right text-sm text-white/50">
+                      {track.likes || 0}
+                    </div>
+                    
+                    {/* Stats button */}
+                    <div className="w-20 flex justify-end">
+                      <button className="p-2 rounded-lg hover:bg-white/10 text-white/40 hover:text-white opacity-0 group-hover:opacity-100 transition-all">
+                        <BarChart3 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    
+                    {/* Actions */}
+                    <div className="w-24 flex justify-end items-center gap-1">
+                      {/* Like button */}
+                      <button 
+                        onClick={() => handleLike(track.id)}
+                        className={`p-2 rounded-lg transition-all ${
+                          isLiked 
+                            ? "text-pink-400 bg-pink-500/10" 
+                            : "text-white/40 hover:text-white opacity-0 group-hover:opacity-100 hover:bg-white/10"
+                        }`}
+                      >
+                        <Heart className={`w-4 h-4 ${isLiked ? "fill-current" : ""}`} />
+                      </button>
+                      
+                      {/* Delete confirmation */}
+                      {isDeleting ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleDelete(track.id)}
+                            className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+                          >
+                            <Check className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirmId(null)}
+                            className="p-2 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        /* More options */
+                        <div className="relative">
+                          <button 
+                            onClick={() => setActiveMenuId(activeMenuId === track.id ? null : track.id)}
+                            className="p-2 rounded-lg hover:bg-white/10 text-white/40 hover:text-white opacity-0 group-hover:opacity-100 transition-all"
+                          >
+                            <MoreHorizontal className="w-4 h-4" />
+                          </button>
+                          
+                          <TrackActionsMenu
+                            track={track}
+                            isOpen={activeMenuId === track.id}
+                            onClose={() => setActiveMenuId(null)}
+                            onEdit={() => {
+                              setActiveMenuId(null)
+                              // Edit functionality would go here
+                            }}
+                            onDelete={() => {
+                              setActiveMenuId(null)
+                              setDeleteConfirmId(track.id)
+                            }}
+                            onPublish={() => {
+                              setActiveMenuId(null)
+                              // Publish functionality would go here
+                            }}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
-                  
-                  <div className="w-24 text-right text-sm text-white/50">
-                    {formatPlays(track.plays)}
-                  </div>
-                  
-                  <div className="w-24 text-right text-sm text-white/50">
-                    {track.likes}
-                  </div>
-                  
-                  <div className="w-12 flex justify-end">
-                    <button className="p-2 rounded-full hover:bg-white/10 text-white/40 hover:text-white opacity-0 group-hover:opacity-100 transition-all">
-                      <MoreHorizontal className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <div className="py-20 text-center">

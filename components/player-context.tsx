@@ -11,8 +11,11 @@ export interface Track {
   modelType: string
   modelProvider: string
   coverUrl: string
+  coverArt?: string
   duration?: number
   plays?: number
+  likes?: number
+  style?: string
   audioUrl?: string
   createdAt?: number
 }
@@ -57,6 +60,7 @@ interface PlayerContextType extends PlayerState {
   setVolume: (volume: number) => void
   addToQueue: (track: Track) => void
   addCreatedTrack: (track: Track) => void
+  removeCreatedTrack: (trackId: string) => void
   audioRef: React.RefObject<HTMLAudioElement | null>
 }
 
@@ -309,6 +313,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
+  const removeCreatedTrack = useCallback((trackId: string) => {
+    setState((prev) => ({
+      ...prev,
+      createdTracks: prev.createdTracks.filter(track => track.id !== trackId),
+    }))
+  }, [])
+
   return (
     <PlayerContext.Provider
       value={{
@@ -321,6 +332,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setVolume,
         addToQueue,
         addCreatedTrack,
+        removeCreatedTrack,
         audioRef,
       }}
     >
