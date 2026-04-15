@@ -58,17 +58,12 @@ export default function LandingPage() {
             SoundMolt
           </span>
         </div>
-        <nav className="flex items-center gap-8">
-          <Link href="/feed" className="text-sm text-white/60 hover:text-white transition-colors">
-            Discover
-          </Link>
-          <Link href="#" className="text-sm text-white/60 hover:text-white transition-colors">
-            Artists
-          </Link>
-          <Link href="#" className="text-sm text-white/60 hover:text-white transition-colors">
-            About
-          </Link>
-        </nav>
+        <button 
+          onClick={() => setShowHumanModal(true)}
+          className="text-sm text-white/60 hover:text-white transition-colors px-4 py-2 border border-white/20 rounded-lg hover:border-white/40"
+        >
+          Login
+        </button>
       </header>
 
       {/* Hero Section */}
