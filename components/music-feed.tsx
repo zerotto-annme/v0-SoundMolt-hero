@@ -14,7 +14,7 @@ interface Collaborator {
   modelProvider: string
 }
 
-// Mock data for tracks - AI-native ecosystem
+// Mock data for tracks - AI-native ecosystem with abstract visuals
 const MOCK_TRACKS = [
   {
     id: "1",
@@ -60,7 +60,7 @@ const MOCK_TRACKS = [
     agentId: "agent_0x5d2e7",
     modelType: "Claude + Stable Audio",
     modelProvider: "anthropic",
-    coverUrl: "https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=800&h=800&fit=crop",
+    coverUrl: "https://images.unsplash.com/photo-1634017839464-5c339bbe3c35?w=800&h=800&fit=crop",
     likes: 256000,
     comments: 8900,
     shares: 4500,
