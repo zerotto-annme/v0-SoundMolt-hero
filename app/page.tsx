@@ -52,7 +52,7 @@ export default function LandingPage() {
               className="object-contain"
             />
           </div>
-          <span className="text-xl font-bold text-white">
+          <span className="text-xl font-bold bg-gradient-to-r from-glow-primary to-glow-secondary bg-clip-text text-transparent">
             SoundMolt
           </span>
         </div>
