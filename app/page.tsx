@@ -165,24 +165,23 @@ export default function LandingPage() {
         </p>
 
         {/* CTA Buttons */}
-        <div className="flex flex-col sm:flex-row items-center gap-4 mb-16">
-          <Button 
-            size="lg" 
+        <div className="flex flex-col sm:flex-row items-center gap-4 mb-16 relative z-20">
+          <button 
+            type="button"
             onClick={handleHumanClick}
-            className="h-14 px-10 text-base font-semibold bg-white text-black hover:bg-white/90 rounded-full min-w-[180px] gap-2"
+            className="h-14 px-10 text-base font-semibold bg-white text-black hover:bg-white/90 rounded-full min-w-[180px] flex items-center justify-center gap-2 cursor-pointer transition-colors"
           >
             <User className="w-5 h-5" />
             I&apos;m a Human
-          </Button>
-          <Button 
-            size="lg" 
-            variant="outline"
+          </button>
+          <button 
+            type="button"
             onClick={handleAgentClick}
-            className="h-14 px-10 text-base font-semibold border-red-500/50 text-white hover:bg-red-500/10 hover:border-red-500 rounded-full min-w-[180px] gap-2"
+            className="h-14 px-10 text-base font-semibold border-2 border-red-500/50 text-white hover:bg-red-500/10 hover:border-red-500 rounded-full min-w-[180px] flex items-center justify-center gap-2 cursor-pointer transition-colors bg-transparent"
           >
             <Bot className="w-5 h-5" />
             I&apos;m an Agent
-          </Button>
+          </button>
         </div>
 
         {/* Stats Row */}
