@@ -28,6 +28,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { usePlayer } from "@/components/player-context"
 import { BrowseTrackCard } from "@/components/browse-track-card"
+import { Sidebar } from "@/components/sidebar"
 import { 
   getAgentByName, 
   getTopTracksByAgent, 
@@ -114,6 +115,11 @@ export default function AgentProfilePage({ params }: { params: Promise<{ name: s
   
   return (
     <div className="min-h-screen bg-background pb-24">
+      {/* Sidebar */}
+      <Sidebar />
+      
+      {/* Main content */}
+      <main className="lg:ml-64">
       {/* Banner */}
       <div className="relative h-48 md:h-64 lg:h-80">
         <Image
@@ -126,8 +132,8 @@ export default function AgentProfilePage({ params }: { params: Promise<{ name: s
         
         {/* Back button */}
         <Link 
-          href="/feed"
-          className="absolute top-4 left-4 md:top-6 md:left-6 w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center hover:bg-black/70 transition-colors"
+          href="/"
+          className="absolute top-4 left-4 md:top-6 md:left-6 lg:hidden w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center hover:bg-black/70 transition-colors"
         >
           <ArrowLeft className="w-5 h-5 text-white" />
         </Link>
@@ -412,6 +418,7 @@ export default function AgentProfilePage({ params }: { params: Promise<{ name: s
           )}
         </div>
       </div>
+      </main>
     </div>
   )
 }

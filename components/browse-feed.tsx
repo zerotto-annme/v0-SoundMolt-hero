@@ -1,16 +1,17 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import Image from "next/image"
-import { Search, Home, Compass, Library, Heart, Clock, ChevronRight, TrendingUp, Zap, Sparkles, Bot, Plus, Music, Headphones, Radio, Activity } from "lucide-react"
+import Link from "next/link"
+import { Search, ChevronRight, TrendingUp, Zap, Sparkles, Bot, Music, Headphones, Radio, Activity, Plus } from "lucide-react"
 import { BrowseTrackCard } from "./browse-track-card"
 import { ChartTrackCard } from "./chart-track-card"
+import { Sidebar } from "./sidebar"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { CreateTrackModal } from "./create-track-modal"
 import { usePlayer } from "./player-context"
 import { useActivitySimulation, formatAgentsOnline, formatChartUpdate, getChartPeriod } from "@/hooks/use-activity-simulation"
-import { LiveActivityFeed } from "./live-activity-feed"
 import { 
   RECOMMENDED,
   TRACKS_BY_STYLE,
@@ -32,8 +33,8 @@ const STYLE_CONFIG: Record<StyleType, { label: string; gradient: string; icon: t
 export function BrowseFeed() {
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState<"top10" | "top50" | "top100">("top10")
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [selectedStyle, setSelectedStyle] = useState<StyleType | null>(null)
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const { createdTracks } = usePlayer()
   
   // Dynamic activity simulation
@@ -66,113 +67,11 @@ export function BrowseFeed() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Sidebar */}
-      <aside className="fixed left-0 top-0 bottom-0 w-64 bg-card/50 border-r border-border/50 hidden lg:flex flex-col p-4 z-40">
-        {/* Logo */}
-        <div className="flex items-center gap-3 mb-8 px-2">
-          <div className="relative w-10 h-10">
-            <Image
-              src="/images/crab-logo-v2.png"
-              alt="SoundMolt"
-              fill
-              className="object-contain"
-            />
-          </div>
-          <span className="text-xl font-bold bg-gradient-to-r from-red-500 via-red-400 to-glow-secondary bg-clip-text text-transparent">
-            SoundMolt
-          </span>
-        </div>
-
-        {/* Create button */}
-        <Button
-          onClick={() => setIsCreateModalOpen(true)}
-          className="w-full mb-6 h-11 bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90 text-white font-semibold rounded-xl"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          Create Track
-        </Button>
-
-        {/* Navigation */}
-        <nav className="space-y-1 mb-8">
-          <a href="#" className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/5 text-foreground font-medium">
-            <Home className="w-5 h-5" />
-            Home
-          </a>
-          <a href="#" className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors">
-            <Compass className="w-5 h-5" />
-            Explore
-          </a>
-          <a href="#" className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors">
-            <Library className="w-5 h-5" />
-            Library
-          </a>
-        </nav>
-
-        {/* Genres/Styles */}
-        <div className="border-t border-border/50 pt-4 mb-4">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-3 mb-3">Browse by Style</h3>
-          <nav className="space-y-1">
-            {(Object.keys(STYLE_CONFIG) as StyleType[]).map((style) => {
-              const config = STYLE_CONFIG[style]
-              const IconComponent = config.icon
-              return (
-                <button
-                  key={style}
-                  onClick={() => setSelectedStyle(selectedStyle === style ? null : style)}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    selectedStyle === style 
-                      ? "bg-white/10 text-foreground" 
-                      : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-                  }`}
-                >
-                  <div className={`w-5 h-5 rounded bg-gradient-to-br ${config.gradient} flex items-center justify-center`}>
-                    <IconComponent className="w-3 h-3 text-white" />
-                  </div>
-                  {config.label}
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    {TRACKS_BY_STYLE[style].length}
-                  </span>
-                </button>
-              )
-            })}
-          </nav>
-        </div>
-
-        {/* Your Music */}
-        <div className="border-t border-border/50 pt-4">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-3 mb-3">Your Music</h3>
-          <nav className="space-y-1">
-            <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors text-sm">
-              <Heart className="w-4 h-4" />
-              Liked Tracks
-              <span className="ml-auto text-xs">{Math.floor(Math.random() * 50) + 10}</span>
-            </a>
-            <a href="#" className="flex items-center gap-3 px-3 py-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors text-sm">
-              <Clock className="w-4 h-4" />
-              Recently Played
-            </a>
-          </nav>
-        </div>
-
-        {/* Live Activity Feed */}
-        <div className="border-t border-border/50 pt-4 mt-4">
-          <LiveActivityFeed activities={recentActivity} />
-        </div>
-
-        {/* AI Ecosystem badge */}
-        <div className="mt-auto pt-4 border-t border-border/50">
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-glow-secondary/5 border border-glow-secondary/20">
-            <div className="w-2 h-2 rounded-full bg-glow-secondary animate-pulse" />
-            <span className="text-xs font-mono text-glow-secondary/80">AI MUSIC ECOSYSTEM</span>
-          </div>
-          <div className="mt-2 px-3 text-xs text-muted-foreground">
-            <span className="font-mono">{dynamicTracks.length + createdTracks.length}</span> tracks in library
-          </div>
-        </div>
-      </aside>
+      {/* Shared Sidebar */}
+      <Sidebar />
 
       {/* Main content */}
-      <main className="lg:pl-64">
+      <main className="lg:ml-64 min-h-screen pb-32">
         {/* Header */}
         <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-xl border-b border-border/30 px-4 md:px-8 py-4">
           <div className="flex items-center gap-4">
@@ -522,7 +421,7 @@ export function BrowseFeed() {
         </div>
       </main>
 
-      {/* Create Track Modal */}
+      {/* Mobile Create Track Modal */}
       <CreateTrackModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} />
     </div>
   )
