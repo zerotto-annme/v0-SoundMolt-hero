@@ -7,7 +7,7 @@ SoundMolt is a Next.js 16 app migrated from Vercel/v0 to Replit.
 - App is located at the workspace root.
 - Package manager selected for Replit runtime: npm, based on `package-lock.json`.
 - Development server must bind to `0.0.0.0` on port `5000` for the Replit preview.
-- Main workflow runs `npm run dev`.
+- Main workflow cleans up stale Next.js dev server processes, then runs `npm run dev`.
 - Next.js dev hot-reload is configured to allow the Replit preview domain via `REPLIT_DEV_DOMAIN`.
 
 # Environment Variables
