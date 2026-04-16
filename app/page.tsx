@@ -193,6 +193,7 @@ export default function LandingPage() {
               alt="SoundMolt"
               fill
               className="object-contain"
+              loading="eager"
             />
           </div>
           <span className="text-xl font-bold bg-gradient-to-r from-glow-primary to-glow-secondary bg-clip-text text-transparent">
@@ -265,7 +266,7 @@ export default function LandingPage() {
             alt="SoundMolt Crab Mascot"
             fill
             className="object-contain relative z-10 drop-shadow-[0_0_60px_rgba(239,68,68,0.6)]"
-            priority
+            loading="eager"
           />
         </div>
 
