@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { X, Play, Pause, Heart, Share2, Plus, Sparkles, Clock, Zap, MoreHorizontal, ExternalLink, Copy, Music, Mic, Drum, Sliders, Disc, Layers, SkipBack, SkipForward, Volume2, MessageCircle, Download, Loader2, Upload } from "lucide-react"
+import { X, Play, Pause, Heart, Share2, Plus, Sparkles, Clock, Zap, MoreHorizontal, ExternalLink, Copy, Music, Mic, Drum, Sliders, Disc, Layers, SkipBack, SkipForward, Volume2, MessageCircle, Download, Loader2, Upload, Lock } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { usePlayer } from "./player-context"
@@ -27,6 +27,7 @@ interface TrackDetailModalProps {
     plays?: number
     duration?: number
     sourceType?: "generated" | "uploaded"
+    downloadEnabled?: boolean
   }
   isOpen: boolean
   onClose: () => void
@@ -98,6 +99,7 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
   const [showCopied, setShowCopied] = useState(false)
   const [hoveredMarker, setHoveredMarker] = useState<Comment | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
+  const [showDownloadDisabled, setShowDownloadDisabled] = useState(false)
   const waveformRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const { currentTrack, isPlaying, progress, currentTime, duration, playTrack, togglePlay, seekTo, prevTrack, nextTrack } = usePlayer()
@@ -127,6 +129,13 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
     // Check authentication first
     if (!isAuthenticated) {
       openSignInModal()
+      return
+    }
+
+    // Check if downloads are enabled for this track
+    if (track.downloadEnabled === false) {
+      setShowDownloadDisabled(true)
+      setTimeout(() => setShowDownloadDisabled(false), 3000)
       return
     }
 
@@ -540,23 +549,49 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
               )}
             </button>
 
-            <button 
-              onClick={handleDownload}
-              disabled={isDownloading}
-              className="h-10 px-3 rounded-full border border-border hover:border-glow-secondary/50 hover:bg-glow-secondary/10 flex items-center gap-1.5 text-muted-foreground hover:text-glow-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isDownloading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="text-xs font-medium">Downloading...</span>
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4" />
-                  <span className="text-xs font-medium">Download</span>
-                </>
+            <div className="relative">
+              <button 
+                onClick={handleDownload}
+                disabled={isDownloading}
+                className={`h-10 px-3 rounded-full border flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                  track.downloadEnabled === false
+                    ? "border-border/50 text-muted-foreground/50 hover:border-red-500/30 hover:text-red-400"
+                    : "border-border hover:border-glow-secondary/50 hover:bg-glow-secondary/10 text-muted-foreground hover:text-glow-secondary"
+                }`}
+              >
+                {isDownloading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span className="text-xs font-medium">Downloading...</span>
+                  </>
+                ) : track.downloadEnabled === false ? (
+                  <>
+                    <Lock className="w-4 h-4" />
+                    <span className="text-xs font-medium">Download</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    <span className="text-xs font-medium">Download</span>
+                  </>
+                )}
+              </button>
+              
+              {/* Download disabled tooltip */}
+              {showDownloadDisabled && (
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                  <div className="bg-card border border-red-500/30 rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
+                    <div className="flex items-center gap-2 text-red-400">
+                      <Lock className="w-3.5 h-3.5" />
+                      <span className="text-xs font-medium">Download is disabled by the track owner</span>
+                    </div>
+                  </div>
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px">
+                    <div className="border-4 border-transparent border-t-card"></div>
+                  </div>
+                </div>
               )}
-            </button>
+            </div>
 
             <div className="flex items-center gap-3 ml-auto text-xs text-muted-foreground">
               <span className="flex items-center gap-1">

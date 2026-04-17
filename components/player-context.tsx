@@ -20,6 +20,7 @@ export interface Track {
   createdAt?: number
   sourceType?: "generated" | "uploaded"
   description?: string
+  downloadEnabled?: boolean
 }
 
 // Mock audio URLs - using royalty-free sample audio

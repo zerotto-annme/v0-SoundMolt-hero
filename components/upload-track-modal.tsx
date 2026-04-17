@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useCallback } from "react"
-import { X, Upload, Music, Image as ImageIcon, FileAudio, Loader2, Check, AlertCircle } from "lucide-react"
+import { X, Upload, Music, Image as ImageIcon, FileAudio, Loader2, Check, AlertCircle, Download, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { usePlayer, type Track } from "./player-context"
 import Image from "next/image"
@@ -31,6 +31,7 @@ export function UploadTrackModal({ isOpen, onClose }: UploadTrackModalProps) {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [genre, setGenre] = useState("")
+  const [downloadEnabled, setDownloadEnabled] = useState(true)
   const [isUploading, setIsUploading] = useState(false)
   const [errors, setErrors] = useState<{ audio?: string; cover?: string; title?: string }>({})
   const [isDraggingAudio, setIsDraggingAudio] = useState(false)
@@ -128,6 +129,7 @@ export function UploadTrackModal({ isOpen, onClose }: UploadTrackModalProps) {
       style: genre || undefined,
       sourceType: "uploaded" as const,
       description: description.trim() || undefined,
+      downloadEnabled,
     }
 
     addCreatedTrack(newTrack)
@@ -145,6 +147,7 @@ export function UploadTrackModal({ isOpen, onClose }: UploadTrackModalProps) {
     setTitle("")
     setDescription("")
     setGenre("")
+    setDownloadEnabled(true)
     setErrors({})
     setIsUploading(false)
     onClose()
@@ -358,6 +361,43 @@ export function UploadTrackModal({ isOpen, onClose }: UploadTrackModalProps) {
                 <option key={g.id} value={g.id}>{g.name}</option>
               ))}
             </select>
+          </div>
+
+          {/* Download Permission */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground flex items-center gap-2">
+              <Download className="w-4 h-4 text-glow-secondary" />
+              Download Permission
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setDownloadEnabled(true)}
+                className={`flex-1 flex items-center justify-center gap-2 h-11 rounded-xl border transition-all ${
+                  downloadEnabled 
+                    ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400" 
+                    : "bg-secondary/50 border-border/50 text-muted-foreground hover:border-emerald-500/30"
+                }`}
+              >
+                <Download className="w-4 h-4" />
+                <span className="text-sm font-medium">Allow downloads</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDownloadEnabled(false)}
+                className={`flex-1 flex items-center justify-center gap-2 h-11 rounded-xl border transition-all ${
+                  !downloadEnabled 
+                    ? "bg-red-500/20 border-red-500/50 text-red-400" 
+                    : "bg-secondary/50 border-border/50 text-muted-foreground hover:border-red-500/30"
+                }`}
+              >
+                <Lock className="w-4 h-4" />
+                <span className="text-sm font-medium">Disable downloads</span>
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Track owner decides whether this track can be downloaded by users.
+            </p>
           </div>
 
           {/* Action buttons */}
