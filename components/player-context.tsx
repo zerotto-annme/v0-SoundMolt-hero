@@ -64,6 +64,7 @@ interface PlayerContextType extends PlayerState {
   addToQueue: (track: Track) => void
   addCreatedTrack: (track: Track) => void
   removeCreatedTrack: (trackId: string) => void
+  preloadTrack: (track: Track) => void
   audioRef: React.RefObject<HTMLAudioElement | null>
 }
 
@@ -79,6 +80,8 @@ export function usePlayer() {
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const preloadedTracksRef = useRef<Map<string, string>>(new Map()) // trackId -> audioUrl
+  const currentTrackIdRef = useRef<string | null>(null)
   
   const [state, setState] = useState<PlayerState>({
     currentTrack: null,
@@ -97,6 +100,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (typeof window !== 'undefined' && !audioRef.current) {
       audioRef.current = new Audio()
+      audioRef.current.preload = "auto"
       audioRef.current.volume = state.volume / 100
       
       // Audio event listeners
@@ -179,24 +183,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const playTrack = useCallback((track: Track) => {
     const audioUrl = track.audioUrl || getAudioUrl(track.id)
+    const isSameTrack = currentTrackIdRef.current === track.id
     
+    // Update UI immediately (optimistic)
     setState((prev) => {
       const existingIndex = prev.queue.findIndex((t) => t.id === track.id)
       
-      if (audioRef.current) {
-        audioRef.current.src = audioUrl
-        audioRef.current.play().catch(console.error)
-      }
-
       if (existingIndex >= 0) {
         return {
           ...prev,
           currentTrack: { ...track, audioUrl },
           isPlaying: true,
-          progress: 0,
-          currentTime: 0,
+          progress: isSameTrack ? prev.progress : 0,
+          currentTime: isSameTrack ? prev.currentTime : 0,
           queueIndex: existingIndex,
-          isLoading: true,
+          isLoading: !isSameTrack,
         }
       }
       
@@ -212,6 +213,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         isLoading: true,
       }
     })
+
+    // Handle audio separately (non-blocking)
+    if (audioRef.current) {
+      if (isSameTrack) {
+        // Same track - just play without reloading
+        audioRef.current.play().catch(console.error)
+      } else {
+        // New track - load and play
+        currentTrackIdRef.current = track.id
+        audioRef.current.src = audioUrl
+        audioRef.current.load()
+        audioRef.current.play().catch(console.error)
+      }
+    }
   }, [])
 
   const togglePlay = useCallback(() => {
@@ -323,6 +338,33 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
+  // Preload a track's audio in the background for instant playback
+  const preloadTrack = useCallback((track: Track) => {
+    const audioUrl = track.audioUrl || getAudioUrl(track.id)
+    
+    // Skip if already preloaded or currently playing
+    if (preloadedTracksRef.current.has(track.id) || currentTrackIdRef.current === track.id) {
+      return
+    }
+
+    // Create a temporary audio element for preloading
+    const preloadAudio = new Audio()
+    preloadAudio.preload = "auto"
+    preloadAudio.src = audioUrl
+    preloadAudio.load()
+    
+    // Store in cache
+    preloadedTracksRef.current.set(track.id, audioUrl)
+    
+    // Clean up old preloaded tracks (keep max 5)
+    if (preloadedTracksRef.current.size > 5) {
+      const firstKey = preloadedTracksRef.current.keys().next().value
+      if (firstKey) {
+        preloadedTracksRef.current.delete(firstKey)
+      }
+    }
+  }, [])
+
   return (
     <PlayerContext.Provider
       value={{
@@ -336,6 +378,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         addToQueue,
         addCreatedTrack,
         removeCreatedTrack,
+        preloadTrack,
         audioRef,
       }}
     >

@@ -68,18 +68,28 @@ const MODEL_COLORS: Record<string, string> = {
 export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrackCardProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const { currentTrack, isPlaying, playTrack, togglePlay } = usePlayer()
+  const [isButtonPressed, setIsButtonPressed] = useState(false)
+  const { currentTrack, isPlaying, playTrack, togglePlay, preloadTrack } = usePlayer()
 
   const isCurrentTrack = currentTrack?.id === track.id
   const isTrackPlaying = isCurrentTrack && isPlaying
 
   const handlePlay = (e: React.MouseEvent) => {
     e.stopPropagation()
+    setIsButtonPressed(true)
+    setTimeout(() => setIsButtonPressed(false), 150)
+    
     if (isCurrentTrack) {
       togglePlay()
     } else {
       playTrack(track)
     }
+  }
+
+  const handleMouseEnter = () => {
+    setIsHovered(true)
+    // Preload audio when hovering over track
+    preloadTrack(track)
   }
 
   const handleCardClick = () => {
@@ -109,7 +119,7 @@ export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrack
         <TrackDetailModal track={track} isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
         <div
           className={`group flex items-center gap-4 p-2 rounded-lg hover:bg-white/8 transition-all duration-300 cursor-pointer ${isCurrentTrack ? "bg-glow-primary/10" : ""}`}
-          onMouseEnter={() => setIsHovered(true)}
+          onMouseEnter={handleMouseEnter}
           onMouseLeave={() => setIsHovered(false)}
           onClick={handleCardClick}
           onDoubleClick={handleDoubleClick}
@@ -196,7 +206,7 @@ export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrack
         <TrackDetailModal track={track} isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
         <div
           className={`group flex flex-col gap-2 p-2 rounded-lg hover:bg-white/8 transition-all duration-300 cursor-pointer hover:scale-[1.02] ${isCurrentTrack ? "bg-glow-primary/10" : ""}`}
-          onMouseEnter={() => setIsHovered(true)}
+          onMouseEnter={handleMouseEnter}
           onMouseLeave={() => setIsHovered(false)}
           onClick={handleCardClick}
           onDoubleClick={handleDoubleClick}
@@ -219,14 +229,14 @@ export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrack
           {/* Play button */}
           <button
             onClick={handlePlay}
-            className={`absolute bottom-2 right-2 w-10 h-10 rounded-full bg-glow-primary flex items-center justify-center shadow-lg shadow-glow-primary/30 transition-all duration-300 ${
+            className={`absolute bottom-2 right-2 w-10 h-10 rounded-full bg-glow-primary flex items-center justify-center shadow-lg shadow-glow-primary/30 transition-all duration-200 ${
               isHovered || isTrackPlaying ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
-            }`}
+            } ${isButtonPressed ? "scale-90" : "hover:scale-110 active:scale-95"}`}
           >
             {isTrackPlaying ? (
-              <Pause className="w-4 h-4 text-white" fill="white" />
+              <Pause className={`w-4 h-4 text-white transition-transform duration-150 ${isButtonPressed ? "scale-90" : ""}`} fill="white" />
             ) : (
-              <Play className="w-4 h-4 text-white ml-0.5" fill="white" />
+              <Play className={`w-4 h-4 text-white ml-0.5 transition-transform duration-150 ${isButtonPressed ? "scale-90" : ""}`} fill="white" />
             )}
           </button>
         </div>
@@ -269,7 +279,7 @@ export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrack
       <TrackDetailModal track={track} isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
       <div
         className={`group flex flex-col gap-3 p-3 rounded-xl bg-card/50 hover:bg-card transition-all duration-300 cursor-pointer min-w-[180px] w-[180px] hover:scale-[1.03] hover:shadow-xl hover:shadow-glow-primary/10 ${isCurrentTrack ? "bg-glow-primary/10 ring-1 ring-glow-primary/30" : ""}`}
-        onMouseEnter={() => setIsHovered(true)}
+        onMouseEnter={handleMouseEnter}
         onMouseLeave={() => setIsHovered(false)}
         onClick={handleCardClick}
         onDoubleClick={handleDoubleClick}
@@ -295,14 +305,14 @@ export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrack
         {/* Play button */}
         <button
           onClick={handlePlay}
-          className={`absolute bottom-3 right-3 w-12 h-12 rounded-full bg-glow-primary flex items-center justify-center shadow-xl shadow-glow-primary/40 transition-all duration-300 hover:scale-105 active:scale-95 ${
+          className={`absolute bottom-3 right-3 w-12 h-12 rounded-full bg-glow-primary flex items-center justify-center shadow-xl shadow-glow-primary/40 transition-all duration-200 ${
             isHovered || isTrackPlaying ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
-          }`}
+          } ${isButtonPressed ? "scale-90" : "hover:scale-110 active:scale-95"}`}
         >
           {isTrackPlaying ? (
-            <Pause className="w-5 h-5 text-white" fill="white" />
+            <Pause className={`w-5 h-5 text-white transition-transform duration-150 ${isButtonPressed ? "scale-90" : ""}`} fill="white" />
           ) : (
-            <Play className="w-5 h-5 text-white ml-0.5" fill="white" />
+            <Play className={`w-5 h-5 text-white ml-0.5 transition-transform duration-150 ${isButtonPressed ? "scale-90" : ""}`} fill="white" />
           )}
         </button>
 

@@ -102,13 +102,20 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
   const [showDownloadDisabled, setShowDownloadDisabled] = useState(false)
   const waveformRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
-  const { currentTrack, isPlaying, progress, currentTime, duration, playTrack, togglePlay, seekTo, prevTrack, nextTrack } = usePlayer()
+  const { currentTrack, isPlaying, progress, currentTime, duration, playTrack, togglePlay, seekTo, prevTrack, nextTrack, preloadTrack } = usePlayer()
   const { getTopicByTrackId, createTrackTopic } = useDiscussions()
   const { requireAuth, isAuthenticated, openSignInModal } = useAuth()
   const { getComments } = useTrackComments()
   
   // Get comments for this track
   const trackComments = getComments(track.id)
+
+  // Preload track audio when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      preloadTrack(track)
+    }
+  }, [isOpen, track, preloadTrack])
 
   const handleDiscussTrack = () => {
     requireAuth(() => {
