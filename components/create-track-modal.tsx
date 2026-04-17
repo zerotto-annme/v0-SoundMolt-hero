@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { X, Sparkles, Wand2, Music, Clock, Loader2, Check, Cpu, Waves, Mic, Sliders, Zap, Bot, Activity } from "lucide-react"
+import { X, Sparkles, Wand2, Music, Clock, Loader2, Check, Cpu, Waves, Mic, Sliders, Zap, Bot, Activity, Download, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { usePlayer, type Track } from "./player-context"
 
@@ -90,6 +90,7 @@ export function CreateTrackModal({ isOpen, onClose }: CreateTrackModalProps) {
   const [prompt, setPrompt] = useState("")
   const [selectedStyle, setSelectedStyle] = useState<string | null>(null)
   const [selectedDuration, setSelectedDuration] = useState<string>("60")
+  const [downloadEnabled, setDownloadEnabled] = useState(true)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationStep, setGenerationStep] = useState(0)
   const [generatedTrack, setGeneratedTrack] = useState<Track | null>(null)
@@ -168,18 +169,20 @@ export function CreateTrackModal({ isOpen, onClose }: CreateTrackModalProps) {
     const randomAgent = AGENT_CONFIGS[Math.floor(Math.random() * AGENT_CONFIGS.length)]
     const duration = DURATIONS.find(d => d.id === selectedDuration)?.seconds || 60
 
-    const newTrack: Track = {
-      id: `generated_${Date.now()}`,
-      title: generateTrackTitle(prompt, selectedStyle),
-      agentName: randomAgent.name,
-      agentType: randomAgent.type,
-      agentLabel: randomAgent.label,
-      modelType: randomModel.name,
-      modelProvider: randomModel.provider,
-      coverUrl: randomCover,
-      duration: duration,
-      plays: 0,
-    }
+const newTrack: Track = {
+  id: `generated_${Date.now()}`,
+  title: generateTrackTitle(prompt, selectedStyle),
+  agentName: randomAgent.name,
+  agentType: randomAgent.type,
+  agentLabel: randomAgent.label,
+  modelType: randomModel.name,
+  modelProvider: randomModel.provider,
+  coverUrl: randomCover,
+  duration: duration,
+  plays: 0,
+  sourceType: "generated" as const,
+  downloadEnabled,
+  }
 
     addCreatedTrack(newTrack)
     setGeneratedTrack(newTrack)
@@ -193,16 +196,17 @@ export function CreateTrackModal({ isOpen, onClose }: CreateTrackModalProps) {
     }
   }
 
-  const handleClose = () => {
-    setPrompt("")
-    setSelectedStyle(null)
-    setSelectedDuration("60")
-    setIsGenerating(false)
-    setGenerationStep(0)
-    setProgressPercent(0)
-    setElapsedTime(0)
-    setGeneratedTrack(null)
-    setSelectedModel(null)
+const handleClose = () => {
+  setPrompt("")
+  setSelectedStyle(null)
+  setSelectedDuration("60")
+  setDownloadEnabled(true)
+  setIsGenerating(false)
+  setGenerationStep(0)
+  setProgressPercent(0)
+  setElapsedTime(0)
+  setGeneratedTrack(null)
+  setSelectedModel(null)
     onClose()
   }
 
@@ -391,14 +395,15 @@ export function CreateTrackModal({ isOpen, onClose }: CreateTrackModalProps) {
                   Play Track
                 </Button>
                 <Button
-                  onClick={() => {
-                    setGeneratedTrack(null)
-                    setPrompt("")
-                    setSelectedStyle(null)
-                    setSelectedModel(null)
-                    setProgressPercent(0)
-                    setElapsedTime(0)
-                  }}
+onClick={() => {
+  setGeneratedTrack(null)
+  setPrompt("")
+  setSelectedStyle(null)
+  setSelectedModel(null)
+  setDownloadEnabled(true)
+  setProgressPercent(0)
+  setElapsedTime(0)
+  }}
                   variant="outline"
                   className="h-12 px-5 rounded-xl border-border/50"
                 >
@@ -476,6 +481,40 @@ export function CreateTrackModal({ isOpen, onClose }: CreateTrackModalProps) {
                       <div className="text-sm font-medium text-foreground">{duration.label}</div>
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* Download Permission */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground flex items-center gap-2">
+                  <Download className="w-4 h-4 text-glow-secondary" />
+                  Download Permission
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDownloadEnabled(true)}
+                    className={`flex-1 flex items-center justify-center gap-2 h-10 rounded-xl border transition-all ${
+                      downloadEnabled 
+                        ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400" 
+                        : "bg-secondary/50 border-border/50 text-muted-foreground hover:border-emerald-500/30"
+                    }`}
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span className="text-xs font-medium">Allow</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDownloadEnabled(false)}
+                    className={`flex-1 flex items-center justify-center gap-2 h-10 rounded-xl border transition-all ${
+                      !downloadEnabled 
+                        ? "bg-red-500/20 border-red-500/50 text-red-400" 
+                        : "bg-secondary/50 border-border/50 text-muted-foreground hover:border-red-500/30"
+                    }`}
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    <span className="text-xs font-medium">Disable</span>
+                  </button>
                 </div>
               </div>
 

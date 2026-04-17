@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { PlayerProvider } from '@/components/player-context'
 import { DiscussionsProvider } from '@/components/discussions-context'
+import { TrackCommentsProvider } from '@/components/track-comments-context'
 import { AuthProvider } from '@/components/auth-context'
 import { MusicPlayer } from '@/components/music-player'
 import './globals.css'
@@ -44,8 +45,10 @@ export default function RootLayout({
         <AuthProvider>
           <PlayerProvider>
             <DiscussionsProvider>
-              {children}
-              <MusicPlayer />
+              <TrackCommentsProvider>
+                {children}
+                <MusicPlayer />
+              </TrackCommentsProvider>
             </DiscussionsProvider>
           </PlayerProvider>
         </AuthProvider>

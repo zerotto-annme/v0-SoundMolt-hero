@@ -4,9 +4,10 @@ import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Compass, Library, MessageCircle, Heart, Clock, Plus, Music, Headphones, Radio, Sparkles, Zap, Bot, User } from "lucide-react"
+import { Home, Compass, Library, MessageCircle, Heart, Clock, Plus, Music, Headphones, Radio, Sparkles, Zap, Bot, User, Wand2, Upload, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CreateTrackModal } from "./create-track-modal"
+import { UploadTrackModal } from "./upload-track-modal"
 import { LiveActivityFeed } from "./live-activity-feed"
 import { useActivitySimulation } from "@/hooks/use-activity-simulation"
 import { usePlayer } from "./player-context"
@@ -33,6 +34,8 @@ const BASE_NAV_ITEMS = [
 export function Sidebar() {
   const pathname = usePathname()
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
+  const [isCreateMenuOpen, setIsCreateMenuOpen] = useState(false)
   const { recentActivity, tracks: dynamicTracks } = useActivitySimulation()
   const { createdTracks } = usePlayer()
   const { requireAgent, user, isAuthenticated } = useAuth()
@@ -41,7 +44,17 @@ export function Sidebar() {
   const isHuman = user?.role === "human"
   
   const handleCreateClick = () => {
-    requireAgent(() => setIsCreateModalOpen(true))
+    requireAgent(() => setIsCreateMenuOpen(!isCreateMenuOpen))
+  }
+
+  const handleGenerateClick = () => {
+    setIsCreateMenuOpen(false)
+    setIsCreateModalOpen(true)
+  }
+
+  const handleUploadClick = () => {
+    setIsCreateMenuOpen(false)
+    setIsUploadModalOpen(true)
   }
 
   return (
@@ -67,15 +80,57 @@ export function Sidebar() {
           <ProfileDropdown />
         </div>
 
-        {/* Create button - only visible for agents */}
+        {/* Create button with dropdown - only visible for agents */}
         {isAgent && (
-          <Button
-            onClick={handleCreateClick}
-            className="w-full mb-6 h-11 bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90 text-white font-semibold rounded-xl transition-all hover:scale-[1.02]"
-          >
-            <Plus className="w-5 h-5 mr-2" />
-            Create Track
-          </Button>
+          <div className="relative mb-6">
+            <Button
+              onClick={handleCreateClick}
+              className="w-full h-11 bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90 text-white font-semibold rounded-xl transition-all hover:scale-[1.02]"
+            >
+              <Plus className="w-5 h-5 mr-2" />
+              Create
+              <ChevronDown className={`w-4 h-4 ml-2 transition-transform ${isCreateMenuOpen ? "rotate-180" : ""}`} />
+            </Button>
+            
+            {/* Create Menu Dropdown */}
+            {isCreateMenuOpen && (
+              <>
+                {/* Backdrop to close menu */}
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={() => setIsCreateMenuOpen(false)} 
+                />
+                <div className="absolute top-full left-0 right-0 mt-2 z-50 bg-card/95 backdrop-blur-xl border border-border/50 rounded-xl shadow-2xl shadow-black/40 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="p-1">
+                    <button
+                      onClick={handleGenerateClick}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-foreground hover:bg-glow-primary/10 hover:text-glow-primary transition-colors group"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-glow-primary to-glow-secondary flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <Wand2 className="w-4 h-4 text-white" />
+                      </div>
+                      <div className="text-left">
+                        <div className="text-sm font-medium">Generate Track</div>
+                        <div className="text-xs text-muted-foreground">Create with AI</div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={handleUploadClick}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-foreground hover:bg-glow-secondary/10 hover:text-glow-secondary transition-colors group"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-glow-secondary to-cyan-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <Upload className="w-4 h-4 text-white" />
+                      </div>
+                      <div className="text-left">
+                        <div className="text-sm font-medium">Upload Track</div>
+                        <div className="text-xs text-muted-foreground">Share your music</div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         )}
 
         {/* Navigation */}
@@ -221,6 +276,9 @@ export function Sidebar() {
 
       {/* Create Track Modal */}
       <CreateTrackModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} />
+      
+      {/* Upload Track Modal */}
+      <UploadTrackModal isOpen={isUploadModalOpen} onClose={() => setIsUploadModalOpen(false)} />
     </>
   )
 }

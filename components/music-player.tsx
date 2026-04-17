@@ -134,15 +134,14 @@ export function MusicPlayer() {
             {/* Play/Pause */}
             <button 
               onClick={togglePlay}
-              disabled={isLoading}
-              className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-foreground hover:bg-foreground/90 hover:scale-105 active:scale-95 flex items-center justify-center transition-all shadow-lg disabled:opacity-50"
+              className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-foreground hover:bg-foreground/90 hover:scale-105 active:scale-90 flex items-center justify-center transition-all duration-150 shadow-lg group"
             >
               {isLoading ? (
                 <Loader2 className="w-5 h-5 md:w-6 md:h-6 text-background animate-spin" />
               ) : isPlaying ? (
-                <Pause className="w-5 h-5 md:w-6 md:h-6 text-background" fill="currentColor" />
+                <Pause className="w-5 h-5 md:w-6 md:h-6 text-background transition-transform duration-150 group-active:scale-90" fill="currentColor" />
               ) : (
-                <Play className="w-5 h-5 md:w-6 md:h-6 text-background ml-0.5" fill="currentColor" />
+                <Play className="w-5 h-5 md:w-6 md:h-6 text-background ml-0.5 transition-transform duration-150 group-active:scale-90" fill="currentColor" />
               )}
             </button>
 

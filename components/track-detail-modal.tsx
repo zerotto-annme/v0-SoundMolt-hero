@@ -3,12 +3,14 @@
 import { useState, useEffect, useRef, useMemo } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { X, Play, Pause, Heart, Share2, Plus, Sparkles, Clock, Users, Zap, MoreHorizontal, ExternalLink, Copy, Music, Mic, Drum, Sliders, Disc, Layers, SkipBack, SkipForward, Volume2, MessageCircle } from "lucide-react"
+import { X, Play, Pause, Heart, Share2, Plus, Sparkles, Clock, Zap, MoreHorizontal, ExternalLink, Copy, Music, Mic, Drum, Sliders, Disc, Layers, SkipBack, SkipForward, Volume2, MessageCircle, Download, Loader2, Upload, Lock } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { usePlayer } from "./player-context"
 import { useDiscussions } from "./discussions-context"
 import { useAuth } from "./auth-context"
+import { TrackComments } from "./track-comments"
+import { useTrackComments, type Comment } from "./track-comments-context"
 
 type AgentType = "composer" | "vocalist" | "beatmaker" | "mixer" | "producer" | "arranger"
 
@@ -24,6 +26,8 @@ interface TrackDetailModalProps {
     coverUrl: string
     plays?: number
     duration?: number
+    sourceType?: "generated" | "uploaded"
+    downloadEnabled?: boolean
   }
   isOpen: boolean
   onClose: () => void
@@ -93,11 +97,25 @@ function generateWaveformData(trackId: string, bars: number = 80): number[] {
 export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalProps) {
   const [isLiked, setIsLiked] = useState(false)
   const [showCopied, setShowCopied] = useState(false)
+  const [hoveredMarker, setHoveredMarker] = useState<Comment | null>(null)
+  const [isDownloading, setIsDownloading] = useState(false)
+  const [showDownloadDisabled, setShowDownloadDisabled] = useState(false)
   const waveformRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
-  const { currentTrack, isPlaying, progress, currentTime, duration, playTrack, togglePlay, seekTo, prevTrack, nextTrack } = usePlayer()
+  const { currentTrack, isPlaying, progress, currentTime, duration, playTrack, togglePlay, seekTo, prevTrack, nextTrack, preloadTrack } = usePlayer()
   const { getTopicByTrackId, createTrackTopic } = useDiscussions()
-  const { requireAuth } = useAuth()
+  const { requireAuth, isAuthenticated, openSignInModal } = useAuth()
+  const { getComments } = useTrackComments()
+  
+  // Get comments for this track
+  const trackComments = getComments(track.id)
+
+  // Preload track audio when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      preloadTrack(track)
+    }
+  }, [isOpen, track, preloadTrack])
 
   const handleDiscussTrack = () => {
     requireAuth(() => {
@@ -112,6 +130,44 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
       onClose()
       router.push(`/discussions/${topic.slug}`)
     })
+  }
+
+  const handleDownload = async () => {
+    // Check authentication first
+    if (!isAuthenticated) {
+      openSignInModal()
+      return
+    }
+
+    // Check if downloads are enabled for this track
+    if (track.downloadEnabled === false) {
+      setShowDownloadDisabled(true)
+      setTimeout(() => setShowDownloadDisabled(false), 3000)
+      return
+    }
+
+    setIsDownloading(true)
+    try {
+      const response = await fetch(`/api/download/${track.id}`)
+      if (!response.ok) throw new Error("Download failed")
+      
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      // Format filename: {trackName}_{agentName}_SoundMolt.mp3
+      const safeName = track.title.replace(/[^a-zA-Z0-9]/g, "_")
+      const safeAgent = track.agentName.replace(/[^a-zA-Z0-9]/g, "_")
+      a.download = `${safeName}_${safeAgent}_SoundMolt.mp3`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (error) {
+      console.error("Download error:", error)
+    } finally {
+      setIsDownloading(false)
+    }
   }
 
   const isCurrentTrack = currentTrack?.id === track.id
@@ -145,6 +201,23 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
     const clickX = e.clientX - rect.left
     const percent = (clickX / rect.width) * 100
     seekTo(Math.max(0, Math.min(100, percent)))
+  }
+
+  // Seek to a specific time in seconds (for comments)
+  const handleSeekToTime = (seconds: number) => {
+    if (!isCurrentTrack) {
+      playTrack(track)
+      // Small delay to allow track to start then seek
+      setTimeout(() => {
+        if (displayDuration > 0) {
+          const percent = (seconds / displayDuration) * 100
+          seekTo(Math.max(0, Math.min(100, percent)))
+        }
+      }, 100)
+    } else if (displayDuration > 0) {
+      const percent = (seconds / displayDuration) * 100
+      seekTo(Math.max(0, Math.min(100, percent)))
+    }
   }
 
   const formatTime = (seconds: number) => {
@@ -189,10 +262,19 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
             <X className="w-4 h-4" />
           </button>
 
-          {/* AI badge */}
+          {/* Source badge */}
           <div className="absolute top-4 left-4 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/40 backdrop-blur-sm border border-white/10">
-            <Sparkles className="w-3.5 h-3.5 text-glow-secondary" />
-            <span className="text-xs font-mono text-white/90">AI GENERATED</span>
+            {track.sourceType === "uploaded" ? (
+              <>
+                <Upload className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="text-xs font-mono text-white/90">UPLOADED</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-3.5 h-3.5 text-glow-secondary" />
+                <span className="text-xs font-mono text-white/90">AI GENERATED</span>
+              </>
+            )}
           </div>
         </div>
 
@@ -305,6 +387,66 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                   style={{ left: `${displayProgress}%` }}
                 />
               )}
+
+              {/* Comment markers */}
+              {trackComments.map((comment) => {
+                const markerPosition = displayDuration > 0 
+                  ? (comment.trackTimestamp / displayDuration) * 100 
+                  : 0
+                const isActive = isCurrentTrack && Math.abs(currentTime - comment.trackTimestamp) < 2
+                const isAgent = comment.author.role === "agent"
+                
+                return (
+                  <div
+                    key={comment.id}
+                    className="absolute bottom-0 transform -translate-x-1/2 z-10"
+                    style={{ left: `${markerPosition}%` }}
+                    onMouseEnter={() => setHoveredMarker(comment)}
+                    onMouseLeave={() => setHoveredMarker(null)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleSeekToTime(comment.trackTimestamp)
+                    }}
+                  >
+                    {/* Marker dot */}
+                    <div 
+                      className={`w-2.5 h-2.5 rounded-full cursor-pointer transition-all duration-300 ${
+                        isAgent 
+                          ? "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]" 
+                          : "bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.6)]"
+                      } ${isActive ? "scale-150 animate-pulse" : "hover:scale-125"}`}
+                    />
+                    
+                    {/* Hover tooltip */}
+                    {hoveredMarker?.id === comment.id && (
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-20 animate-in fade-in zoom-in-95 duration-150">
+                        <div className="bg-card border border-border/50 rounded-lg p-2 shadow-xl min-w-[150px] max-w-[200px]">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[10px] font-mono font-semibold text-glow-primary">
+                              {comment.timeLabel}
+                            </span>
+                            <span className={`text-[9px] font-medium px-1 py-0.5 rounded ${
+                              isAgent ? "bg-red-500/20 text-red-400" : "bg-blue-500/20 text-blue-400"
+                            }`}>
+                              {isAgent ? "Agent" : "Human"}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-foreground/90 font-medium truncate">
+                            {comment.author.name}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground line-clamp-2 mt-0.5">
+                            {comment.text}
+                          </p>
+                        </div>
+                        {/* Tooltip arrow */}
+                        <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px">
+                          <div className="border-4 border-transparent border-t-card"></div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
 
             {/* Time display */}
@@ -381,166 +523,144 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
             </div>
           </div>
 
-          {/* Action buttons */}
+          {/* Action buttons with inline stats */}
           <div className="flex items-center gap-3">
             <button
               onClick={handleLike}
-              className={`w-12 h-12 rounded-full border flex items-center justify-center transition-all duration-300 ${
+              className={`h-10 px-3 rounded-full border flex items-center gap-1.5 transition-all duration-300 ${
                 isLiked 
-                  ? "bg-glow-primary/20 border-glow-primary text-glow-primary scale-110" 
+                  ? "bg-glow-primary/20 border-glow-primary text-glow-primary" 
                   : "border-border hover:border-glow-primary/50 text-muted-foreground hover:text-foreground"
               }`}
             >
-              <Heart className={`w-5 h-5 transition-all ${isLiked ? "fill-current scale-110" : ""}`} />
+              <Heart className={`w-4 h-4 transition-all ${isLiked ? "fill-current" : ""}`} />
+              <span className="text-xs font-medium">{Math.floor(Math.random() * 50000)}</span>
             </button>
 
-            <button className="w-12 h-12 rounded-full border border-border hover:border-foreground/30 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
-              <Plus className="w-5 h-5" />
+            <button className="h-10 px-3 rounded-full border border-border hover:border-foreground/30 flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors">
+              <Plus className="w-4 h-4" />
+              <span className="text-xs font-medium">Save</span>
             </button>
 
             <button 
               onClick={handleCopyLink}
-              className="w-12 h-12 rounded-full border border-border hover:border-foreground/30 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors relative"
+              className="h-10 px-3 rounded-full border border-border hover:border-foreground/30 flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
             >
               {showCopied ? (
                 <span className="text-xs text-glow-secondary">Copied!</span>
               ) : (
-                <Share2 className="w-5 h-5" />
+                <>
+                  <Share2 className="w-4 h-4" />
+                  <span className="text-xs font-medium">Share</span>
+                </>
               )}
             </button>
 
-            <button 
-              onClick={handleDiscussTrack}
-              className="flex items-center gap-2 h-12 px-4 rounded-full border border-border hover:border-glow-secondary/50 hover:bg-glow-secondary/10 text-muted-foreground hover:text-glow-secondary transition-colors"
-            >
-              <MessageCircle className="w-5 h-5" />
-              <span className="text-sm font-medium">Discuss</span>
-            </button>
-
-            <button className="w-12 h-12 rounded-full border border-border hover:border-foreground/30 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors ml-auto">
-              <MoreHorizontal className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Stats row */}
-          <div className="flex items-center gap-6 py-4 border-y border-border/50">
-            <div className="flex items-center gap-2">
-              <Zap className="w-4 h-4 text-glow-primary" />
-              <span className="text-sm text-muted-foreground">{formatPlays(track.plays)} plays</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">{formatTime(displayDuration)}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Heart className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">{Math.floor(Math.random() * 50000)}+ likes</span>
-            </div>
-          </div>
-
-          {/* Agent Identity Card */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
-              {track.agentType && (() => {
-                const IconComponent = AGENT_TYPE_ICONS[track.agentType]
-                return <IconComponent className="w-4 h-4 text-glow-secondary" />
-              })()}
-              Agent Identity
-            </h3>
-            
-            <div className="bg-secondary/30 rounded-xl p-4 space-y-4">
-              {/* Agent header */}
-              <div className="flex items-center gap-3 pb-3 border-b border-border/50">
-                {track.agentType ? (
-                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${AGENT_TYPE_COLORS[track.agentType]} flex items-center justify-center ring-2 ring-white/10 shadow-lg`}>
-                    {(() => {
-                      const IconComponent = AGENT_TYPE_ICONS[track.agentType]
-                      return <IconComponent className="w-6 h-6 text-white" />
-                    })()}
-                  </div>
+            <div className="relative">
+              <button 
+                onClick={handleDownload}
+                disabled={isDownloading}
+                className={`h-10 px-3 rounded-full border flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                  track.downloadEnabled === false
+                    ? "border-border/50 text-muted-foreground/50 hover:border-red-500/30 hover:text-red-400"
+                    : "border-border hover:border-glow-secondary/50 hover:bg-glow-secondary/10 text-muted-foreground hover:text-glow-secondary"
+                }`}
+              >
+                {isDownloading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span className="text-xs font-medium">Downloading...</span>
+                  </>
+                ) : track.downloadEnabled === false ? (
+                  <>
+                    <Lock className="w-4 h-4" />
+                    <span className="text-xs font-medium">Download</span>
+                  </>
                 ) : (
-                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${MODEL_COLORS[track.modelProvider] || "from-gray-500 to-gray-700"} flex items-center justify-center`}>
-                    <Music className="w-6 h-6 text-white" />
-                  </div>
+                  <>
+                    <Download className="w-4 h-4" />
+                    <span className="text-xs font-medium">Download</span>
+                  </>
                 )}
-                <div>
-                  <Link 
-                        href={`/agent/${encodeURIComponent(track.agentName)}`}
-                        onClick={onClose}
-                        className="font-semibold text-foreground hover:text-glow-primary hover:underline transition-colors"
-                      >
-                        {track.agentName}
-                      </Link>
-                  <div className="flex items-center gap-2 mt-1">
-                    {track.agentLabel && (
-                      <span className={`text-xs px-2 py-0.5 rounded border ${track.agentType ? AGENT_TYPE_BG[track.agentType] : "bg-glow-secondary/10 text-glow-secondary border-glow-secondary/20"}`}>
-                        {track.agentLabel}
-                      </span>
-                    )}
-                    <span className="text-xs text-muted-foreground">v2.4.1</span>
+              </button>
+              
+              {/* Download disabled tooltip */}
+              {showDownloadDisabled && (
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                  <div className="bg-card border border-red-500/30 rounded-lg px-3 py-2 shadow-xl whitespace-nowrap">
+                    <div className="flex items-center gap-2 text-red-400">
+                      <Lock className="w-3.5 h-3.5" />
+                      <span className="text-xs font-medium">Download is disabled by the track owner</span>
+                    </div>
+                  </div>
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px">
+                    <div className="border-4 border-transparent border-t-card"></div>
                   </div>
                 </div>
-              </div>
+              )}
+            </div>
 
-              {/* Agent stats */}
-              <div className="grid grid-cols-3 gap-3 text-center">
-                <div className="bg-background/50 rounded-lg p-2">
-                  <div className="text-lg font-bold text-foreground">{Math.floor(Math.random() * 500) + 50}</div>
-                  <div className="text-[10px] text-muted-foreground uppercase">Tracks</div>
-                </div>
-                <div className="bg-background/50 rounded-lg p-2">
-                  <div className="text-lg font-bold text-foreground">{(Math.random() * 10 + 1).toFixed(1)}M</div>
-                  <div className="text-[10px] text-muted-foreground uppercase">Total Plays</div>
-                </div>
-                <div className="bg-background/50 rounded-lg p-2">
-                  <div className="text-lg font-bold text-foreground">{Math.floor(Math.random() * 50000) + 1000}</div>
-                  <div className="text-[10px] text-muted-foreground uppercase">Followers</div>
-                </div>
-              </div>
+            <div className="flex items-center gap-3 ml-auto text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Zap className="w-3 h-3 text-glow-primary" />
+                {formatPlays(track.plays)}
+              </span>
+              <span>{formatTime(displayDuration)}</span>
+            </div>
+          </div>
 
-              {/* Technical details */}
-              <div className="space-y-2 font-mono text-sm pt-2 border-t border-border/50">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Agent ID</span>
-                  <span className="text-foreground">agent_0x{Math.random().toString(16).slice(2, 8)}</span>
+          {/* COMMENTS SECTION - Immediately visible */}
+          <div className="mt-2">
+            <TrackComments 
+              trackId={track.id} 
+              trackAgentName={track.agentName} 
+              onSeekTo={handleSeekToTime}
+            />
+          </div>
+
+          {/* Agent Identity - Compact inline card */}
+          <div className="mt-6 pt-4 border-t border-border/30">
+            <Link 
+              href={`/agent/${encodeURIComponent(track.agentName)}`}
+              onClick={onClose}
+              className="flex items-center gap-3 p-3 rounded-xl bg-secondary/20 hover:bg-secondary/30 transition-colors group"
+            >
+              {track.agentType ? (
+                <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${AGENT_TYPE_COLORS[track.agentType]} flex items-center justify-center`}>
+                  {(() => {
+                    const IconComponent = AGENT_TYPE_ICONS[track.agentType]
+                    return <IconComponent className="w-5 h-5 text-white" />
+                  })()}
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Model</span>
-                  <span className={`px-2 py-0.5 rounded border ${MODEL_BADGES[track.modelProvider] || "bg-gray-500/20 text-gray-300 border-gray-500/30"}`}>
+              ) : (
+                <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${MODEL_COLORS[track.modelProvider] || "from-gray-500 to-gray-700"} flex items-center justify-center`}>
+                  <Music className="w-5 h-5 text-white" />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-foreground group-hover:text-glow-primary transition-colors truncate">
+                    {track.agentName}
+                  </span>
+                  {track.agentLabel && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded border ${track.agentType ? AGENT_TYPE_BG[track.agentType] : "bg-glow-secondary/10 text-glow-secondary border-glow-secondary/20"}`}>
+                      {track.agentLabel}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                  <span>{Math.floor(Math.random() * 500) + 50} tracks</span>
+                  <span>{(Math.random() * 10 + 1).toFixed(1)}M plays</span>
+                  <span className={`px-1.5 py-0.5 rounded ${MODEL_BADGES[track.modelProvider] || "bg-gray-500/20 text-gray-300"}`}>
                     {track.modelType}
                   </span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Inference</span>
-                  <span className="text-foreground">{(Math.random() * 20 + 5).toFixed(1)}s</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Prompt Hash</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-foreground">0x{Math.random().toString(16).slice(2, 10)}...</span>
-                    <button className="text-glow-secondary hover:text-glow-secondary/80">
-                      <Copy className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
               </div>
-            </div>
+              <ExternalLink className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors flex-shrink-0" />
+            </Link>
           </div>
 
-          {/* Similar tracks hint */}
-          <div className="pt-4 border-t border-border/50">
-            <button className="w-full flex items-center justify-between p-4 rounded-xl bg-secondary/20 hover:bg-secondary/30 transition-colors group">
-              <div className="flex items-center gap-3">
-                <Users className="w-5 h-5 text-glow-secondary" />
-                <div className="text-left">
-                  <div className="text-sm font-medium text-foreground">More from {track.agentName}</div>
-                  <div className="text-xs text-muted-foreground">View agent profile and more tracks</div>
-                </div>
-              </div>
-              <ExternalLink className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-            </button>
           </div>
-        </div>
       </div>
     </>
   )
