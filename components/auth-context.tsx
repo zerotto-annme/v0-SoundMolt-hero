@@ -5,7 +5,7 @@ import { X, User, Bot, Lock, Music, Loader2, Mail, AlertCircle } from "lucide-re
 import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { createClient } from "@/lib/supabase/client"
+import { createClient, isSupabaseConfigured } from "@/lib/supabase/client"
 import type { User as SupabaseUser } from "@supabase/supabase-js"
 
 export type UserRole = "guest" | "human" | "agent"
@@ -120,36 +120,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [showSignInModal, setShowSignInModal] = useState(false)
   const [showAgentOnlyModal, setShowAgentOnlyModal] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [isHydrated, setIsHydrated] = useState(false)
   const router = useRouter()
   const supabase = createClient()
+  const supabaseEnabled = isSupabaseConfigured() && supabase !== null
 
-  // Initialize auth state from Supabase session
+  // Initialize auth state - use Supabase if configured, otherwise use localStorage
   useEffect(() => {
     const initAuth = async () => {
-      try {
-        const { data: { user: supabaseUser } } = await supabase.auth.getUser()
-        
-        if (supabaseUser) {
-          // Fetch profile from database
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", supabaseUser.id)
-            .single()
+      if (supabaseEnabled && supabase) {
+        // Supabase mode
+        try {
+          const { data: { user: supabaseUser } } = await supabase.auth.getUser()
+          
+          if (supabaseUser) {
+            // Fetch profile from database
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("*")
+              .eq("id", supabaseUser.id)
+              .single()
 
-          const userProfile = mapSupabaseUserToProfile(supabaseUser, profile)
-          setState({ user: userProfile, isAuthenticated: true })
+            const userProfile = mapSupabaseUserToProfile(supabaseUser, profile)
+            setState({ user: userProfile, isAuthenticated: true })
+          }
+        } catch (error) {
+          console.error("[v0] Auth init error:", error)
         }
-      } catch (error) {
-        console.error("[v0] Auth init error:", error)
-      } finally {
-        setIsLoading(false)
+      } else {
+        // Demo mode - restore from localStorage
+        try {
+          const stored = localStorage.getItem(STORAGE_KEY)
+          if (stored) {
+            const user = JSON.parse(stored) as UserProfile
+            setState({ user, isAuthenticated: true })
+          }
+        } catch {
+          localStorage.removeItem(STORAGE_KEY)
+        }
       }
+      setIsLoading(false)
+      setIsHydrated(true)
     }
 
     initAuth()
 
-    // Listen for auth state changes
+    // Listen for auth state changes (Supabase only)
+    if (!supabaseEnabled || !supabase) {
+      return // No cleanup needed for demo mode
+    }
+    
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === "SIGNED_IN" && session?.user) {
         const { data: profile } = await supabase
@@ -168,10 +188,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       subscription.unsubscribe()
     }
-  }, [supabase])
+  }, [supabase, supabaseEnabled])
+
+  // Persist demo mode user to localStorage
+  useEffect(() => {
+    if (!isHydrated || supabaseEnabled) return
+    
+    if (state.user) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.user))
+    } else {
+      localStorage.removeItem(STORAGE_KEY)
+    }
+  }, [state.user, isHydrated, supabaseEnabled])
 
   // Sign up with Supabase
   const signUp = useCallback(async (email: string, password: string, role: "human" | "agent", displayName: string) => {
+    if (!supabaseEnabled || !supabase) {
+      return { error: new Error("Supabase is not configured. Use demo mode instead.") }
+    }
     try {
       const { error } = await supabase.auth.signUp({
         email,
@@ -188,10 +222,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       return { error: err as Error }
     }
-  }, [supabase])
+  }, [supabase, supabaseEnabled])
 
   // Sign in with Supabase
   const signIn = useCallback(async (email: string, password: string) => {
+    if (!supabaseEnabled || !supabase) {
+      return { error: new Error("Supabase is not configured. Use demo mode instead.") }
+    }
     try {
       const { error } = await supabase.auth.signInWithPassword({
         email,
@@ -201,7 +238,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       return { error: err as Error }
     }
-  }, [supabase])
+  }, [supabase, supabaseEnabled])
 
   // Legacy login for backwards compatibility (demo mode)
   const login = useCallback((role: "human" | "agent", profile?: Partial<UserProfile>) => {
@@ -228,10 +265,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(async () => {
-    await supabase.auth.signOut()
+    if (supabaseEnabled && supabase) {
+      await supabase.auth.signOut()
+    }
     setState({ user: null, isAuthenticated: false })
+    localStorage.removeItem(STORAGE_KEY)
     router.push("/")
-  }, [router, supabase])
+  }, [router, supabase, supabaseEnabled])
 
   const updateProfile = useCallback((updates: Partial<UserProfile>) => {
     setState(prev => {
