@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { X, Play, Pause, Heart, Share2, Plus, Sparkles, Clock, Zap, MoreHorizontal, ExternalLink, Copy, Music, Mic, Drum, Sliders, Disc, Layers, SkipBack, SkipForward, Volume2, MessageCircle, Download, Loader2 } from "lucide-react"
+import { X, Play, Pause, Heart, Share2, Plus, Sparkles, Clock, Zap, MoreHorizontal, ExternalLink, Copy, Music, Mic, Drum, Sliders, Disc, Layers, SkipBack, SkipForward, Volume2, MessageCircle, Download, Loader2, Upload } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { usePlayer } from "./player-context"
@@ -26,6 +26,7 @@ interface TrackDetailModalProps {
     coverUrl: string
     plays?: number
     duration?: number
+    sourceType?: "generated" | "uploaded"
   }
   isOpen: boolean
   onClose: () => void
@@ -245,10 +246,19 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
             <X className="w-4 h-4" />
           </button>
 
-          {/* AI badge */}
+          {/* Source badge */}
           <div className="absolute top-4 left-4 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/40 backdrop-blur-sm border border-white/10">
-            <Sparkles className="w-3.5 h-3.5 text-glow-secondary" />
-            <span className="text-xs font-mono text-white/90">AI GENERATED</span>
+            {track.sourceType === "uploaded" ? (
+              <>
+                <Upload className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="text-xs font-mono text-white/90">UPLOADED</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-3.5 h-3.5 text-glow-secondary" />
+                <span className="text-xs font-mono text-white/90">AI GENERATED</span>
+              </>
+            )}
           </div>
         </div>
 

@@ -4,12 +4,13 @@ import { useAuth } from "@/components/auth-context"
 import { Sidebar } from "@/components/sidebar"
 import { 
   Music, Plus, Play, MoreHorizontal, Edit2, Trash2, Heart, 
-  BarChart3, Globe, Pause, X, Check
+  BarChart3, Globe, Pause, X, Check, Wand2, Upload, Sparkles
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import { usePlayer, type Track } from "@/components/player-context"
 import { CreateTrackModal } from "@/components/create-track-modal"
+import { UploadTrackModal } from "@/components/upload-track-modal"
 import { Button } from "@/components/ui/button"
 import Image from "next/image"
 import { formatPlays } from "@/lib/seed-tracks"
@@ -61,6 +62,7 @@ export default function MyTracksPage() {
   const router = useRouter()
   const [isHydrated, setIsHydrated] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null)
   const [likedTracks, setLikedTracks] = useState<Set<string>>(new Set())
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
@@ -218,11 +220,25 @@ export default function MyTracksPage() {
                         )}
                       </div>
                       <div className="min-w-0">
-                        <p className={`font-medium truncate ${isCurrentPlaying ? "text-glow-primary" : "text-white"}`}>
-                          {track.title}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className={`font-medium truncate ${isCurrentPlaying ? "text-glow-primary" : "text-white"}`}>
+                            {track.title}
+                          </p>
+                          {/* Source Badge */}
+                          {track.sourceType === "uploaded" ? (
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 flex items-center gap-1 flex-shrink-0">
+                              <Upload className="w-2.5 h-2.5" />
+                              Uploaded
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-glow-primary/20 text-glow-primary border border-glow-primary/30 flex items-center gap-1 flex-shrink-0">
+                              <Sparkles className="w-2.5 h-2.5" />
+                              AI Generated
+                            </span>
+                          )}
+                        </div>
                         <p className="text-sm text-white/50 truncate">
-                          {track.style || track.agentLabel || "AI Generated"}
+                          {track.style || track.agentLabel || track.description || "Music track"}
                         </p>
                       </div>
                     </div>
@@ -314,16 +330,38 @@ export default function MyTracksPage() {
                 <Music className="w-12 h-12 text-glow-primary/40" />
               </div>
               <h2 className="text-2xl font-semibold text-white mb-3">No tracks yet</h2>
-              <p className="text-white/40 max-w-md mx-auto mb-6">
-                Create your first AI-generated track. Describe your musical vision and let the AI bring it to life.
+              <p className="text-white/40 max-w-md mx-auto mb-8">
+                Create AI-generated music or upload your own tracks to build your collection.
               </p>
-              <Button
-                onClick={() => setIsCreateModalOpen(true)}
-                className="h-12 px-8 bg-glow-primary hover:bg-glow-primary/90 text-white font-semibold rounded-xl"
-              >
-                <Plus className="w-5 h-5 mr-2" />
-                Create Your First Track
-              </Button>
+              
+              {/* Two options */}
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 max-w-md mx-auto">
+                <button
+                  onClick={() => setIsCreateModalOpen(true)}
+                  className="w-full sm:w-auto flex items-center gap-3 px-6 py-4 rounded-xl bg-glow-primary/10 border border-glow-primary/30 hover:bg-glow-primary/20 hover:border-glow-primary/50 transition-all group"
+                >
+                  <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-glow-primary to-glow-secondary flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <Wand2 className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="text-left">
+                    <div className="font-semibold text-white">Generate Track</div>
+                    <div className="text-sm text-white/50">Create with AI</div>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={() => setIsUploadModalOpen(true)}
+                  className="w-full sm:w-auto flex items-center gap-3 px-6 py-4 rounded-xl bg-glow-secondary/10 border border-glow-secondary/30 hover:bg-glow-secondary/20 hover:border-glow-secondary/50 transition-all group"
+                >
+                  <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-glow-secondary to-cyan-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <Upload className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="text-left">
+                    <div className="font-semibold text-white">Upload Track</div>
+                    <div className="text-sm text-white/50">Share your music</div>
+                  </div>
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -331,6 +369,9 @@ export default function MyTracksPage() {
 
       {/* Create Track Modal */}
       <CreateTrackModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} />
+      
+      {/* Upload Track Modal */}
+      <UploadTrackModal isOpen={isUploadModalOpen} onClose={() => setIsUploadModalOpen(false)} />
     </div>
   )
 }

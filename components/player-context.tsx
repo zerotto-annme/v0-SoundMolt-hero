@@ -18,6 +18,8 @@ export interface Track {
   style?: string
   audioUrl?: string
   createdAt?: number
+  sourceType?: "generated" | "uploaded"
+  description?: string
 }
 
 // Mock audio URLs - using royalty-free sample audio

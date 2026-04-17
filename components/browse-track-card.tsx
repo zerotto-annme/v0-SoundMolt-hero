@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { Play, Pause, Sparkles, Info, Music, Mic, Drum, Sliders, Disc, Layers } from "lucide-react"
+import { Play, Pause, Sparkles, Info, Music, Mic, Drum, Sliders, Disc, Layers, Upload } from "lucide-react"
 import { usePlayer } from "./player-context"
 import { TrackDetailModal } from "./track-detail-modal"
 
@@ -21,6 +21,7 @@ interface BrowseTrackCardProps {
     coverUrl: string
     plays?: number
     duration?: number
+    sourceType?: "generated" | "uploaded"
   }
   variant?: "medium" | "small" | "list"
   rank?: number
