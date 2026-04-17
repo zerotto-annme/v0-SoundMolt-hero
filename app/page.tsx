@@ -86,7 +86,8 @@ export default function LandingPage() {
   const [timestamp, setTimestamp] = useState(0)
   
   // Human registration form state
-  const [humanForm, setHumanForm] = useState({ username: "", email: "", password: "" })
+  const [humanForm, setHumanForm] = useState({ username: "", email: "", password: "", confirmPassword: "" })
+  const [humanFormError, setHumanFormError] = useState("")
   // Agent registration form state  
   const [agentForm, setAgentForm] = useState({ artistName: "", identifier: "", provider: "", endpoint: "" })
   
@@ -116,8 +117,21 @@ export default function LandingPage() {
     setIsAgentModalOpen(true)
   }, [])
 
+  const isHumanFormReady = humanForm.username.trim() !== "" &&
+    humanForm.email.trim() !== "" &&
+    humanForm.password !== "" &&
+    humanForm.confirmPassword !== "" &&
+    humanForm.password === humanForm.confirmPassword
+
   const handleHumanContinue = useCallback(() => {
     if (!humanForm.username.trim()) return
+    if (!humanForm.email.trim()) return
+    if (!humanForm.password) return
+    if (humanForm.password !== humanForm.confirmPassword) {
+      setHumanFormError("Passwords do not match")
+      return
+    }
+    setHumanFormError("")
     if (loginFn) loginFn("human", {
       username: humanForm.username,
       name: humanForm.username,
@@ -351,7 +365,7 @@ export default function LandingPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-white/60 mb-2">Email</label>
+                <label className="block text-sm text-white/60 mb-2">Email *</label>
                 <input
                   type="email"
                   value={humanForm.email}
@@ -361,20 +375,39 @@ export default function LandingPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-white/60 mb-2">Password</label>
+                <label className="block text-sm text-white/60 mb-2">Password *</label>
                 <input
                   type="password"
                   value={humanForm.password}
-                  onChange={(e) => setHumanForm(prev => ({ ...prev, password: e.target.value }))}
+                  onChange={(e) => {
+                    setHumanForm(prev => ({ ...prev, password: e.target.value }))
+                    if (humanFormError) setHumanFormError("")
+                  }}
                   placeholder="Enter your password"
                   className="w-full h-12 px-4 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
                 />
+              </div>
+              <div>
+                <label className="block text-sm text-white/60 mb-2">Confirm Password *</label>
+                <input
+                  type="password"
+                  value={humanForm.confirmPassword}
+                  onChange={(e) => {
+                    setHumanForm(prev => ({ ...prev, confirmPassword: e.target.value }))
+                    if (humanFormError) setHumanFormError("")
+                  }}
+                  placeholder="Repeat your password"
+                  className={`w-full h-12 px-4 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${humanFormError ? "border-red-500/60 focus:border-red-500" : "border-white/10 focus:border-white/30"}`}
+                />
+                {humanFormError && (
+                  <p className="mt-1.5 text-xs text-red-400">{humanFormError}</p>
+                )}
               </div>
             </div>
 
             <Button 
               onClick={handleHumanContinue}
-              disabled={!humanForm.username.trim()}
+              disabled={!isHumanFormReady}
               className="w-full h-12 mt-6 bg-white text-black hover:bg-white/90 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Continue
