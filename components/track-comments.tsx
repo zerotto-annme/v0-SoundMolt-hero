@@ -1,14 +1,16 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import Image from "next/image"
-import { Heart, MessageCircle, ChevronDown, Bot, User, Sparkles, Send } from "lucide-react"
+import { Heart, MessageCircle, ChevronDown, Bot, User, Sparkles, Send, Clock } from "lucide-react"
 import { useTrackComments, type Comment, type Reply, type CommentAuthor } from "./track-comments-context"
 import { useAuth } from "./auth-context"
+import { usePlayer } from "./player-context"
 
 interface TrackCommentsProps {
   trackId: string
   trackAgentName: string
+  onSeekTo?: (seconds: number) => void
 }
 
 // Format relative time
@@ -31,12 +33,14 @@ function CommentItem({
   comment, 
   trackId, 
   trackAgentName,
-  onReply 
+  onReply,
+  onSeekTo
 }: { 
   comment: Comment
   trackId: string
   trackAgentName: string
   onReply: (commentId: string) => void
+  onSeekTo?: (seconds: number) => void
 }) {
   const { likeComment, addReply, likeReply } = useTrackComments()
   const { user, isAuthenticated, requireAuth } = useAuth()
@@ -105,6 +109,16 @@ function CommentItem({
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Timestamp badge - clickable */}
+            <button
+              onClick={() => onSeekTo?.(comment.trackTimestamp)}
+              className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-glow-primary/20 text-glow-primary border border-glow-primary/30 hover:bg-glow-primary/30 transition-colors flex items-center gap-1"
+              title={`Jump to ${comment.timeLabel}`}
+            >
+              <Clock className="w-2.5 h-2.5" />
+              {comment.timeLabel}
+            </button>
+
             <span className="font-medium text-foreground text-sm">{comment.author.name}</span>
             
             {/* Role badge */}
@@ -137,7 +151,7 @@ function CommentItem({
             <span className="text-xs text-muted-foreground">{formatRelativeTime(comment.timestamp)}</span>
           </div>
 
-          <p className="text-sm text-foreground/90 mt-1 leading-relaxed">{comment.text}</p>
+          <p className="text-sm text-foreground/90 mt-1.5 leading-relaxed">{comment.text}</p>
 
           {/* Actions */}
           <div className="flex items-center gap-4 mt-2">
@@ -311,16 +325,45 @@ function ReplyItem({
   )
 }
 
+// Format seconds to time label
+function formatTimeLabel(seconds: number): string {
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  return `${mins}:${secs.toString().padStart(2, "0")}`
+}
+
 // Main TrackComments Component
-export function TrackComments({ trackId, trackAgentName }: TrackCommentsProps) {
+export function TrackComments({ trackId, trackAgentName, onSeekTo }: TrackCommentsProps) {
   const { getComments, getCommentCount, addComment, sortComments } = useTrackComments()
   const { user, isAuthenticated, openSignInModal } = useAuth()
-  const [sortBy, setSortBy] = useState<"newest" | "most_liked">("newest")
+  const { currentTrack, currentTime, playTrack, seekTo: playerSeekTo, duration } = usePlayer()
+  const [sortBy, setSortBy] = useState<"newest" | "most_liked" | "by_time">("newest")
   const [commentText, setCommentText] = useState("")
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
+  const [capturedTime, setCapturedTime] = useState<number>(0)
+  const [isInputFocused, setIsInputFocused] = useState(false)
 
   const comments = sortComments(trackId, sortBy)
   const commentCount = getCommentCount(trackId)
+  const isCurrentTrack = currentTrack?.id === trackId
+
+  // Capture time when input is focused
+  const handleInputFocus = () => {
+    setIsInputFocused(true)
+    if (isCurrentTrack) {
+      setCapturedTime(currentTime)
+    }
+  }
+
+  // Handle seeking to a timestamp
+  const handleSeekTo = useCallback((seconds: number) => {
+    if (onSeekTo) {
+      onSeekTo(seconds)
+    } else if (isCurrentTrack && duration > 0) {
+      const percent = (seconds / duration) * 100
+      playerSeekTo(Math.max(0, Math.min(100, percent)))
+    }
+  }, [onSeekTo, isCurrentTrack, duration, playerSeekTo])
 
   const handleSubmitComment = () => {
     if (!commentText.trim() || !user) return
@@ -333,8 +376,12 @@ export function TrackComments({ trackId, trackAgentName }: TrackCommentsProps) {
       isCreator: user.name === trackAgentName,
     }
 
-    addComment(trackId, author, commentText)
+    // Use captured time or current time
+    const timeToUse = isInputFocused && capturedTime > 0 ? capturedTime : (isCurrentTrack ? currentTime : 0)
+    addComment(trackId, author, commentText, timeToUse)
     setCommentText("")
+    setIsInputFocused(false)
+    setCapturedTime(0)
   }
 
   return (
@@ -355,11 +402,12 @@ export function TrackComments({ trackId, trackAgentName }: TrackCommentsProps) {
             <span className="text-xs text-muted-foreground">Sort by:</span>
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as "newest" | "most_liked")}
+              onChange={(e) => setSortBy(e.target.value as "newest" | "most_liked" | "by_time")}
               className="h-7 px-2 bg-black/30 border border-white/10 rounded-lg text-xs text-foreground focus:outline-none focus:border-glow-primary/50 cursor-pointer"
             >
               <option value="newest">Newest</option>
               <option value="most_liked">Most liked</option>
+              <option value="by_time">Track time</option>
             </select>
           </div>
         )}
@@ -368,35 +416,53 @@ export function TrackComments({ trackId, trackAgentName }: TrackCommentsProps) {
       {/* Comment Input */}
       <div className="bg-secondary/30 rounded-xl p-4">
         {isAuthenticated && user ? (
-          <div className="flex gap-3">
-            <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 ring-2 ring-white/5">
-              <Image
-                src={user.avatar || `https://api.dicebear.com/7.x/${user.role === "agent" ? "bottts" : "avataaars"}/svg?seed=${user.name}`}
-                alt={user.name}
-                width={40}
-                height={40}
-                className="object-cover"
-              />
-            </div>
-            <div className="flex-1 space-y-2">
-              <textarea
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                placeholder="Write a comment..."
-                rows={2}
-                className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded-lg text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:border-glow-primary/50 transition-colors"
-              />
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">
-                  Commenting as <span className={user.role === "agent" ? "text-red-400" : "text-white/70"}>{user.name}</span>
+          <div className="space-y-3">
+            {/* Time indicator */}
+            {isInputFocused && (
+              <div className="flex items-center gap-2 text-xs animate-in fade-in slide-in-from-top-1 duration-200">
+                <Clock className="w-3.5 h-3.5 text-glow-primary" />
+                <span className="text-muted-foreground">
+                  Commenting at{" "}
+                  <span className="font-mono font-semibold text-glow-primary">
+                    {formatTimeLabel(capturedTime > 0 ? capturedTime : currentTime)}
+                  </span>
                 </span>
-                <button
-                  onClick={handleSubmitComment}
-                  disabled={!commentText.trim()}
-                  className="h-8 px-4 bg-glow-primary text-white rounded-lg text-xs font-semibold hover:bg-glow-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                >
-                  Post
-                </button>
+              </div>
+            )}
+            
+            <div className="flex gap-3">
+              <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 ring-2 ring-white/5">
+                <Image
+                  src={user.avatar || `https://api.dicebear.com/7.x/${user.role === "agent" ? "bottts" : "avataaars"}/svg?seed=${user.name}`}
+                  alt={user.name}
+                  width={40}
+                  height={40}
+                  className="object-cover"
+                />
+              </div>
+              <div className="flex-1 space-y-2">
+                <textarea
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  onFocus={handleInputFocus}
+                  onBlur={() => !commentText.trim() && setIsInputFocused(false)}
+                  placeholder="Comment on this moment..."
+                  rows={2}
+                  className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded-lg text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:border-glow-primary/50 transition-colors"
+                />
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">
+                    Commenting as <span className={user.role === "agent" ? "text-red-400" : "text-white/70"}>{user.name}</span>
+                  </span>
+                  <button
+                    onClick={handleSubmitComment}
+                    disabled={!commentText.trim()}
+                    className="h-8 px-4 bg-glow-primary text-white rounded-lg text-xs font-semibold hover:bg-glow-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-1.5"
+                  >
+                    <Clock className="w-3 h-3" />
+                    Post
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -405,7 +471,7 @@ export function TrackComments({ trackId, trackAgentName }: TrackCommentsProps) {
             onClick={openSignInModal}
             className="w-full py-4 text-center text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            <span className="text-glow-secondary font-medium">Sign in</span> to join the discussion
+            <span className="text-glow-secondary font-medium">Sign in</span> to comment on moments
           </button>
         )}
       </div>
@@ -420,14 +486,15 @@ export function TrackComments({ trackId, trackAgentName }: TrackCommentsProps) {
               trackId={trackId}
               trackAgentName={trackAgentName}
               onReply={(commentId) => setReplyingTo(commentId)}
+              onSeekTo={handleSeekTo}
             />
           ))}
         </div>
       ) : (
         <div className="text-center py-8">
-          <MessageCircle className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+          <Clock className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
           <p className="text-sm text-muted-foreground">No comments yet.</p>
-          <p className="text-xs text-muted-foreground/60 mt-1">Start the conversation.</p>
+          <p className="text-xs text-muted-foreground/60 mt-1">Be the first to comment on a moment in this track.</p>
         </div>
       )}
     </div>

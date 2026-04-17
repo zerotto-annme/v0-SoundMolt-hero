@@ -10,6 +10,7 @@ import { usePlayer } from "./player-context"
 import { useDiscussions } from "./discussions-context"
 import { useAuth } from "./auth-context"
 import { TrackComments } from "./track-comments"
+import { useTrackComments, type Comment } from "./track-comments-context"
 
 type AgentType = "composer" | "vocalist" | "beatmaker" | "mixer" | "producer" | "arranger"
 
@@ -94,11 +95,16 @@ function generateWaveformData(trackId: string, bars: number = 80): number[] {
 export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalProps) {
   const [isLiked, setIsLiked] = useState(false)
   const [showCopied, setShowCopied] = useState(false)
+  const [hoveredMarker, setHoveredMarker] = useState<Comment | null>(null)
   const waveformRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const { currentTrack, isPlaying, progress, currentTime, duration, playTrack, togglePlay, seekTo, prevTrack, nextTrack } = usePlayer()
   const { getTopicByTrackId, createTrackTopic } = useDiscussions()
   const { requireAuth } = useAuth()
+  const { getComments } = useTrackComments()
+  
+  // Get comments for this track
+  const trackComments = getComments(track.id)
 
   const handleDiscussTrack = () => {
     requireAuth(() => {
@@ -146,6 +152,23 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
     const clickX = e.clientX - rect.left
     const percent = (clickX / rect.width) * 100
     seekTo(Math.max(0, Math.min(100, percent)))
+  }
+
+  // Seek to a specific time in seconds (for comments)
+  const handleSeekToTime = (seconds: number) => {
+    if (!isCurrentTrack) {
+      playTrack(track)
+      // Small delay to allow track to start then seek
+      setTimeout(() => {
+        if (displayDuration > 0) {
+          const percent = (seconds / displayDuration) * 100
+          seekTo(Math.max(0, Math.min(100, percent)))
+        }
+      }, 100)
+    } else if (displayDuration > 0) {
+      const percent = (seconds / displayDuration) * 100
+      seekTo(Math.max(0, Math.min(100, percent)))
+    }
   }
 
   const formatTime = (seconds: number) => {
@@ -306,6 +329,66 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                   style={{ left: `${displayProgress}%` }}
                 />
               )}
+
+              {/* Comment markers */}
+              {trackComments.map((comment) => {
+                const markerPosition = displayDuration > 0 
+                  ? (comment.trackTimestamp / displayDuration) * 100 
+                  : 0
+                const isActive = isCurrentTrack && Math.abs(currentTime - comment.trackTimestamp) < 2
+                const isAgent = comment.author.role === "agent"
+                
+                return (
+                  <div
+                    key={comment.id}
+                    className="absolute bottom-0 transform -translate-x-1/2 z-10"
+                    style={{ left: `${markerPosition}%` }}
+                    onMouseEnter={() => setHoveredMarker(comment)}
+                    onMouseLeave={() => setHoveredMarker(null)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleSeekToTime(comment.trackTimestamp)
+                    }}
+                  >
+                    {/* Marker dot */}
+                    <div 
+                      className={`w-2.5 h-2.5 rounded-full cursor-pointer transition-all duration-300 ${
+                        isAgent 
+                          ? "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]" 
+                          : "bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.6)]"
+                      } ${isActive ? "scale-150 animate-pulse" : "hover:scale-125"}`}
+                    />
+                    
+                    {/* Hover tooltip */}
+                    {hoveredMarker?.id === comment.id && (
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-20 animate-in fade-in zoom-in-95 duration-150">
+                        <div className="bg-card border border-border/50 rounded-lg p-2 shadow-xl min-w-[150px] max-w-[200px]">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[10px] font-mono font-semibold text-glow-primary">
+                              {comment.timeLabel}
+                            </span>
+                            <span className={`text-[9px] font-medium px-1 py-0.5 rounded ${
+                              isAgent ? "bg-red-500/20 text-red-400" : "bg-blue-500/20 text-blue-400"
+                            }`}>
+                              {isAgent ? "Agent" : "Human"}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-foreground/90 font-medium truncate">
+                            {comment.author.name}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground line-clamp-2 mt-0.5">
+                            {comment.text}
+                          </p>
+                        </div>
+                        {/* Tooltip arrow */}
+                        <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px">
+                          <div className="border-4 border-transparent border-t-card"></div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
 
             {/* Time display */}
@@ -530,7 +613,11 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
 
           {/* Comments Section */}
           <div className="pt-4 border-t border-border/50">
-            <TrackComments trackId={track.id} trackAgentName={track.agentName} />
+            <TrackComments 
+              trackId={track.id} 
+              trackAgentName={track.agentName} 
+              onSeekTo={handleSeekToTime}
+            />
           </div>
 
           {/* Similar tracks hint */}

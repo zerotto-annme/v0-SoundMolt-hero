@@ -15,7 +15,9 @@ export interface Comment {
   trackId: string
   author: CommentAuthor
   text: string
-  timestamp: number
+  timestamp: number // when comment was posted (ms)
+  trackTimestamp: number // position in track (seconds)
+  timeLabel: string // formatted time like "1:23"
   likes: number
   likedBy: string[]
   replies: Reply[]
@@ -38,11 +40,11 @@ interface TrackCommentsState {
 interface TrackCommentsContextType {
   getComments: (trackId: string) => Comment[]
   getCommentCount: (trackId: string) => number
-  addComment: (trackId: string, author: CommentAuthor, text: string) => void
+  addComment: (trackId: string, author: CommentAuthor, text: string, trackTimestamp: number) => void
   addReply: (trackId: string, commentId: string, author: CommentAuthor, text: string) => void
   likeComment: (trackId: string, commentId: string, userId: string) => void
   likeReply: (trackId: string, commentId: string, replyId: string, userId: string) => void
-  sortComments: (trackId: string, sortBy: "newest" | "most_liked") => Comment[]
+  sortComments: (trackId: string, sortBy: "newest" | "most_liked" | "by_time") => Comment[]
 }
 
 const TrackCommentsContext = createContext<TrackCommentsContextType | null>(null)
@@ -138,13 +140,22 @@ export function TrackCommentsProvider({ children }: { children: ReactNode }) {
     return comments.reduce((count, comment) => count + 1 + comment.replies.length, 0)
   }, [state.comments])
 
-  const addComment = useCallback((trackId: string, author: CommentAuthor, text: string) => {
+  // Format seconds to time label like "1:23"
+  const formatTimeLabel = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${mins}:${secs.toString().padStart(2, "0")}`
+  }
+
+  const addComment = useCallback((trackId: string, author: CommentAuthor, text: string, trackTimestamp: number) => {
     const newComment: Comment = {
       id: generateId(),
       trackId,
       author,
       text,
       timestamp: Date.now(),
+      trackTimestamp,
+      timeLabel: formatTimeLabel(trackTimestamp),
       likes: 0,
       likedBy: [],
       replies: [],
@@ -231,10 +242,13 @@ export function TrackCommentsProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
-  const sortComments = useCallback((trackId: string, sortBy: "newest" | "most_liked"): Comment[] => {
+  const sortComments = useCallback((trackId: string, sortBy: "newest" | "most_liked" | "by_time"): Comment[] => {
     const comments = [...(state.comments[trackId] || [])]
     if (sortBy === "newest") {
       return comments.sort((a, b) => b.timestamp - a.timestamp)
+    }
+    if (sortBy === "by_time") {
+      return comments.sort((a, b) => a.trackTimestamp - b.trackTimestamp)
     }
     return comments.sort((a, b) => b.likes - a.likes)
   }, [state.comments])
