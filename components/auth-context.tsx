@@ -5,6 +5,7 @@ import { X, User, Bot, Lock, Music } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { supabase } from "@/lib/supabase"
 
 export type UserRole = "guest" | "human" | "agent"
 
@@ -57,11 +58,6 @@ const AuthContext = createContext<AuthContextType | null>(null)
 
 const STORAGE_KEY = "soundmolt_user"
 
-// Generate unique ID
-function generateId(): string {
-  return `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
-}
-
 // Generate default avatar URL
 function generateAvatar(name: string, role: UserRole): string {
   const seed = name.replace(/\s+/g, "-").toLowerCase()
@@ -87,37 +83,100 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isHydrated, setIsHydrated] = useState(false)
   const router = useRouter()
 
-  // Restore session from localStorage on mount
+  // Restore session from Supabase on mount, fall back to localStorage for agents
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored) {
-        const user = JSON.parse(stored) as UserProfile
-        setState({ user, isAuthenticated: true })
+    const restoreSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user) {
+          const sbUser = session.user
+          const username = sbUser.user_metadata?.username || sbUser.email?.split("@")[0] || "User"
+          const name = username
+          const userProfile: UserProfile = {
+            id: sbUser.id,
+            role: "human",
+            name,
+            username,
+            email: sbUser.email,
+            avatar: sbUser.user_metadata?.avatar_url || generateAvatar(name, "human"),
+            createdAt: new Date(sbUser.created_at).getTime(),
+          }
+          setState({ user: userProfile, isAuthenticated: true })
+        } else {
+          // Fall back to localStorage for agent sessions
+          const stored = localStorage.getItem(STORAGE_KEY)
+          if (stored) {
+            const user = JSON.parse(stored) as UserProfile
+            if (user.role === "agent") {
+              setState({ user, isAuthenticated: true })
+            }
+          }
+        }
+      } catch {
+        try {
+          const stored = localStorage.getItem(STORAGE_KEY)
+          if (stored) {
+            const user = JSON.parse(stored) as UserProfile
+            if (user.role === "agent") {
+              setState({ user, isAuthenticated: true })
+            }
+          }
+        } catch {
+          localStorage.removeItem(STORAGE_KEY)
+        }
       }
-    } catch {
-      // Invalid stored data, clear it
-      localStorage.removeItem(STORAGE_KEY)
+      setIsHydrated(true)
     }
-    setIsHydrated(true)
+
+    restoreSession()
+
+    // Subscribe to Supabase auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_OUT") {
+        setState(prev => {
+          if (prev.user?.role === "human") {
+            return { user: null, isAuthenticated: false }
+          }
+          return prev
+        })
+      } else if (session?.user && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED")) {
+        const sbUser = session.user
+        const username = sbUser.user_metadata?.username || sbUser.email?.split("@")[0] || "User"
+        const name = username
+        const userProfile: UserProfile = {
+          id: sbUser.id,
+          role: "human",
+          name,
+          username,
+          email: sbUser.email,
+          avatar: sbUser.user_metadata?.avatar_url || generateAvatar(name, "human"),
+          createdAt: new Date(sbUser.created_at).getTime(),
+        }
+        setState({ user: userProfile, isAuthenticated: true })
+      }
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
   }, [])
 
-  // Persist user to localStorage when it changes
+  // Persist agent sessions to localStorage
   useEffect(() => {
     if (!isHydrated) return
-    
-    if (state.user) {
+
+    if (state.user?.role === "agent") {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.user))
-    } else {
+    } else if (!state.user) {
       localStorage.removeItem(STORAGE_KEY)
     }
   }, [state.user, isHydrated])
 
   const login = useCallback((role: "human" | "agent", profile?: Partial<UserProfile>) => {
     const name = profile?.name || (role === "agent" ? profile?.artistName : profile?.username) || "User"
-    
+
     const user: UserProfile = {
-      id: generateId(),
+      id: profile?.id || `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
       role,
       name,
       username: profile?.username,
@@ -127,19 +186,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       agentIdentifier: profile?.agentIdentifier,
       modelProvider: profile?.modelProvider,
       agentEndpoint: profile?.agentEndpoint,
-      createdAt: Date.now(),
+      createdAt: profile?.createdAt || Date.now(),
       totalPlays: role === "agent" ? 0 : undefined,
       totalLikes: role === "agent" ? 0 : undefined,
       publishedTracks: role === "agent" ? 0 : undefined,
     }
-    
+
     setState({ user, isAuthenticated: true })
   }, [])
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    const currentRole = state.user?.role
     setState({ user: null, isAuthenticated: false })
+    localStorage.removeItem(STORAGE_KEY)
+    if (currentRole === "human") {
+      await supabase.auth.signOut()
+    }
     router.push("/")
-  }, [router])
+  }, [router, state.user?.role])
 
   const updateProfile = useCallback((updates: Partial<UserProfile>) => {
     setState(prev => {
@@ -206,8 +270,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       {/* Sign In Modal */}
       {showSignInModal && (
-        <SignInModal 
-          onClose={() => setShowSignInModal(false)} 
+        <SignInModal
+          onClose={() => setShowSignInModal(false)}
           onLogin={(role, profile) => {
             login(role, profile)
             setShowSignInModal(false)
@@ -224,24 +288,163 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 // Sign In Modal Component
-function SignInModal({ 
-  onClose, 
-  onLogin 
-}: { 
+function SignInModal({
+  onClose,
+  onLogin
+}: {
   onClose: () => void
-  onLogin: (role: "human" | "agent", profile?: Partial<UserProfile>) => void 
+  onLogin: (role: "human" | "agent", profile?: Partial<UserProfile>) => void
 }) {
   const [mode, setMode] = useState<"choose" | "human" | "agent">("choose")
-  const [humanForm, setHumanForm] = useState({ username: "", email: "", password: "" })
+  const [humanSubMode, setHumanSubMode] = useState<"signin" | "signup">("signin")
+  const [humanForm, setHumanForm] = useState({
+    username: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+  })
+  const [humanErrors, setHumanErrors] = useState<{
+    username?: string
+    email?: string
+    password?: string
+    confirmPassword?: string
+    general?: string
+  }>({})
+  const [humanLoading, setHumanLoading] = useState(false)
+
   const [agentForm, setAgentForm] = useState({ artistName: "", identifier: "", provider: "" })
 
-  const handleHumanSubmit = () => {
-    if (!humanForm.username.trim()) return
-    onLogin("human", {
-      username: humanForm.username,
-      name: humanForm.username,
-      email: humanForm.email,
-    })
+  const validateHumanForm = (): boolean => {
+    const errors: typeof humanErrors = {}
+
+    if (humanSubMode === "signup" && !humanForm.username.trim()) {
+      errors.username = "Username is required"
+    }
+
+    if (!humanForm.email.trim()) {
+      errors.email = "Email is required"
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(humanForm.email)) {
+      errors.email = "Please enter a valid email address"
+    }
+
+    if (!humanForm.password) {
+      errors.password = "Password is required"
+    } else if (humanSubMode === "signup" && humanForm.password.length < 6) {
+      errors.password = "Password must be at least 6 characters"
+    }
+
+    if (humanSubMode === "signup") {
+      if (!humanForm.confirmPassword) {
+        errors.confirmPassword = "Please confirm your password"
+      } else if (humanForm.password !== humanForm.confirmPassword) {
+        errors.confirmPassword = "Passwords do not match"
+      }
+    }
+
+    setHumanErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  const isHumanFormValid = (): boolean => {
+    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(humanForm.email)
+    if (humanSubMode === "signup") {
+      return (
+        humanForm.username.trim() !== "" &&
+        emailValid &&
+        humanForm.password.length >= 6 &&
+        humanForm.confirmPassword !== "" &&
+        humanForm.password === humanForm.confirmPassword
+      )
+    }
+    return emailValid && humanForm.password !== ""
+  }
+
+  const handleHumanSubmit = async () => {
+    if (!validateHumanForm()) return
+
+    setHumanLoading(true)
+    setHumanErrors({})
+
+    try {
+      if (humanSubMode === "signup") {
+        const { data, error } = await supabase.auth.signUp({
+          email: humanForm.email,
+          password: humanForm.password,
+          options: {
+            data: { username: humanForm.username, role: "human" },
+          },
+        })
+
+        if (error) {
+          if (error.message.toLowerCase().includes("already registered") || error.message.toLowerCase().includes("already exists")) {
+            setHumanErrors({ email: "An account with this email already exists" })
+          } else {
+            setHumanErrors({ general: error.message })
+          }
+          return
+        }
+
+        if (data.user) {
+          // If no session, email confirmation is required — do not log in yet
+          if (!data.session) {
+            setHumanErrors({ general: "Account created! Please check your email to confirm your address, then sign in." })
+            return
+          }
+
+          const { error: profileError } = await supabase.from("profiles").upsert({
+            id: data.user.id,
+            username: humanForm.username,
+            role: "human",
+          })
+
+          if (profileError) {
+            setHumanErrors({ general: "Account created but profile could not be saved. Please try signing in." })
+            return
+          }
+
+          const name = humanForm.username
+          onLogin("human", {
+            id: data.user.id,
+            username: humanForm.username,
+            name,
+            email: humanForm.email,
+            avatar: generateAvatar(name, "human"),
+            createdAt: new Date(data.user.created_at).getTime(),
+          })
+        }
+      } else {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: humanForm.email,
+          password: humanForm.password,
+        })
+
+        if (error) {
+          if (error.message.toLowerCase().includes("invalid login") || error.message.toLowerCase().includes("invalid credentials")) {
+            setHumanErrors({ general: "Incorrect email or password" })
+          } else {
+            setHumanErrors({ general: error.message })
+          }
+          return
+        }
+
+        if (data.user) {
+          const username = data.user.user_metadata?.username || data.user.email?.split("@")[0] || "User"
+          const name = username
+          onLogin("human", {
+            id: data.user.id,
+            username,
+            name,
+            email: data.user.email,
+            avatar: data.user.user_metadata?.avatar_url || generateAvatar(name, "human"),
+            createdAt: new Date(data.user.created_at).getTime(),
+          })
+        }
+      }
+    } catch {
+      setHumanErrors({ general: "Something went wrong. Please try again." })
+    } finally {
+      setHumanLoading(false)
+    }
   }
 
   const handleAgentSubmit = () => {
@@ -254,16 +457,22 @@ function SignInModal({
     })
   }
 
+  const switchHumanSubMode = (sub: "signin" | "signup") => {
+    setHumanSubMode(sub)
+    setHumanErrors({})
+    setHumanForm({ username: "", email: "", password: "", confirmPassword: "" })
+  }
+
   return (
-    <div 
+    <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
       onClick={onClose}
     >
-      <div 
+      <div
         className="relative w-full max-w-md mx-4 bg-[#111113] border border-white/10 rounded-2xl p-8"
         onClick={(e) => e.stopPropagation()}
       >
-        <button 
+        <button
           onClick={onClose}
           className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors"
         >
@@ -281,14 +490,14 @@ function SignInModal({
             </div>
 
             <div className="space-y-3">
-              <Button 
+              <Button
                 onClick={() => setMode("human")}
                 className="w-full h-14 bg-white text-black hover:bg-white/90 rounded-xl font-semibold gap-3"
               >
                 <User className="w-5 h-5" />
                 I&apos;m a Human
               </Button>
-              <Button 
+              <Button
                 onClick={() => setMode("agent")}
                 variant="outline"
                 className="w-full h-14 border-red-500/50 text-white hover:bg-red-500/10 hover:border-red-500 rounded-xl font-semibold gap-3"
@@ -307,53 +516,130 @@ function SignInModal({
                 <User className="w-6 h-6 text-white" />
               </div>
               <h2 className="text-2xl font-bold text-white mb-2">Welcome, Human</h2>
-              <p className="text-white/50 text-sm">Sign in to discover and enjoy AI-generated music</p>
+              <p className="text-white/50 text-sm">
+                {humanSubMode === "signup"
+                  ? "Create an account to discover and enjoy AI-generated music"
+                  : "Sign in to discover and enjoy AI-generated music"}
+              </p>
             </div>
 
             <div className="space-y-4">
+              {humanSubMode === "signup" && (
+                <div>
+                  <label className="block text-sm text-white/60 mb-2">Username *</label>
+                  <input
+                    type="text"
+                    value={humanForm.username}
+                    onChange={(e) => {
+                      setHumanForm(prev => ({ ...prev, username: e.target.value }))
+                      if (humanErrors.username) setHumanErrors(prev => ({ ...prev, username: undefined }))
+                    }}
+                    placeholder="your_username"
+                    className={`w-full h-12 px-4 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${humanErrors.username ? "border-red-500/60 focus:border-red-500" : "border-white/10 focus:border-white/30"}`}
+                  />
+                  {humanErrors.username && (
+                    <p className="mt-1.5 text-xs text-red-400">{humanErrors.username}</p>
+                  )}
+                </div>
+              )}
+
               <div>
-                <label className="block text-sm text-white/60 mb-2">Username *</label>
-                <input
-                  type="text"
-                  value={humanForm.username}
-                  onChange={(e) => setHumanForm(prev => ({ ...prev, username: e.target.value }))}
-                  placeholder="your_username"
-                  className="w-full h-12 px-4 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-white/60 mb-2">Email</label>
+                <label className="block text-sm text-white/60 mb-2">Email *</label>
                 <input
                   type="email"
                   value={humanForm.email}
-                  onChange={(e) => setHumanForm(prev => ({ ...prev, email: e.target.value }))}
+                  onChange={(e) => {
+                    setHumanForm(prev => ({ ...prev, email: e.target.value }))
+                    if (humanErrors.email) setHumanErrors(prev => ({ ...prev, email: undefined }))
+                  }}
                   placeholder="you@example.com"
-                  className="w-full h-12 px-4 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                  className={`w-full h-12 px-4 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${humanErrors.email ? "border-red-500/60 focus:border-red-500" : "border-white/10 focus:border-white/30"}`}
                 />
+                {humanErrors.email && (
+                  <p className="mt-1.5 text-xs text-red-400">{humanErrors.email}</p>
+                )}
               </div>
+
               <div>
-                <label className="block text-sm text-white/60 mb-2">Password</label>
+                <label className="block text-sm text-white/60 mb-2">Password *</label>
                 <input
                   type="password"
                   value={humanForm.password}
-                  onChange={(e) => setHumanForm(prev => ({ ...prev, password: e.target.value }))}
+                  onChange={(e) => {
+                    setHumanForm(prev => ({ ...prev, password: e.target.value }))
+                    if (humanErrors.password) setHumanErrors(prev => ({ ...prev, password: undefined }))
+                  }}
                   placeholder="Enter your password"
-                  className="w-full h-12 px-4 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                  className={`w-full h-12 px-4 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${humanErrors.password ? "border-red-500/60 focus:border-red-500" : "border-white/10 focus:border-white/30"}`}
                 />
+                {humanErrors.password && (
+                  <p className="mt-1.5 text-xs text-red-400">{humanErrors.password}</p>
+                )}
               </div>
+
+              {humanSubMode === "signup" && (
+                <div>
+                  <label className="block text-sm text-white/60 mb-2">Confirm Password *</label>
+                  <input
+                    type="password"
+                    value={humanForm.confirmPassword}
+                    onChange={(e) => {
+                      setHumanForm(prev => ({ ...prev, confirmPassword: e.target.value }))
+                      if (humanErrors.confirmPassword) setHumanErrors(prev => ({ ...prev, confirmPassword: undefined }))
+                    }}
+                    placeholder="Repeat your password"
+                    className={`w-full h-12 px-4 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${humanErrors.confirmPassword ? "border-red-500/60 focus:border-red-500" : "border-white/10 focus:border-white/30"}`}
+                  />
+                  {humanErrors.confirmPassword && (
+                    <p className="mt-1.5 text-xs text-red-400">{humanErrors.confirmPassword}</p>
+                  )}
+                </div>
+              )}
+
+              {humanErrors.general && (
+                <p className="text-xs text-red-400 text-center">{humanErrors.general}</p>
+              )}
             </div>
 
-            <Button 
+            <Button
               onClick={handleHumanSubmit}
-              disabled={!humanForm.username.trim()}
+              disabled={!isHumanFormValid() || humanLoading}
               className="w-full h-12 mt-6 bg-white text-black hover:bg-white/90 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Continue as Listener
+              {humanLoading
+                ? "Please wait…"
+                : humanSubMode === "signup"
+                  ? "Create Account"
+                  : "Sign In"}
             </Button>
 
-            <button 
+            <div className="mt-4 text-center">
+              {humanSubMode === "signin" ? (
+                <p className="text-sm text-white/40">
+                  Don&apos;t have an account?{" "}
+                  <button
+                    onClick={() => switchHumanSubMode("signup")}
+                    className="text-white/70 hover:text-white underline underline-offset-2 transition-colors"
+                  >
+                    Sign up
+                  </button>
+                </p>
+              ) : (
+                <p className="text-sm text-white/40">
+                  Already have an account?{" "}
+                  <button
+                    onClick={() => switchHumanSubMode("signin")}
+                    className="text-white/70 hover:text-white underline underline-offset-2 transition-colors"
+                  >
+                    Sign in
+                  </button>
+                </p>
+              )}
+            </div>
+
+            <button
               onClick={() => setMode("choose")}
-              className="w-full mt-4 text-sm text-white/40 hover:text-white"
+              className="w-full mt-3 text-sm text-white/40 hover:text-white"
             >
               Back to options
             </button>
@@ -403,7 +689,7 @@ function SignInModal({
               </div>
             </div>
 
-            <Button 
+            <Button
               onClick={handleAgentSubmit}
               disabled={!agentForm.artistName.trim()}
               className="w-full h-12 mt-6 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
@@ -411,7 +697,7 @@ function SignInModal({
               Continue as Agent
             </Button>
 
-            <button 
+            <button
               onClick={() => setMode("choose")}
               className="w-full mt-4 text-sm text-white/40 hover:text-white"
             >
@@ -427,17 +713,17 @@ function SignInModal({
 // Agent Only Modal Component
 function AgentOnlyModal({ onClose }: { onClose: () => void }) {
   const router = useRouter()
-  
+
   return (
-    <div 
+    <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
       onClick={onClose}
     >
-      <div 
+      <div
         className="relative w-full max-w-md mx-4 bg-[#111113] border border-white/10 rounded-2xl p-8 text-center"
         onClick={(e) => e.stopPropagation()}
       >
-        <button 
+        <button
           onClick={onClose}
           className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors"
         >
@@ -454,7 +740,7 @@ function AgentOnlyModal({ onClose }: { onClose: () => void }) {
         </p>
 
         <div className="space-y-3">
-          <Button 
+          <Button
             onClick={() => {
               onClose()
               router.push("/?become=agent")
@@ -463,7 +749,7 @@ function AgentOnlyModal({ onClose }: { onClose: () => void }) {
           >
             Become an Agent
           </Button>
-          <Button 
+          <Button
             onClick={onClose}
             variant="outline"
             className="w-full h-12 border-white/10 text-white hover:bg-white/5 rounded-lg font-semibold"
@@ -486,8 +772,8 @@ export function RoleBadge({ showLogout = true }: { showLogout?: boolean }) {
     <div className="flex items-center gap-2">
       <div className={`
         flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium
-        ${user.role === "agent" 
-          ? "bg-red-500/20 text-red-400 border border-red-500/30" 
+        ${user.role === "agent"
+          ? "bg-red-500/20 text-red-400 border border-red-500/30"
           : "bg-white/10 text-white/70 border border-white/20"
         }
       `}>
@@ -555,9 +841,9 @@ export function ProfileDropdown() {
 
       {isOpen && (
         <>
-          <div 
-            className="fixed inset-0 z-40" 
-            onClick={() => setIsOpen(false)} 
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setIsOpen(false)}
           />
           <div className="absolute right-0 top-full mt-2 w-56 bg-[#111113] border border-white/10 rounded-xl shadow-xl z-50 overflow-hidden">
             {/* User info */}
@@ -578,7 +864,7 @@ export function ProfileDropdown() {
                 <User className="w-4 h-4" />
                 Profile
               </Link>
-              
+
               {user.role === "agent" && (
                 <Link
                   href="/my-tracks"
@@ -589,7 +875,7 @@ export function ProfileDropdown() {
                   My Tracks
                 </Link>
               )}
-              
+
               <Link
                 href="/liked"
                 onClick={() => setIsOpen(false)}
@@ -600,7 +886,7 @@ export function ProfileDropdown() {
                 </svg>
                 Liked Tracks
               </Link>
-              
+
               <Link
                 href="/recently-played"
                 onClick={() => setIsOpen(false)}

@@ -12,5 +12,18 @@ SoundMolt is a Next.js 16 app migrated from Vercel/v0 to Replit.
 
 # Environment Variables
 
-- No required secrets or server-side environment variables were found during migration.
-- Existing usage is limited to `NODE_ENV` and production-only Vercel Analytics rendering.
+- `NEXT_PUBLIC_SUPABASE_URL` — Supabase project URL (required for Human auth)
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Supabase anonymous key (required for Human auth)
+- Both are stored as Replit Secrets and available to the client via NEXT_PUBLIC prefix.
+
+# Authentication
+
+- **Human auth** uses real Supabase authentication (`lib/supabase.ts`).
+  - Sign-up: `supabase.auth.signUp` + upsert row into `public.profiles` (id, username, role="human")
+  - Sign-in: `supabase.auth.signInWithPassword`
+  - Session restored on mount via `supabase.auth.getSession()` and kept in sync via `onAuthStateChange`
+  - Validation: username (sign-up only), email format, password length, confirm password match
+  - All errors shown inline beneath fields; no browser alerts
+- **Agent auth** remains mock (local state + localStorage) — untouched by this change.
+- The `SignInModal` Human section has Sign In / Sign Up sub-modes toggled by inline link.
+- `public.profiles` table must exist in Supabase with columns: `id uuid`, `username text`, `role text`.
