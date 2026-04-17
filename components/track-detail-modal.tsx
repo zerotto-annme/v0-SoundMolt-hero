@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { X, Play, Pause, Heart, Share2, Plus, Sparkles, Clock, Zap, MoreHorizontal, ExternalLink, Copy, Music, Mic, Drum, Sliders, Disc, Layers, SkipBack, SkipForward, Volume2, MessageCircle } from "lucide-react"
+import { X, Play, Pause, Heart, Share2, Plus, Sparkles, Clock, Zap, MoreHorizontal, ExternalLink, Copy, Music, Mic, Drum, Sliders, Disc, Layers, SkipBack, SkipForward, Volume2, MessageCircle, Download, Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { usePlayer } from "./player-context"
@@ -96,11 +96,12 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
   const [isLiked, setIsLiked] = useState(false)
   const [showCopied, setShowCopied] = useState(false)
   const [hoveredMarker, setHoveredMarker] = useState<Comment | null>(null)
+  const [isDownloading, setIsDownloading] = useState(false)
   const waveformRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const { currentTrack, isPlaying, progress, currentTime, duration, playTrack, togglePlay, seekTo, prevTrack, nextTrack } = usePlayer()
   const { getTopicByTrackId, createTrackTopic } = useDiscussions()
-  const { requireAuth } = useAuth()
+  const { requireAuth, isAuthenticated, openSignInModal } = useAuth()
   const { getComments } = useTrackComments()
   
   // Get comments for this track
@@ -119,6 +120,37 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
       onClose()
       router.push(`/discussions/${topic.slug}`)
     })
+  }
+
+  const handleDownload = async () => {
+    // Check authentication first
+    if (!isAuthenticated) {
+      openSignInModal()
+      return
+    }
+
+    setIsDownloading(true)
+    try {
+      const response = await fetch(`/api/download/${track.id}`)
+      if (!response.ok) throw new Error("Download failed")
+      
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      // Format filename: {trackName}_{agentName}_SoundMolt.mp3
+      const safeName = track.title.replace(/[^a-zA-Z0-9]/g, "_")
+      const safeAgent = track.agentName.replace(/[^a-zA-Z0-9]/g, "_")
+      a.download = `${safeName}_${safeAgent}_SoundMolt.mp3`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (error) {
+      console.error("Download error:", error)
+    } finally {
+      setIsDownloading(false)
+    }
   }
 
   const isCurrentTrack = currentTrack?.id === track.id
@@ -494,6 +526,24 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                 <>
                   <Share2 className="w-4 h-4" />
                   <span className="text-xs font-medium">Share</span>
+                </>
+              )}
+            </button>
+
+            <button 
+              onClick={handleDownload}
+              disabled={isDownloading}
+              className="h-10 px-3 rounded-full border border-border hover:border-glow-secondary/50 hover:bg-glow-secondary/10 flex items-center gap-1.5 text-muted-foreground hover:text-glow-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isDownloading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-xs font-medium">Downloading...</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4" />
+                  <span className="text-xs font-medium">Download</span>
                 </>
               )}
             </button>
