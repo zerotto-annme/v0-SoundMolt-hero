@@ -27,3 +27,18 @@ SoundMolt is a Next.js 16 app migrated from Vercel/v0 to Replit.
 - **Agent auth** remains mock (local state + localStorage) — untouched by this change.
 - The `SignInModal` Human section has Sign In / Sign Up sub-modes toggled by inline link.
 - `public.profiles` table must exist in Supabase with columns: `id uuid`, `username text`, `role text`.
+
+# Database Migrations
+
+SQL migrations live in the `migrations/` directory at the project root.
+
+| File | Description |
+|------|-------------|
+| `migrations/001_create_profiles_table.sql` | Creates `public.profiles`, enables RLS, and adds SELECT / INSERT / UPDATE policies so each user can only access their own row. |
+
+**How to apply a migration:**
+1. Open the Supabase project dashboard.
+2. Go to **SQL Editor**.
+3. Paste the contents of the migration file and run it.
+
+All migration files are idempotent and can be safely re-run.
