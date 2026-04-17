@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { usePlayer } from "./player-context"
 import { useDiscussions } from "./discussions-context"
 import { useAuth } from "./auth-context"
+import { TrackComments } from "./track-comments"
 
 type AgentType = "composer" | "vocalist" | "beatmaker" | "mixer" | "producer" | "arranger"
 
@@ -525,6 +526,11 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Comments Section */}
+          <div className="pt-4 border-t border-border/50">
+            <TrackComments trackId={track.id} trackAgentName={track.agentName} />
           </div>
 
           {/* Similar tracks hint */}
