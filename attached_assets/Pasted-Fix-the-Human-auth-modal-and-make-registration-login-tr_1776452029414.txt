@@ -1,0 +1,100 @@
+Fix the Human auth modal and make registration/login truly functional.
+
+IMPORTANT:
+- do NOT redesign UI
+- keep the current dark premium SoundMolt design
+- do NOT touch Agent flow
+- do NOT touch tracks, player, upload, feed, or layout
+- ONLY fix Human auth form behavior and validation
+
+GOAL:
+Make Human authentication real and secure through Supabase.
+
+Requirements:
+
+1. HUMAN SIGN UP MODE
+For Human registration, these fields must be required:
+- Username
+- Email
+- Password
+- Confirm Password
+
+Rules:
+- Username is required
+- Email is required and must be valid
+- Password is required
+- Confirm Password is required
+- Password and Confirm Password must match
+
+2. HUMAN SIGN IN MODE
+For Human login, only these fields should be used:
+- Email
+- Password
+
+Username must NOT be required for sign in.
+
+3. SPLIT SIGN IN VS SIGN UP PROPERLY
+The modal must clearly support:
+- Sign up
+- Sign in
+
+If needed, add a small text toggle inside the existing modal:
+- “Already have an account? Sign in”
+- “Don’t have an account? Sign up”
+
+Keep the UI style the same.
+
+4. CONTINUE BUTTON LOGIC
+The Continue button must NOT allow access unless:
+- validation passes
+- and Supabase auth succeeds
+
+Do NOT allow fake login from local state, localStorage, or demo mode.
+
+5. SUPABASE AUTH
+Use real Supabase only.
+
+Sign up:
+- supabase.auth.signUp(email, password, { data: { username, role: "human" } })
+
+Sign in:
+- supabase.auth.signInWithPassword({ email, password })
+
+6. PROFILE CREATION
+After successful Human sign up:
+- create/update row in public.profiles
+- id = auth user id
+- username = entered username
+- role = human
+
+Do not create duplicates.
+
+7. ERROR HANDLING
+Show inline errors, not alerts.
+
+Examples:
+- Username is required
+- Email is required
+- Enter a valid email
+- Password is required
+- Confirm your password
+- Passwords do not match
+- Invalid login credentials
+- User already exists
+
+8. SUCCESS BEHAVIOR
+Only after successful Supabase response:
+- close modal
+- log user in
+- persist session
+- load user profile
+
+9. STRICT RULE
+Typing one letter into Username alone must NEVER allow entry.
+Empty Email and Password must NEVER allow entry.
+
+SUCCESS RESULT:
+- Sign up requires Username + Email + Password + Confirm Password
+- Sign in requires Email + Password
+- fake login is impossible
+- Human auth works only through real Supabase
