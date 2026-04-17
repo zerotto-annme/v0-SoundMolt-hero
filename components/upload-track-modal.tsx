@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useCallback } from "react"
+import { useState, useRef, useCallback, useEffect } from "react"
 import { X, Upload, Music, Image as ImageIcon, FileAudio, Loader2, Check, AlertCircle, Download, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { usePlayer, type Track } from "./player-context"
@@ -36,10 +36,38 @@ export function UploadTrackModal({ isOpen, onClose }: UploadTrackModalProps) {
   const [errors, setErrors] = useState<{ audio?: string; cover?: string; title?: string }>({})
   const [isDraggingAudio, setIsDraggingAudio] = useState(false)
   const [isDraggingCover, setIsDraggingCover] = useState(false)
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
 
   const audioInputRef = useRef<HTMLInputElement>(null)
   const coverInputRef = useRef<HTMLInputElement>(null)
   const { addCreatedTrack, playTrack } = usePlayer()
+
+  // Check if user has entered any data
+  const hasUnsavedData = audioFile !== null || coverFile !== null || title.trim() !== "" || description.trim() !== "" || genre !== ""
+
+  // Handle close with confirmation if there's unsaved data
+  const handleCloseRequest = useCallback(() => {
+    if (isUploading) return
+    
+    if (hasUnsavedData) {
+      setShowDiscardConfirm(true)
+    } else {
+      handleClose()
+    }
+  }, [hasUnsavedData, isUploading])
+
+  // Handle ESC key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen && !isUploading) {
+        e.preventDefault()
+        handleCloseRequest()
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown)
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [isOpen, isUploading, handleCloseRequest])
 
   const validateAudioFile = (file: File): boolean => {
     if (!file.name.toLowerCase().endsWith('.wav')) {
@@ -140,7 +168,7 @@ export function UploadTrackModal({ isOpen, onClose }: UploadTrackModalProps) {
     handleClose()
   }
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     setAudioFile(null)
     setCoverFile(null)
     setCoverPreview(null)
@@ -150,18 +178,21 @@ export function UploadTrackModal({ isOpen, onClose }: UploadTrackModalProps) {
     setDownloadEnabled(true)
     setErrors({})
     setIsUploading(false)
+    setShowDiscardConfirm(false)
     onClose()
+  }, [onClose])
+
+  const handleDiscardConfirm = () => {
+    setShowDiscardConfirm(false)
+    handleClose()
   }
 
   if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={!isUploading ? handleClose : undefined}
-      />
+      {/* Backdrop - no onClick to prevent accidental closing */}
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
       
       {/* Modal */}
       <div className="relative w-full max-w-lg mx-4 bg-card border border-border/50 rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
@@ -170,7 +201,7 @@ export function UploadTrackModal({ isOpen, onClose }: UploadTrackModalProps) {
         
         {/* Close button */}
         <button
-          onClick={handleClose}
+          onClick={handleCloseRequest}
           disabled={isUploading}
           className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors z-10 disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -403,7 +434,7 @@ export function UploadTrackModal({ isOpen, onClose }: UploadTrackModalProps) {
           {/* Action buttons */}
           <div className="flex gap-3 pt-2">
             <Button
-              onClick={handleClose}
+              onClick={handleCloseRequest}
               disabled={isUploading}
               variant="outline"
               className="flex-1 h-12 rounded-xl border-border/50"
@@ -430,6 +461,39 @@ export function UploadTrackModal({ isOpen, onClose }: UploadTrackModalProps) {
           </div>
         </div>
       </div>
+
+      {/* Discard Confirmation Dialog */}
+      {showDiscardConfirm && (
+        <div className="absolute inset-0 z-60 flex items-center justify-center">
+          <div 
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowDiscardConfirm(false)}
+          />
+          <div className="relative bg-card border border-border/50 rounded-xl shadow-2xl p-6 mx-4 max-w-sm w-full animate-in fade-in zoom-in-95 duration-200">
+            <h3 className="text-lg font-semibold text-foreground mb-2">
+              Are you sure you want to discard this track?
+            </h3>
+            <p className="text-sm text-muted-foreground mb-6">
+              All entered data will be lost.
+            </p>
+            <div className="flex gap-3">
+              <Button
+                onClick={() => setShowDiscardConfirm(false)}
+                variant="outline"
+                className="flex-1 h-10 rounded-lg border-border/50"
+              >
+                Stay
+              </Button>
+              <Button
+                onClick={handleDiscardConfirm}
+                className="flex-1 h-10 rounded-lg bg-red-500 hover:bg-red-600 text-white"
+              >
+                Discard
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
