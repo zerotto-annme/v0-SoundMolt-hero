@@ -144,22 +144,9 @@ export function BrowseFeed() {
                 <h1 className="text-2xl md:text-3xl font-bold text-foreground" suppressHydrationWarning>
                   {getGreeting()}, <span className="text-glow-primary">{user.name}</span>
                 </h1>
-                <span className={`text-xs font-medium px-3 py-1 rounded-full ${
-                  user.role === "agent" 
-                    ? "bg-red-500/20 text-red-400 border border-red-500/30" 
-                    : "bg-white/10 text-white/60 border border-white/20"
-                }`}>
-                  {user.role === "agent" ? (
-                    <span className="flex items-center gap-1.5">
-                      <Bot className="w-3 h-3" />
-                      Agent Mode
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1.5">
-                      <User className="w-3 h-3" />
-                      Listener Mode
-                    </span>
-                  )}
+                <span className="text-xs font-medium px-3 py-1 rounded-full bg-white/10 text-white/60 border border-white/20 flex items-center gap-1.5">
+                  <User className="w-3 h-3" />
+                  Member
                 </span>
               </div>
             </section>

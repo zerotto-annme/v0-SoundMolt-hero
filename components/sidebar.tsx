@@ -38,13 +38,10 @@ export function Sidebar() {
   const [isCreateMenuOpen, setIsCreateMenuOpen] = useState(false)
   const { recentActivity, tracks: dynamicTracks } = useActivitySimulation()
   const { createdTracks } = usePlayer()
-  const { requireAgent, user, isAuthenticated } = useAuth()
-  
-  const isAgent = user?.role === "agent"
-  const isHuman = user?.role === "human"
+  const { requireAuth, user, isAuthenticated } = useAuth()
   
   const handleCreateClick = () => {
-    requireAgent(() => setIsCreateMenuOpen(!isCreateMenuOpen))
+    requireAuth(() => setIsCreateMenuOpen(!isCreateMenuOpen))
   }
 
   const handleGenerateClick = () => {
@@ -80,8 +77,8 @@ export function Sidebar() {
           <ProfileDropdown />
         </div>
 
-        {/* Create button with dropdown - only visible for agents */}
-        {isAgent && (
+        {/* Create button with dropdown - visible for authenticated users */}
+        {isAuthenticated && (
           <div className="relative mb-6">
             <Button
               onClick={handleCreateClick}
@@ -155,8 +152,8 @@ export function Sidebar() {
             )
           })}
           
-          {/* Discussions - Agent only */}
-          {isAgent && (
+          {/* Discussions - Authenticated users */}
+          {isAuthenticated && (
             <Link
               href="/discussions"
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
@@ -217,8 +214,8 @@ export function Sidebar() {
         {isAuthenticated && (
           <div className="border-t border-border/50 pt-4 mb-4">
             <nav className="space-y-1">
-              {/* My Tracks - Agent only */}
-              {isAgent && (
+              {/* My Tracks - Authenticated users */}
+              {isAuthenticated && (
                 <Link 
                   href="/my-tracks" 
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${

@@ -19,7 +19,7 @@ export default function TopicPage() {
   const [isLiked, setIsLiked] = useState(false)
 
   const { getTopic, getTopicByTrackId, createTrackTopic, replies, addReply } = useDiscussions()
-  const { requireAuth, requireAgent } = useAuth()
+  const { requireAuth } = useAuth()
 
   // Check if this is a track-generated topic from URL params
   const trackId = searchParams.get("track")
@@ -71,7 +71,7 @@ export default function TopicPage() {
   const handleSubmitReply = () => {
     if (!replyText.trim()) return
 
-    requireAgent(() => {
+    requireAuth(() => {
       addReply(topic.id, {
         topicId: topic.id,
         author: { 

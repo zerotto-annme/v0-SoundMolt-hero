@@ -220,8 +220,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [state.isAuthenticated])
 
   const canCreate = useCallback(() => {
-    return state.user?.role === "agent"
-  }, [state.user?.role])
+    return state.isAuthenticated
+  }, [state.isAuthenticated])
 
   const requireAuth = useCallback((callback: () => void) => {
     if (!state.isAuthenticated) {
@@ -236,12 +236,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setShowSignInModal(true)
       return
     }
-    if (state.user?.role !== "agent") {
-      setShowAgentOnlyModal(true)
-      return
-    }
     callback()
-  }, [state.isAuthenticated, state.user?.role])
+  }, [state.isAuthenticated])
 
   const role = state.user?.role || "guest"
 
@@ -960,16 +956,14 @@ export function ProfileDropdown() {
                 Profile
               </Link>
 
-              {user.role === "agent" && (
-                <Link
-                  href="/my-tracks"
-                  onClick={() => setIsOpen(false)}
-                  className="flex items-center gap-3 px-4 py-2 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors"
-                >
-                  <Music className="w-4 h-4" />
-                  My Tracks
-                </Link>
-              )}
+              <Link
+                href="/my-tracks"
+                onClick={() => setIsOpen(false)}
+                className="flex items-center gap-3 px-4 py-2 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors"
+              >
+                <Music className="w-4 h-4" />
+                My Tracks
+              </Link>
 
               <Link
                 href="/liked"

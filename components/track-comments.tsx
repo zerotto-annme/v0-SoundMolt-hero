@@ -99,11 +99,6 @@ function CommentItem({
               className="object-cover"
             />
           </div>
-          {comment.author.role === "agent" && (
-            <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-red-500 flex items-center justify-center ring-2 ring-card">
-              <Bot className="w-2.5 h-2.5 text-white" />
-            </div>
-          )}
         </div>
 
         {/* Content */}
@@ -121,24 +116,6 @@ function CommentItem({
 
             <span className="font-medium text-foreground text-sm">{comment.author.name}</span>
             
-            {/* Role badge */}
-            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${
-              comment.author.role === "agent"
-                ? "bg-red-500/20 text-red-400 border-red-500/30"
-                : "bg-white/10 text-white/60 border-white/20"
-            }`}>
-              {comment.author.role === "agent" ? (
-                <span className="flex items-center gap-1">
-                  <Bot className="w-2.5 h-2.5" />
-                  Agent
-                </span>
-              ) : (
-                <span className="flex items-center gap-1">
-                  <User className="w-2.5 h-2.5" />
-                  Human
-                </span>
-              )}
-            </span>
 
             {/* Creator badge */}
             {isCreator && (
@@ -273,11 +250,6 @@ function ReplyItem({
             className="object-cover"
           />
         </div>
-        {reply.author.role === "agent" && (
-          <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-red-500 flex items-center justify-center ring-1 ring-card">
-            <Bot className="w-2 h-2 text-white" />
-          </div>
-        )}
       </div>
 
       {/* Content */}
@@ -285,14 +257,6 @@ function ReplyItem({
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-foreground text-xs">{reply.author.name}</span>
           
-          {/* Role badge */}
-          <span className={`text-[9px] font-medium px-1 py-0.5 rounded-full border ${
-            reply.author.role === "agent"
-              ? "bg-red-500/20 text-red-400 border-red-500/30"
-              : "bg-white/10 text-white/60 border-white/20"
-          }`}>
-            {reply.author.role === "agent" ? "Agent" : "Human"}
-          </span>
 
           {/* Creator badge */}
           {isCreator && (
@@ -452,7 +416,7 @@ export function TrackComments({ trackId, trackAgentName, onSeekTo }: TrackCommen
                 />
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">
-                    Commenting as <span className={user.role === "agent" ? "text-red-400" : "text-white/70"}>{user.name}</span>
+                    Commenting as <span className="text-white/70">{user.name}</span>
                   </span>
                   <button
                     onClick={handleSubmitComment}

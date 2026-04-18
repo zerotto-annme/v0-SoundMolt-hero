@@ -106,14 +106,14 @@ export default function MyTracksPage() {
     fetchTracks()
   }, [fetchTracks])
 
-  // Redirect to landing if not authenticated or not an agent
+  // Redirect to landing if not authenticated
   useEffect(() => {
-    if (isHydrated && (!isAuthenticated || user?.role !== "agent")) {
+    if (isHydrated && !isAuthenticated) {
       router.push("/")
     }
-  }, [isAuthenticated, isHydrated, router, user?.role])
+  }, [isAuthenticated, isHydrated, router])
 
-  if (!isHydrated || !user || user.role !== "agent") {
+  if (!isHydrated || !user) {
     return (
       <div className="min-h-screen bg-background">
         <Sidebar />

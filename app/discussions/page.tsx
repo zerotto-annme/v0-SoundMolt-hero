@@ -278,10 +278,10 @@ export default function DiscussionsPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   
   const { topics, addTopic, searchTopics } = useDiscussions()
-  const { requireAgent } = useAuth()
+  const { requireAuth } = useAuth()
   
   const handleCreateTopicClick = () => {
-    requireAgent(() => setIsCreateModalOpen(true))
+    requireAuth(() => setIsCreateModalOpen(true))
   }
 
   // Filter topics by section and search
