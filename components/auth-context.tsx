@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
+import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react"
 import { X, User, Bot, Lock, Music } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
@@ -347,11 +347,58 @@ function SignInModal({
 
   const [agentForm, setAgentForm] = useState({ artistName: "", identifier: "", provider: "" })
 
+  const [usernameStatus, setUsernameStatus] = useState<"idle" | "checking" | "available" | "taken" | "error">("idle")
+  const usernameDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    const username = humanForm.username.trim()
+
+    if (humanSubMode !== "signup" || !username) {
+      setUsernameStatus("idle")
+      return
+    }
+
+    setUsernameStatus("checking")
+
+    if (usernameDebounceRef.current) {
+      clearTimeout(usernameDebounceRef.current)
+    }
+
+    let cancelled = false
+
+    usernameDebounceRef.current = setTimeout(async () => {
+      try {
+        const { data, error } = await supabase.rpc("is_username_available", {
+          check_username: username,
+        })
+
+        if (cancelled) return
+
+        if (error) {
+          setUsernameStatus("error")
+        } else {
+          setUsernameStatus(data === true ? "available" : "taken")
+        }
+      } catch {
+        if (!cancelled) setUsernameStatus("error")
+      }
+    }, 500)
+
+    return () => {
+      cancelled = true
+      if (usernameDebounceRef.current) {
+        clearTimeout(usernameDebounceRef.current)
+      }
+    }
+  }, [humanForm.username, humanSubMode])
+
   const validateHumanForm = (): boolean => {
     const errors: typeof humanErrors = {}
 
     if (humanSubMode === "signup" && !humanForm.username.trim()) {
       errors.username = "Username is required"
+    } else if (humanSubMode === "signup" && usernameStatus === "taken") {
+      errors.username = "That username is already taken. Please choose a different one."
     }
 
     if (!humanForm.email.trim()) {
@@ -381,8 +428,12 @@ function SignInModal({
   const isHumanFormValid = (): boolean => {
     const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(humanForm.email)
     if (humanSubMode === "signup") {
+      const usernameOk = humanForm.username.trim() !== "" &&
+        usernameStatus !== "taken" &&
+        usernameStatus !== "checking"
+
       return (
-        humanForm.username.trim() !== "" &&
+        usernameOk &&
         emailValid &&
         humanForm.password.length >= 6 &&
         humanForm.confirmPassword !== "" &&
@@ -524,6 +575,7 @@ function SignInModal({
     setHumanSubMode(sub)
     setHumanErrors({})
     setHumanForm({ username: "", email: "", password: "", confirmPassword: "" })
+    setUsernameStatus("idle")
     setForgotPasswordMode(false)
     setForgotPasswordEmail("")
     setForgotPasswordStatus("idle")
@@ -594,18 +646,53 @@ function SignInModal({
               {humanSubMode === "signup" && (
                 <div>
                   <label className="block text-sm text-white/60 mb-2">Username *</label>
-                  <input
-                    type="text"
-                    value={humanForm.username}
-                    onChange={(e) => {
-                      setHumanForm(prev => ({ ...prev, username: e.target.value }))
-                      if (humanErrors.username) setHumanErrors(prev => ({ ...prev, username: undefined }))
-                    }}
-                    placeholder="your_username"
-                    className={`w-full h-12 px-4 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${humanErrors.username ? "border-red-500/60 focus:border-red-500" : "border-white/10 focus:border-white/30"}`}
-                  />
-                  {humanErrors.username && (
-                    <p className="mt-1.5 text-xs text-red-400">{humanErrors.username}</p>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={humanForm.username}
+                      onChange={(e) => {
+                        setHumanForm(prev => ({ ...prev, username: e.target.value }))
+                        if (humanErrors.username) setHumanErrors(prev => ({ ...prev, username: undefined }))
+                      }}
+                      placeholder="your_username"
+                      className={`w-full h-12 px-4 pr-10 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${
+                        humanErrors.username || usernameStatus === "taken"
+                          ? "border-red-500/60 focus:border-red-500"
+                          : usernameStatus === "available"
+                          ? "border-green-500/60 focus:border-green-500"
+                          : usernameStatus === "error"
+                          ? "border-yellow-500/40 focus:border-yellow-500/60"
+                          : "border-white/10 focus:border-white/30"
+                      }`}
+                    />
+                    {humanForm.username.trim() && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        {usernameStatus === "checking" && (
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white/70 rounded-full animate-spin" />
+                        )}
+                        {usernameStatus === "available" && (
+                          <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                        {usernameStatus === "taken" && (
+                          <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {!humanErrors.username && usernameStatus === "available" && (
+                    <p className="mt-1.5 text-xs text-green-400">Username is available</p>
+                  )}
+                  {(humanErrors.username || usernameStatus === "taken") && (
+                    <p className="mt-1.5 text-xs text-red-400">
+                      {humanErrors.username || "That username is already taken. Please choose a different one."}
+                    </p>
+                  )}
+                  {!humanErrors.username && usernameStatus === "error" && (
+                    <p className="mt-1.5 text-xs text-yellow-400/80">{"Couldn't verify availability — you can still sign up."}</p>
                   )}
                 </div>
               )}
