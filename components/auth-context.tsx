@@ -311,6 +311,11 @@ function SignInModal({
     general?: string
   }>({})
   const [humanLoading, setHumanLoading] = useState(false)
+  const [forgotPasswordMode, setForgotPasswordMode] = useState(false)
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState("")
+  const [forgotPasswordStatus, setForgotPasswordStatus] = useState<"idle" | "success" | "error">("idle")
+  const [forgotPasswordError, setForgotPasswordError] = useState("")
+  const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false)
 
   const [agentForm, setAgentForm] = useState({ artistName: "", identifier: "", provider: "" })
 
@@ -457,10 +462,38 @@ function SignInModal({
     })
   }
 
+  const handleForgotPassword = async () => {
+    const email = forgotPasswordEmail.trim()
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setForgotPasswordError("Please enter a valid email address")
+      return
+    }
+    setForgotPasswordLoading(true)
+    setForgotPasswordError("")
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email)
+      if (error) {
+        setForgotPasswordError(error.message)
+        setForgotPasswordStatus("error")
+      } else {
+        setForgotPasswordStatus("success")
+      }
+    } catch {
+      setForgotPasswordError("Something went wrong. Please try again.")
+      setForgotPasswordStatus("error")
+    } finally {
+      setForgotPasswordLoading(false)
+    }
+  }
+
   const switchHumanSubMode = (sub: "signin" | "signup") => {
     setHumanSubMode(sub)
     setHumanErrors({})
     setHumanForm({ username: "", email: "", password: "", confirmPassword: "" })
+    setForgotPasswordMode(false)
+    setForgotPasswordEmail("")
+    setForgotPasswordStatus("idle")
+    setForgotPasswordError("")
   }
 
   return (
@@ -575,7 +608,69 @@ function SignInModal({
                 {humanErrors.password && (
                   <p className="mt-1.5 text-xs text-red-400">{humanErrors.password}</p>
                 )}
+                {humanSubMode === "signin" && (
+                  <div className="mt-2 text-right">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForgotPasswordMode(true)
+                        setForgotPasswordEmail(humanForm.email)
+                        setForgotPasswordStatus("idle")
+                        setForgotPasswordError("")
+                      }}
+                      className="text-xs text-white/40 hover:text-white/70 transition-colors underline underline-offset-2"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
               </div>
+
+              {humanSubMode === "signin" && forgotPasswordMode && (
+                <div className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-3">
+                  <p className="text-sm text-white/70 font-medium">Reset your password</p>
+                  {forgotPasswordStatus === "success" ? (
+                    <p className="text-sm text-green-400">Check your email — we&apos;ve sent a password reset link.</p>
+                  ) : (
+                    <>
+                      <input
+                        type="email"
+                        value={forgotPasswordEmail}
+                        onChange={(e) => {
+                          setForgotPasswordEmail(e.target.value)
+                          if (forgotPasswordError) setForgotPasswordError("")
+                        }}
+                        placeholder="you@example.com"
+                        className="w-full h-10 px-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-white/30 transition-colors text-sm"
+                      />
+                      {forgotPasswordError && (
+                        <p className="text-xs text-red-400">{forgotPasswordError}</p>
+                      )}
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={handleForgotPassword}
+                          disabled={forgotPasswordLoading}
+                          className="flex-1 h-9 bg-white text-black hover:bg-white/90 rounded-lg text-sm font-semibold disabled:opacity-50"
+                        >
+                          {forgotPasswordLoading ? "Sending…" : "Send reset link"}
+                        </Button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setForgotPasswordMode(false)
+                            setForgotPasswordEmail("")
+                            setForgotPasswordStatus("idle")
+                            setForgotPasswordError("")
+                          }}
+                          className="px-3 h-9 text-sm text-white/40 hover:text-white transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
 
               {humanSubMode === "signup" && (
                 <div>
