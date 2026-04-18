@@ -13,6 +13,14 @@ interface UploadTrackModalProps {
   onSuccess?: () => void
 }
 
+function guessMime(ext: string): string {
+  const map: Record<string, string> = {
+    wav: "audio/wav", mp3: "audio/mpeg", flac: "audio/flac",
+    aac: "audio/aac", ogg: "audio/ogg", m4a: "audio/mp4",
+  }
+  return map[ext] || "audio/wav"
+}
+
 const GENRES = [
   { id: "lofi", name: "Lo-Fi" },
   { id: "techno", name: "Techno" },
@@ -71,9 +79,22 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
     return () => document.removeEventListener("keydown", handleKeyDown)
   }, [isOpen, isUploading, handleCloseRequest])
 
+  const SUPPORTED_AUDIO_TYPES = [
+    "audio/wav", "audio/x-wav",
+    "audio/mpeg", "audio/mp3",
+    "audio/flac", "audio/x-flac",
+    "audio/aac",
+    "audio/ogg",
+    "audio/mp4", // .m4a
+  ]
+  const SUPPORTED_AUDIO_EXTENSIONS = [".wav", ".mp3", ".flac", ".aac", ".ogg", ".m4a"]
+
   const validateAudioFile = (file: File): boolean => {
-    if (!file.name.toLowerCase().endsWith('.wav')) {
-      setErrors(prev => ({ ...prev, audio: "Only WAV files are supported" }))
+    const name = file.name.toLowerCase()
+    const hasValidExt = SUPPORTED_AUDIO_EXTENSIONS.some(ext => name.endsWith(ext))
+    const hasValidType = file.type === "" || SUPPORTED_AUDIO_TYPES.includes(file.type)
+    if (!hasValidExt && !hasValidType) {
+      setErrors(prev => ({ ...prev, audio: "Unsupported format. Please upload WAV, MP3, FLAC, AAC, OGG, or M4A." }))
       return false
     }
     setErrors(prev => ({ ...prev, audio: undefined }))
@@ -145,13 +166,15 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
     try {
       const userId = session.user.id
       const timestamp = Date.now()
-      const audioExt = audioFile!.name.split('.').pop() || 'wav'
-      const audioPath = `${userId}/${timestamp}.${audioExt}`
+      const originalName = audioFile!.name
+      const audioExt = originalName.split('.').pop()?.toLowerCase() || 'wav'
+      const mimeType = audioFile!.type || guessMime(audioExt)
 
-      // Upload audio file to "audio" bucket
+      // Upload original file to "originals/" subfolder — never modified
+      const audioPath = `originals/${userId}/${timestamp}.${audioExt}`
       const { error: audioError } = await supabase.storage
         .from("audio")
-        .upload(audioPath, audioFile!, { upsert: false, contentType: audioFile!.type || "audio/wav" })
+        .upload(audioPath, audioFile!, { upsert: false, contentType: mimeType })
 
       if (audioError) {
         setErrors({ submit: `Audio upload failed: ${audioError.message}` })
@@ -178,7 +201,7 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
         coverUrl = coverPublic.publicUrl
       }
 
-      // Insert track record into database
+      // Insert track record into database with full audio pipeline metadata
       const { data: inserted, error: dbError } = await supabase
         .from("tracks")
         .insert({
@@ -186,7 +209,15 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
           title: title.trim(),
           style: genre || null,
           description: description.trim() || null,
+          // audio_url = playback URL (original file used for both playback and download)
           audio_url: audioUrl,
+          // original_audio_url = exact source file for download
+          original_audio_url: audioUrl,
+          // stream_audio_url = same for now (no server-side transcoding in browser)
+          stream_audio_url: audioUrl,
+          original_filename: originalName,
+          original_mime_type: mimeType,
+          original_file_size: audioFile!.size,
           cover_url: coverUrl,
           download_enabled: downloadEnabled,
           source_type: "uploaded",
@@ -304,7 +335,7 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
               <input
                 ref={audioInputRef}
                 type="file"
-                accept=".wav"
+                accept=".wav,.mp3,.flac,.aac,.ogg,.m4a,audio/*"
                 onChange={(e) => e.target.files?.[0] && handleAudioSelect(e.target.files[0])}
                 className="hidden"
               />
@@ -322,7 +353,7 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
                 <>
                   <FileAudio className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
                   <p className="text-sm text-muted-foreground">Drag and drop or click to upload</p>
-                  <p className="text-xs text-muted-foreground/60 mt-1">WAV files only</p>
+                  <p className="text-xs text-muted-foreground/60 mt-1">WAV, MP3, FLAC, AAC, OGG, M4A</p>
                 </>
               )}
             </div>

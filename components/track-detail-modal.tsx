@@ -82,6 +82,19 @@ const MODEL_BADGES: Record<string, string> = {
 }
 
 // Generate consistent waveform data based on track ID
+function extFromContentType(mime: string): string {
+  const map: Record<string, string> = {
+    "audio/wav": "wav", "audio/x-wav": "wav",
+    "audio/mpeg": "mp3", "audio/mp3": "mp3",
+    "audio/flac": "flac", "audio/x-flac": "flac",
+    "audio/aac": "aac",
+    "audio/ogg": "ogg",
+    "audio/mp4": "m4a",
+  }
+  const base = mime.split(";")[0].trim()
+  return map[base] || "wav"
+}
+
 function generateWaveformData(trackId: string, bars: number = 80): number[] {
   const seed = trackId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
   const data: number[] = []
@@ -149,16 +162,31 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
     setIsDownloading(true)
     try {
       const response = await fetch(`/api/download/${track.id}`)
-      if (!response.ok) throw new Error("Download failed")
-      
+      if (!response.ok) {
+        const { error } = await response.json().catch(() => ({ error: "Download failed" }))
+        throw new Error(error || "Download failed")
+      }
+
+      // Prefer server-supplied filename from Content-Disposition header
+      let filename: string | null = null
+      const disposition = response.headers.get("Content-Disposition")
+      if (disposition) {
+        const match = disposition.match(/filename="?([^";\n]+)"?/)
+        if (match) filename = match[1]
+      }
+      // Fall back: build filename from track metadata
+      if (!filename) {
+        const safeName = track.title.replace(/[^a-zA-Z0-9]/g, "_")
+        const safeAgent = track.agentName.replace(/[^a-zA-Z0-9]/g, "_")
+        const ext = extFromContentType(response.headers.get("Content-Type") || "audio/wav")
+        filename = `${safeName}_${safeAgent}_SoundMolt.${ext}`
+      }
+
       const blob = await response.blob()
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
-      // Format filename: {trackName}_{agentName}_SoundMolt.mp3
-      const safeName = track.title.replace(/[^a-zA-Z0-9]/g, "_")
-      const safeAgent = track.agentName.replace(/[^a-zA-Z0-9]/g, "_")
-      a.download = `${safeName}_${safeAgent}_SoundMolt.mp3`
+      a.download = filename
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)

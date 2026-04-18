@@ -1,74 +1,107 @@
 import { NextRequest, NextResponse } from "next/server"
+import { createClient } from "@supabase/supabase-js"
 
-// Mock audio data generator - creates a valid MP3 header + silence
-// In production, this would fetch the actual audio file from storage
-function generateMockMp3(): Buffer {
-  // MP3 file with valid header (44 bytes WAV-like structure for simplicity)
-  // This creates a minimal valid audio file that browsers can download
-  const sampleRate = 44100
-  const numChannels = 2
-  const bitsPerSample = 16
-  const duration = 180 // 3 minutes
-  const numSamples = sampleRate * duration
-  const dataSize = numSamples * numChannels * (bitsPerSample / 8)
-  
-  // Create WAV header (browsers handle WAV as well as MP3)
-  const buffer = Buffer.alloc(44 + Math.min(dataSize, 1024)) // Limit size for demo
-  
-  // RIFF header
-  buffer.write("RIFF", 0)
-  buffer.writeUInt32LE(36 + buffer.length - 44, 4)
-  buffer.write("WAVE", 8)
-  
-  // fmt subchunk
-  buffer.write("fmt ", 12)
-  buffer.writeUInt32LE(16, 16) // Subchunk1Size
-  buffer.writeUInt16LE(1, 20) // AudioFormat (PCM)
-  buffer.writeUInt16LE(numChannels, 22)
-  buffer.writeUInt32LE(sampleRate, 24)
-  buffer.writeUInt32LE(sampleRate * numChannels * (bitsPerSample / 8), 28) // ByteRate
-  buffer.writeUInt16LE(numChannels * (bitsPerSample / 8), 32) // BlockAlign
-  buffer.writeUInt16LE(bitsPerSample, 34)
-  
-  // data subchunk
-  buffer.write("data", 36)
-  buffer.writeUInt32LE(buffer.length - 44, 40)
-  
-  // Fill with silence (zeros already there from Buffer.alloc)
-  
-  return buffer
-}
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ trackId: string }> }
 ) {
   const { trackId } = await params
-  
+
   if (!trackId) {
     return NextResponse.json({ error: "Track ID required" }, { status: 400 })
   }
 
   try {
-    // In production, you would:
-    // 1. Verify user authentication
-    // 2. Check download permissions
-    // 3. Fetch the actual audio file from storage (S3, Vercel Blob, etc.)
-    // 4. Log the download for analytics
-    
-    // For demo, generate a mock audio file
-    const audioBuffer = generateMockMp3()
-    
-    return new NextResponse(audioBuffer, {
+    // Fetch track metadata from database
+    const { data: track, error: dbError } = await supabase
+      .from("tracks")
+      .select("id, title, audio_url, original_audio_url, original_filename, original_mime_type, download_enabled")
+      .eq("id", trackId)
+      .single()
+
+    if (dbError || !track) {
+      return NextResponse.json({ error: "Track not found" }, { status: 404 })
+    }
+
+    // Respect download permission set by track owner
+    if (track.download_enabled === false) {
+      return NextResponse.json({ error: "Downloads disabled for this track" }, { status: 403 })
+    }
+
+    // Use original file if available, fall back to audio_url (stream/legacy)
+    const fileUrl = track.original_audio_url || track.audio_url
+    if (!fileUrl) {
+      return NextResponse.json({ error: "Audio file not found" }, { status: 404 })
+    }
+
+    // Fetch the actual file from Supabase Storage
+    const fileResponse = await fetch(fileUrl)
+    if (!fileResponse.ok) {
+      return NextResponse.json({ error: "Failed to fetch audio file" }, { status: 502 })
+    }
+
+    const fileBuffer = await fileResponse.arrayBuffer()
+
+    // Validate file is non-empty
+    if (fileBuffer.byteLength < 100) {
+      return NextResponse.json({ error: "Audio file appears to be empty or corrupt" }, { status: 502 })
+    }
+
+    // Determine content type
+    const contentType =
+      track.original_mime_type ||
+      fileResponse.headers.get("content-type") ||
+      guessContentType(fileUrl)
+
+    // Build a clean filename for the download
+    const safeTitle = (track.title || "track").replace(/[^a-zA-Z0-9_\-. ]/g, "_").trim()
+    const ext = track.original_filename
+      ? track.original_filename.split(".").pop()
+      : extensionFromMime(contentType)
+    const filename = `${safeTitle}_SoundMolt.${ext}`
+
+    return new NextResponse(fileBuffer, {
       status: 200,
       headers: {
-        "Content-Type": "audio/mpeg",
-        "Content-Disposition": `attachment; filename="track_${trackId}_SoundMolt.mp3"`,
-        "Content-Length": audioBuffer.length.toString(),
+        "Content-Type": contentType,
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Length": fileBuffer.byteLength.toString(),
+        "Cache-Control": "private, no-cache",
       },
     })
   } catch (error) {
     console.error("Download error:", error)
     return NextResponse.json({ error: "Download failed" }, { status: 500 })
   }
+}
+
+function guessContentType(url: string): string {
+  const lower = url.toLowerCase()
+  if (lower.includes(".wav")) return "audio/wav"
+  if (lower.includes(".mp3")) return "audio/mpeg"
+  if (lower.includes(".flac")) return "audio/flac"
+  if (lower.includes(".aac")) return "audio/aac"
+  if (lower.includes(".ogg")) return "audio/ogg"
+  if (lower.includes(".m4a")) return "audio/mp4"
+  return "audio/mpeg"
+}
+
+function extensionFromMime(mime: string): string {
+  const map: Record<string, string> = {
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/mpeg": "mp3",
+    "audio/mp3": "mp3",
+    "audio/flac": "flac",
+    "audio/x-flac": "flac",
+    "audio/aac": "aac",
+    "audio/ogg": "ogg",
+    "audio/mp4": "m4a",
+  }
+  return map[mime] || "wav"
 }

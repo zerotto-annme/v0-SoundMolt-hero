@@ -1,0 +1,131 @@
+Upgrade SoundMolt audio pipeline to use dual-file storage like SoundCloud:
+
+- keep original WAV as the source/original download file
+- generate and store a separate high-quality streaming file
+- fix broken Download behavior so downloaded files are valid and playable
+
+IMPORTANT:
+- do NOT redesign UI
+- do NOT change layout or styling
+- keep current SoundMolt visual design
+- do NOT break existing auth, upload, comments, or Supabase integration
+- ONLY improve audio storage, streaming, and download logic
+
+CURRENT PROBLEM:
+- uploaded WAV plays with poor quality in browser
+- current Download gives an MP3 file around 1 MB that is silent/broken
+- app needs proper original-vs-streaming handling
+
+GOAL:
+For every uploaded track:
+1. store the original file exactly as uploaded
+2. create a separate streaming version in high quality
+3. stream the streaming file in the player
+4. download the original valid file (or valid streaming file if original download is disabled)
+
+BACKEND / STORAGE RULES:
+Use Supabase Storage.
+
+Buckets already exist:
+- audio
+- covers
+
+If needed, create folder conventions inside audio:
+- originals/
+- streaming/
+
+TABLE:
+Use public.tracks and extend it safely with migrations if needed.
+
+REQUIRED DATABASE CHANGES:
+Add missing columns if they do not exist:
+- original_audio_url text
+- stream_audio_url text
+- original_filename text
+- original_mime_type text
+- original_file_size bigint
+- stream_mime_type text
+- stream_bitrate integer
+- duration_seconds numeric
+- waveform_json jsonb (optional if already supported)
+
+Keep existing columns working:
+- audio_url
+- cover_url
+- title
+- style
+- description
+- download_enabled
+- source_type
+- plays
+- likes
+- user_id
+- created_at
+
+DATA MODEL RULE:
+- original_audio_url = exact uploaded source file URL
+- stream_audio_url = processed streaming file URL
+- audio_url should point to stream_audio_url for compatibility with existing player UI
+
+UPLOAD FLOW:
+1. User uploads WAV (or supported lossless/high quality format)
+2. Save original file untouched to Supabase Storage
+3. Generate a streaming version for browser playback:
+   - prefer MP3 320 kbps CBR or highest practical quality supported by browser
+   - if project already supports AAC/Opus better, keep browser compatibility in mind
+4. Save streaming file to Supabase Storage
+5. Insert/update track row with both URLs and metadata
+
+QUALITY REQUIREMENTS:
+- streaming file must be high quality, not low-bitrate placeholder
+- do NOT generate tiny silent/broken files
+- validate generated stream file before saving its URL
+- preserve full original source for download
+
+DOWNLOAD RULES:
+- Download button must download a real playable file
+- If download_enabled = true:
+  - default download should be the ORIGINAL uploaded file
+  - preserve file extension/name when possible
+- If original file is unavailable for some edge case:
+  - fallback to a valid streaming file, never a silent/broken placeholder
+- Do NOT download blob garbage or empty MP3s
+
+PLAYER RULES:
+- web player should use stream_audio_url (or audio_url mapped to stream file)
+- avoid any processing that degrades sound:
+  - no accidental low bitrate export
+  - no broken transcoding
+  - no gain reduction / muffling caused by wrong audio pipeline
+- if there is custom Web Audio processing, bypass it for normal playback unless explicitly needed
+
+BROKEN DOWNLOAD FIX:
+Audit current download implementation and fix all of this:
+- wrong URL source
+- broken fetch/blob handling
+- empty blob generation
+- wrong content-type
+- wrong filename/extension
+- downloading a stream placeholder instead of a real file
+
+VALIDATION:
+- after upload, verify both files exist in Storage
+- verify stream file size is realistic
+- verify original download file opens and plays
+- verify player uses streaming file
+- verify Download downloads a valid playable file
+
+MIGRATION / SAFETY:
+- use additive migrations only
+- do not destroy existing tracks
+- keep backward compatibility for old records
+- for old records that only have audio_url:
+  - treat audio_url as stream_audio_url until migrated
+
+SUCCESS RESULT:
+- uploaded WAV is preserved as original
+- high-quality streaming file is generated and used in player
+- playback sounds correct and full quality for web streaming standards
+- Download downloads a real valid file
+- no more tiny silent MP3 downloads
+- existing UI remains visually unchanged

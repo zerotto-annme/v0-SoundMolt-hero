@@ -17,6 +17,10 @@ export interface Track {
   likes?: number
   style?: string
   audioUrl?: string
+  originalAudioUrl?: string
+  originalFilename?: string
+  originalMimeType?: string
+  originalFileSize?: number
   createdAt?: number
   sourceType?: "generated" | "uploaded"
   description?: string
