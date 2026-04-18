@@ -1,0 +1,63 @@
+EMERGENCY FIX: stop using fake generated MP3 files in SoundMolt.
+
+CURRENT BUG:
+Download still returns the same fake broken MP3 file.
+The previous fix did not change actual behavior.
+
+IMPORTANT:
+- do NOT redesign UI
+- do NOT change layout or styling
+- keep current SoundMolt design
+- ONLY stop fake MP3 usage and force valid file download/playback
+
+GOAL:
+Immediately disable broken MP3 stream/download logic.
+Use the original uploaded audio file as the source of truth until real transcoding exists.
+
+REQUIRED CHANGES:
+
+1. Disable fake MP3 generation
+- Find and remove/bypass all code that creates fake/broken MP3 blobs or placeholder stream files
+- Do NOT create any .mp3 file unless it is a real valid encoded audio file
+
+2. Playback source
+- Force player to use:
+  - original_audio_url if it exists
+  - otherwise audio_url
+- Do NOT use stream_audio_url if it points to a fake/broken generated MP3
+
+3. Download source
+- Force Download button to always download:
+  - original_audio_url if it exists
+  - otherwise audio_url
+- Never download stream_audio_url unless it is proven valid
+- Never download any generated mp3 placeholder
+
+4. Save logic
+- On new uploads:
+  - save original file untouched
+  - store original_audio_url correctly
+  - set audio_url = original_audio_url for now
+  - set stream_audio_url = null unless a real transcoded stream file exists
+
+5. Validate before using a file
+- If a URL points to a file under a small invalid size (e.g. fake 1 KB mp3), do not use it for playback or download
+- Add defensive checks and fallback to original_audio_url
+
+6. Debug logs
+Log these values when downloading:
+- chosen download URL
+- chosen playback URL
+- whether original_audio_url exists
+- whether stream_audio_url exists
+- blob/file size if fetched
+This is required to verify the fix
+
+7. Backward cleanup
+- If existing uploaded tracks have broken stream_audio_url values, ignore them and fallback to original_audio_url
+
+SUCCESS RESULT:
+- Download gives the real original playable file
+- Player uses original audio until real MP3 transcoding exists
+- No more fake 1 KB MP3 downloads
+- No fake conversion anywhere in the app

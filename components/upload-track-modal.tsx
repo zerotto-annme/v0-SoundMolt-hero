@@ -264,9 +264,12 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
         }
       }
 
-      console.log(
-        `[upload] Playback URL (stream): ${streamAudioUrl} | Download URL (original): ${originalAudioUrl}`
-      )
+      const streamDiffers = streamAudioUrl !== originalAudioUrl
+      console.log(`[upload] Original (download + playback): ${originalAudioUrl}`)
+      console.log(`[upload] Stream (transcoded MP3, if any): ${streamDiffers ? streamAudioUrl : "(none — using original)"}`)
+      console.log(`[upload] DB audio_url = original_audio_url = ${originalAudioUrl}`)
+      console.log(`[upload] DB stream_audio_url = ${streamDiffers ? streamAudioUrl : "null"}`)
+      console.log(`[upload] original file size: ${audioFile!.size} bytes (${(audioFile!.size / 1024 / 1024).toFixed(2)} MB)`)
 
       // ── Step 3: Upload cover image ────────────────────────────────────────
       setUploadStatus("Uploading cover…")
@@ -295,10 +298,11 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
           title: title.trim(),
           style: genre || null,
           description: description.trim() || null,
-          // audio_url = stream URL for backward-compat UI that only knows audio_url
-          audio_url: streamAudioUrl,
+          // audio_url = ALWAYS the original valid file (never a stream that might be broken)
+          audio_url: originalAudioUrl,
           original_audio_url: originalAudioUrl,
-          stream_audio_url: streamAudioUrl,
+          // stream_audio_url = MP3 only if it was actually transcoded and is different from original
+          stream_audio_url: streamAudioUrl !== originalAudioUrl ? streamAudioUrl : null,
           original_filename: originalName,
           original_mime_type: originalMime,
           original_file_size: audioFile!.size,
@@ -322,8 +326,8 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
         modelType: "Uploaded",
         modelProvider: "user",
         coverUrl: inserted.cover_url || "",
-        // Player uses the stream URL (MP3 or original for non-WAV)
-        audioUrl: streamAudioUrl,
+        // Player always uses original WAV — stream_audio_url is only for future optimized playback
+        audioUrl: originalAudioUrl,
         originalAudioUrl: originalAudioUrl,
         originalFilename: originalName,
         originalMimeType: originalMime,

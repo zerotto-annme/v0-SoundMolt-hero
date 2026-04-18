@@ -89,7 +89,8 @@ export default function MyTracksPage() {
       modelType: "Uploaded",
       modelProvider: "user",
       coverUrl: row.cover_url || "",
-      audioUrl: row.stream_audio_url || row.audio_url,
+      // Use original_audio_url for playback — stream_audio_url may contain a broken transcoded file
+      audioUrl: row.original_audio_url || row.audio_url,
       originalAudioUrl: row.original_audio_url || row.audio_url,
       originalFilename: row.original_filename || undefined,
       originalMimeType: row.original_mime_type || undefined,
