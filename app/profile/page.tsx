@@ -232,50 +232,36 @@ export default function ProfilePage() {
       let trimmedAvatarUrl = editProfileForm.avatarUrl.trim()
 
       if (avatarFile) {
-        // Route upload through the server-side API so the service role key is
-        // used for storage access — this works regardless of bucket RLS policies.
-        const { data: sessionData } = await supabase.auth.getSession()
-        const jwt = sessionData?.session?.access_token
-        if (!jwt) {
-          setEditProfileErrors({ general: "Session expired. Please sign in again." })
-          return
-        }
+        const path = `${user!.id}/${Date.now()}-${avatarFile.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`
 
         console.log("[profile] Uploading avatar:", {
           bucket: "avatars",
+          path,
           fileType: avatarFile.type,
           fileSizeBytes: avatarFile.size,
           userId: user!.id,
         })
 
-        const form = new FormData()
-        form.append("file", avatarFile)
+        const { error: uploadError } = await supabase.storage
+          .from("avatars")
+          .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type })
 
-        const uploadRes = await fetch("/api/upload-avatar", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${jwt}` },
-          body: form,
-        })
-
-        const uploadJson = await uploadRes.json()
-
-        if (!uploadRes.ok) {
-          console.error("[profile] Avatar upload error:", {
-            status: uploadRes.status,
+        if (uploadError) {
+          console.error("[profile] Avatar upload failed:", {
             bucket: "avatars",
+            path,
             fileType: avatarFile.type,
             fileSizeBytes: avatarFile.size,
-            serverError: uploadJson?.error,
+            error: uploadError.message,
           })
           setEditProfileErrors({
-            general: uploadJson?.error
-              ? `Upload failed: ${uploadJson.error}`
-              : "Failed to upload image. Please try again.",
+            general: `Failed to upload image: ${uploadError.message}`,
           })
           return
         }
 
-        trimmedAvatarUrl = uploadJson.url as string
+        const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path)
+        trimmedAvatarUrl = urlData.publicUrl
         console.log("[profile] Avatar uploaded successfully:", trimmedAvatarUrl)
       }
 
