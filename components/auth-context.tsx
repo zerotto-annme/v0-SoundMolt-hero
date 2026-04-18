@@ -436,14 +436,22 @@ function SignInModal({
 
   const [agentForm, setAgentForm] = useState({ artistName: "", identifier: "", provider: "" })
 
-  const [usernameStatus, setUsernameStatus] = useState<"idle" | "checking" | "available" | "taken" | "error">("idle")
+  const [usernameStatus, setUsernameStatus] = useState<"idle" | "invalid" | "checking" | "available" | "taken" | "error">("idle")
   const usernameDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const USERNAME_REGEX = /^[a-zA-Z0-9_]+$/
 
   useEffect(() => {
     const username = humanForm.username.trim()
 
     if (humanSubMode !== "signup" || !username) {
       setUsernameStatus("idle")
+      return
+    }
+
+    if (!USERNAME_REGEX.test(username)) {
+      setUsernameStatus("invalid")
+      if (usernameDebounceRef.current) clearTimeout(usernameDebounceRef.current)
       return
     }
 
@@ -486,6 +494,8 @@ function SignInModal({
 
     if (humanSubMode === "signup" && !humanForm.username.trim()) {
       errors.username = "Username is required"
+    } else if (humanSubMode === "signup" && usernameStatus === "invalid") {
+      errors.username = "Only letters, numbers, and underscores allowed"
     } else if (humanSubMode === "signup" && usernameStatus === "taken") {
       errors.username = "That username is already taken. Please choose a different one."
     }
@@ -518,6 +528,7 @@ function SignInModal({
     const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(humanForm.email)
     if (humanSubMode === "signup") {
       const usernameOk = humanForm.username.trim() !== "" &&
+        usernameStatus !== "invalid" &&
         usernameStatus !== "taken" &&
         usernameStatus !== "checking"
 
@@ -765,7 +776,7 @@ function SignInModal({
                       }}
                       placeholder="your_username"
                       className={`w-full h-12 px-4 pr-10 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${
-                        humanErrors.username || usernameStatus === "taken"
+                        humanErrors.username || usernameStatus === "taken" || usernameStatus === "invalid"
                           ? "border-red-500/60 focus:border-red-500"
                           : usernameStatus === "available"
                           ? "border-green-500/60 focus:border-green-500"
@@ -784,7 +795,7 @@ function SignInModal({
                             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                           </svg>
                         )}
-                        {usernameStatus === "taken" && (
+                        {(usernameStatus === "taken" || usernameStatus === "invalid") && (
                           <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                           </svg>
@@ -792,6 +803,9 @@ function SignInModal({
                       </div>
                     )}
                   </div>
+                  {!humanErrors.username && usernameStatus === "invalid" && (
+                    <p className="mt-1.5 text-xs text-red-400">Only letters, numbers, and underscores allowed</p>
+                  )}
                   {!humanErrors.username && usernameStatus === "available" && (
                     <p className="mt-1.5 text-xs text-green-400">Username is available</p>
                   )}

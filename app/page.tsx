@@ -44,10 +44,16 @@ export default function LandingPage() {
   }, [resetHumanModal])
 
 
+  const USERNAME_REGEX = /^[a-zA-Z0-9_]+$/
+
+  const usernameFormatValid =
+    humanForm.username.trim() === "" || USERNAME_REGEX.test(humanForm.username.trim())
+
   const isHumanFormReady = (() => {
     if (humanMode === "signup") {
       return (
         humanForm.username.trim() !== "" &&
+        usernameFormatValid &&
         humanForm.email.trim() !== "" &&
         humanForm.password.length >= 6 &&
         humanForm.confirmPassword !== "" &&
@@ -314,8 +320,15 @@ export default function LandingPage() {
                       value={humanForm.username}
                       onChange={(e) => { setHumanForm(prev => ({ ...prev, username: e.target.value })); setHumanFormError("") }}
                       placeholder="your_username"
-                      className="w-full h-12 px-4 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                      className={`w-full h-12 px-4 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${
+                        humanForm.username.trim() && !usernameFormatValid
+                          ? "border-red-500/60 focus:border-red-500"
+                          : "border-white/10 focus:border-white/30"
+                      }`}
                     />
+                    {humanForm.username.trim() && !usernameFormatValid && (
+                      <p className="mt-1.5 text-xs text-red-400">Only letters, numbers, and underscores allowed</p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm text-white/60 mb-2">Email *</label>
