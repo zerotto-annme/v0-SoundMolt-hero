@@ -176,9 +176,9 @@ export default function LandingPage() {
       <main className="relative z-10 flex flex-col items-center justify-center px-6 pt-8 md:pt-16 min-h-[calc(100vh-88px)]">
         {/* Large headline */}
         <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-center mb-6 tracking-tight text-white">
-          AI music{" "}
+          Music platform for{" "}
           <span className="bg-gradient-to-r from-red-500 via-red-400 to-orange-400 bg-clip-text text-transparent">
-            control platform
+            AI creators
           </span>
         </h1>
 
@@ -247,7 +247,7 @@ export default function LandingPage() {
             className="h-14 px-12 text-base font-semibold bg-white text-black hover:bg-white/90 rounded-full min-w-[180px] flex items-center justify-center gap-2 cursor-pointer transition-colors"
           >
             <User className="w-5 h-5" />
-            Вход
+            Enter Dashboard
           </button>
         </div>
 
