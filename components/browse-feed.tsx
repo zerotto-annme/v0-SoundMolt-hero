@@ -1,16 +1,16 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { Search, ChevronRight, TrendingUp, Zap, Sparkles, Bot, Music, Headphones, Radio, Activity, Plus, User } from "lucide-react"
+import { Search, ChevronRight, TrendingUp, Zap, Sparkles, Bot, Music, Headphones, Radio, Activity, Plus, User, Loader2 } from "lucide-react"
 import { BrowseTrackCard } from "./browse-track-card"
 import { ChartTrackCard } from "./chart-track-card"
 import { Sidebar } from "./sidebar"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { CreateTrackModal } from "./create-track-modal"
-import { usePlayer } from "./player-context"
+import { usePlayer, type Track } from "./player-context"
 import { useAuth } from "./auth-context"
 import { useActivitySimulation, formatAgentsOnline, formatChartUpdate, getChartPeriod } from "@/hooks/use-activity-simulation"
 import { 
@@ -20,6 +20,7 @@ import {
   formatPlays,
   type StyleType 
 } from "@/lib/seed-tracks"
+import { supabase } from "@/lib/supabase"
 
 // Style display config
 const STYLE_CONFIG: Record<StyleType, { label: string; gradient: string; icon: typeof Music }> = {
@@ -44,30 +45,108 @@ export function BrowseFeed() {
   const [activeTab, setActiveTab] = useState<"top10" | "top50" | "top100">("top10")
   const [selectedStyle, setSelectedStyle] = useState<StyleType | null>(null)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [supabaseTracks, setSupabaseTracks] = useState<Track[]>([])
+  const [isLoadingFeed, setIsLoadingFeed] = useState(false)
   const { createdTracks } = usePlayer()
   const { user, isAuthenticated } = useAuth()
   
-  // Dynamic activity simulation
+  // Dynamic activity simulation (seed/demo data for charts and trending)
   const { 
     tracks: dynamicTracks,
     agentsOnline, 
-    recentActivity,
     trendingTracks,
     topCharts,
-    newReleases,
   } = useActivitySimulation()
 
-  // Merge created tracks with existing tracks (created tracks appear first)
-  const trendingWithCreated = [...createdTracks, ...trendingTracks].slice(0, 12)
-  const newReleasesWithCreated = [...createdTracks, ...newReleases].slice(0, 16)
+  // Fetch real tracks from Supabase — the authoritative source for "New Music Releases"
+  const fetchSupabaseTracks = useCallback(async () => {
+    setIsLoadingFeed(true)
+    try {
+      // Step 1: fetch tracks
+      const { data: trackRows, error: trackError } = await supabase
+        .from("tracks")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(50)
 
-  // Filter tracks by search query
+      if (trackError) {
+        console.warn("[feed] Supabase tracks fetch error:", trackError.message)
+        return
+      }
+      if (!trackRows || trackRows.length === 0) {
+        setSupabaseTracks([])
+        return
+      }
+
+      // Step 2: fetch usernames for the track owners (no FK needed — plain .in() query)
+      const userIds = [...new Set(trackRows.map((r) => r.user_id as string))]
+      const { data: profileRows } = await supabase
+        .from("profiles")
+        .select("id, username")
+        .in("id", userIds)
+
+      const usernameById: Record<string, string> = {}
+      for (const p of profileRows ?? []) {
+        if (p.username) usernameById[p.id] = p.username
+      }
+
+      // Step 3: map to Track objects
+      const mapped: Track[] = trackRows.map((row) => ({
+        id: row.id,
+        title: row.title,
+        agentName: usernameById[row.user_id] || "Artist",
+        modelType: "Uploaded",
+        modelProvider: "user",
+        coverUrl: row.cover_url || "",
+        audioUrl: row.audio_url || row.original_audio_url || "",
+        originalAudioUrl: row.original_audio_url || row.audio_url || "",
+        plays: row.plays ?? 0,
+        likes: row.likes ?? 0,
+        style: row.style || "",
+        sourceType: (row.source_type as "uploaded" | "generated") || "uploaded",
+        description: row.description || undefined,
+        downloadEnabled: row.download_enabled,
+        createdAt: new Date(row.created_at).getTime(),
+      }))
+      setSupabaseTracks(mapped)
+    } catch (e) {
+      console.warn("[feed] Failed to fetch tracks:", e)
+    } finally {
+      setIsLoadingFeed(false)
+    }
+  }, [])
+
+  // Fetch on mount and whenever the tab becomes visible again (covers navigation back to /feed)
+  useEffect(() => {
+    fetchSupabaseTracks()
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") fetchSupabaseTracks()
+    }
+    document.addEventListener("visibilitychange", handleVisibility)
+    return () => document.removeEventListener("visibilitychange", handleVisibility)
+  }, [fetchSupabaseTracks])
+
+  // "New Music Releases": real Supabase tracks (newest first), seeded with demo tracks as fallback
+  // Deduplicate by id so in-memory createdTracks don't duplicate Supabase rows
+  const supabaseIds = new Set(supabaseTracks.map((t) => t.id))
+  const localOnlyCreated = createdTracks.filter((t) => !supabaseIds.has(t.id))
+  const newMusicReleases = [...localOnlyCreated, ...supabaseTracks]
+
+  // Trending: put real uploaded tracks first, then seed/demo tracks
+  const trendingWithCreated = [...newMusicReleases.slice(0, 4), ...trendingTracks].slice(0, 12)
+
+  // Search covers both Supabase tracks and seed/demo tracks (deduplicated by id)
+  const allSearchable = [
+    ...supabaseTracks,
+    ...dynamicTracks.filter((dt) => !supabaseIds.has(dt.id)),
+  ]
   const filteredTracks = searchQuery
-    ? dynamicTracks.filter(
+    ? allSearchable.filter(
         (track) =>
           track.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
           track.agentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          track.style.toLowerCase().includes(searchQuery.toLowerCase())
+          (track.style || "").toLowerCase().includes(searchQuery.toLowerCase())
       )
     : null
 
@@ -347,26 +426,38 @@ export function BrowseFeed() {
                 </div>
               </section>
 
-              {/* New AI Releases */}
+              {/* New Music Releases — driven by Supabase, newest first */}
               <section>
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <Zap className="w-5 h-5 text-glow-secondary" />
-                    <h2 className="text-xl font-bold text-foreground">New AI Releases</h2>
-                    <span className="px-2 py-0.5 text-xs font-mono rounded bg-glow-secondary/10 text-glow-secondary border border-glow-secondary/20">
-                      Last 24h
-                    </span>
+                    <h2 className="text-xl font-bold text-foreground">New Music Releases</h2>
+                    {isLoadingFeed ? (
+                      <Loader2 className="w-4 h-4 text-glow-secondary animate-spin" />
+                    ) : supabaseTracks.length > 0 ? (
+                      <span className="px-2 py-0.5 text-xs font-mono rounded bg-glow-secondary/10 text-glow-secondary border border-glow-secondary/20">
+                        {supabaseTracks.length} track{supabaseTracks.length !== 1 ? "s" : ""}
+                      </span>
+                    ) : null}
                   </div>
-                  <button className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                    Show all <ChevronRight className="w-4 h-4" />
-                  </button>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
-                  {newReleasesWithCreated.map((track) => (
-                    <BrowseTrackCard key={track.id} track={track} variant="small" />
-                  ))}
-                </div>
+                {isLoadingFeed && supabaseTracks.length === 0 ? (
+                  <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>Loading tracks…</span>
+                  </div>
+                ) : newMusicReleases.length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
+                    {newMusicReleases.slice(0, 18).map((track) => (
+                      <BrowseTrackCard key={track.id} track={track} variant="small" />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-muted-foreground">
+                    No tracks yet. Upload the first one!
+                  </div>
+                )}
               </section>
 
               {/* Browse by Style */}
