@@ -140,10 +140,9 @@ function CreateTopicModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
+      {/* Backdrop — clicks do NOT close the modal */}
       <div 
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
       />
       
       {/* Modal */}

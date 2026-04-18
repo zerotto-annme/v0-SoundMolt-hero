@@ -271,15 +271,13 @@ export default function LandingPage() {
         </div>
       </main>
 
-      {/* Human Modal */}
+      {/* Human Modal — backdrop clicks do NOT close the modal */}
       {isHumanModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-          onClick={() => setIsHumanModalOpen(false)}
         >
           <div
             className="relative w-full max-w-md mx-4 bg-[#111113] border border-white/10 rounded-2xl p-8 max-h-[95vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
           >
             <button
               onClick={() => setIsHumanModalOpen(false)}

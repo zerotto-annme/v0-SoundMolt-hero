@@ -93,11 +93,9 @@ export function AvatarCropModal({ imageSrc, onConfirm, onCancel }: AvatarCropMod
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm"
-      onClick={onCancel}
     >
       <div
         className="relative w-full max-w-lg mx-4 bg-[#111113] border border-white/10 rounded-2xl p-6 flex flex-col gap-5"
-        onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onCancel}

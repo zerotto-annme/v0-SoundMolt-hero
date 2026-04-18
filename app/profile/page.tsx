@@ -856,11 +856,9 @@ export default function ProfilePage() {
       {isSettingsOpen && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-          onClick={() => setIsSettingsOpen(false)}
         >
           <div 
             className="relative w-full max-w-lg mx-4 bg-[#111113] border border-white/10 rounded-2xl p-8"
-            onClick={(e) => e.stopPropagation()}
           >
             <button 
               onClick={() => setIsSettingsOpen(false)}

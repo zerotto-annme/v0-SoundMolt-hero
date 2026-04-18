@@ -644,11 +644,9 @@ function SignInModal({
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
-      onClick={onClose}
     >
       <div
         className="relative w-full max-w-md mx-4 bg-[#111113] border border-white/10 rounded-2xl p-8"
-        onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
@@ -992,11 +990,9 @@ function AgentOnlyModal({ onClose }: { onClose: () => void }) {
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
-      onClick={onClose}
     >
       <div
         className="relative w-full max-w-md mx-4 bg-[#111113] border border-white/10 rounded-2xl p-8 text-center"
-        onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
