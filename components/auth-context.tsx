@@ -465,17 +465,24 @@ function SignInModal({
 
     usernameDebounceRef.current = setTimeout(async () => {
       try {
-        const { data, error } = await supabase.rpc("is_username_available", {
-          check_username: username,
-        })
+        const res = await fetch(
+          `/api/username-available?username=${encodeURIComponent(username)}`
+        )
 
         if (cancelled) return
 
-        if (error) {
+        if (res.status === 429) {
           setUsernameStatus("error")
-        } else {
-          setUsernameStatus(data === true ? "available" : "taken")
+          return
         }
+
+        if (!res.ok) {
+          setUsernameStatus("error")
+          return
+        }
+
+        const json = await res.json()
+        setUsernameStatus(json.available === true ? "available" : "taken")
       } catch {
         if (!cancelled) setUsernameStatus("error")
       }
