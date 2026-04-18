@@ -1,0 +1,64 @@
+Fix SoundMolt Home feed persistence and rename the section title.
+
+IMPORTANT:
+- do NOT redesign UI
+- do NOT change layout or styling
+- keep current SoundMolt visual design
+- do NOT break auth, upload, comments, or Supabase integration
+- ONLY fix Home feed naming, ordering, persistence, and search indexing
+
+REQUIRED CHANGES:
+
+1. Rename section
+- Change Home section title from:
+  "New AI Releases"
+  to:
+  "New Music Releases"
+
+2. Real persistent Home feed
+- All newly uploaded tracks must appear in "New Music Releases"
+- The feed must be loaded from Supabase, not only from in-memory state
+- Newly uploaded tracks must remain visible after:
+  - navigating through menu
+  - returning to Home
+  - page refresh
+  - new session
+
+3. Ordering
+- New tracks must appear in chronological order by newest first
+- Use created_at descending
+- Do not randomize
+- Do not lose order after navigation
+
+4. Source of truth
+- Home feed must read real data from public.tracks
+- Do NOT rely on temporary local state only
+- Do NOT rely on localStorage-only feed items
+- When a track upload succeeds, it should be saved to Supabase and then be queryable from Home
+
+5. Search fix
+- Newly uploaded tracks must be searchable
+- Search results must include tracks from Supabase
+- Search should not ignore recently uploaded items after navigation or refresh
+
+6. Navigation bug fix
+- Right now uploaded tracks appear immediately after upload but disappear after moving through the menu and returning Home
+- Find and remove the cause:
+  - stale client-only state
+  - feed reset on route change
+  - not refetching from Supabase
+  - merging fake/demo data over real uploaded tracks
+- Home must always rebuild from current Supabase data
+
+7. Backward compatibility
+- Existing demo or seeded tracks may remain if needed
+- But real uploaded tracks must persist and display reliably
+- If demo data is merged with Supabase data, ensure real tracks are not dropped
+
+8. Success result
+- Section title is "New Music Releases"
+- Uploaded tracks stay visible on Home
+- Uploaded tracks remain after menu navigation
+- Uploaded tracks remain after refresh
+- Uploaded tracks appear in search
+- Home feed is driven by Supabase data
