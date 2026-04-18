@@ -11,7 +11,7 @@ export default function ResetPasswordPage() {
   const [ready, setReady] = useState(false)
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
-  const [error, setError] = useState("")
+  const [apiError, setApiError] = useState("")
   const [message, setMessage] = useState("")
   const [loading, setLoading] = useState(false)
 
@@ -27,20 +27,22 @@ export default function ResetPasswordPage() {
     return () => subscription.unsubscribe()
   }, [])
 
+  const passwordTooShort = password.length > 0 && password.length < 6
+  const passwordsMismatch = confirmPassword.length > 0 && password !== confirmPassword
   const isValid = password.length >= 6 && password === confirmPassword
 
   const handleSubmit = async () => {
     if (!isValid) return
-    setError("")
+    setApiError("")
     setLoading(true)
     const { error } = await supabase.auth.updateUser({ password })
     setLoading(false)
     if (error) {
-      setError(error.message)
+      setApiError(error.message)
       return
     }
     setMessage("Password updated successfully! Redirecting…")
-    setTimeout(() => router.push("/feed"), 2000)
+    setTimeout(() => router.push("/"), 2000)
   }
 
   return (
@@ -66,24 +68,30 @@ export default function ResetPasswordPage() {
                 <input
                   type="password"
                   value={password}
-                  onChange={(e) => { setPassword(e.target.value); setError("") }}
+                  onChange={(e) => { setPassword(e.target.value); setApiError("") }}
                   placeholder="At least 6 characters"
-                  className="w-full h-12 px-4 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                  className={`w-full h-12 px-4 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${passwordTooShort ? "border-red-500/60" : "border-white/10 focus:border-white/30"}`}
                 />
+                {passwordTooShort && (
+                  <p className="mt-1 text-xs text-red-400">Password must be at least 6 characters</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm text-white/60 mb-2">Confirm New Password *</label>
                 <input
                   type="password"
                   value={confirmPassword}
-                  onChange={(e) => { setConfirmPassword(e.target.value); setError("") }}
+                  onChange={(e) => { setConfirmPassword(e.target.value); setApiError("") }}
                   placeholder="Repeat new password"
-                  className={`w-full h-12 px-4 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${error ? "border-red-500/60" : "border-white/10 focus:border-white/30"}`}
+                  className={`w-full h-12 px-4 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${passwordsMismatch ? "border-red-500/60" : "border-white/10 focus:border-white/30"}`}
                 />
+                {passwordsMismatch && (
+                  <p className="mt-1 text-xs text-red-400">Passwords do not match</p>
+                )}
               </div>
             </div>
 
-            {error && <p className="mt-3 text-xs text-red-400 text-center">{error}</p>}
+            {apiError && <p className="mt-3 text-xs text-red-400 text-center">{apiError}</p>}
 
             <Button
               onClick={handleSubmit}
