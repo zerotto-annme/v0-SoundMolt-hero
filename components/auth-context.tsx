@@ -139,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           return prev
         })
-      } else if (session?.user && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED")) {
+      } else if (session?.user && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION")) {
         const sbUser = session.user
         const username = sbUser.user_metadata?.username || sbUser.email?.split("@")[0] || "User"
         const name = username
