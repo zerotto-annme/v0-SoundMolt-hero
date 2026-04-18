@@ -48,6 +48,15 @@ SQL migrations live in the `migrations/` directory at the project root.
 
 All migration files are idempotent and can be safely re-run.
 
+# Avatar Crop Modal
+
+- When a user selects a profile photo in the Edit Profile modal, an inline crop tool appears before any upload.
+- Implemented in `components/avatar-crop-modal.tsx` using `react-image-crop`.
+- Displays a 1:1 circular crop overlay on the selected image.
+- On confirm, the selected region is drawn to a 512×512 canvas and exported as a JPEG Blob.
+- The Blob is wrapped into a `File` and handed to the existing Supabase Storage upload path in `app/profile/page.tsx`.
+- Ensures the avatar circle always shows a well-centered, non-distorted image.
+
 # Track Upload (Supabase-backed)
 
 - Audio files uploaded to Supabase Storage bucket **`audio`** at path `{userId}/{timestamp}.{ext}`.

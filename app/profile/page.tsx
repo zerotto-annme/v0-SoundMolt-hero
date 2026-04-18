@@ -15,6 +15,7 @@ import { useActivitySimulation } from "@/hooks/use-activity-simulation"
 import { Button } from "@/components/ui/button"
 import { usePlayer } from "@/components/player-context"
 import { supabase } from "@/lib/supabase"
+import { AvatarCropModal } from "@/components/avatar-crop-modal"
 
 // Agent status types
 type AgentStatus = "online" | "generating" | "idle"
@@ -68,6 +69,7 @@ export default function ProfilePage() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const avatarInputRef = useRef<HTMLInputElement>(null)
+  const [cropSrc, setCropSrc] = useState<string | null>(null)
 
   useEffect(() => {
     setIsHydrated(true)
@@ -148,6 +150,10 @@ export default function ProfilePage() {
     setEditProfileErrors({})
     setEditProfileSuccess(false)
     setAvatarFile(null)
+    setCropSrc(prev => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
     setAvatarPreview(prev => {
       if (prev) URL.revokeObjectURL(prev)
       return null
@@ -156,6 +162,10 @@ export default function ProfilePage() {
   }
 
   const handleCloseEditProfile = () => {
+    setCropSrc(prev => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
     setAvatarPreview(prev => {
       if (prev) URL.revokeObjectURL(prev)
       return null
@@ -186,12 +196,25 @@ export default function ProfilePage() {
       setEditProfileErrors(prev => ({ ...prev, avatarUrl: "Image must be smaller than 5 MB." }))
       return
     }
-    setAvatarFile(file)
+    setEditProfileErrors(prev => ({ ...prev, avatarUrl: undefined }))
+    const objectUrl = URL.createObjectURL(file)
+    setCropSrc(objectUrl)
+  }
+
+  const handleCropConfirm = (croppedBlob: Blob) => {
+    if (cropSrc) URL.revokeObjectURL(cropSrc)
+    setCropSrc(null)
+    const croppedFile = new File([croppedBlob], "avatar.jpg", { type: "image/jpeg" })
+    setAvatarFile(croppedFile)
     setAvatarPreview(prev => {
       if (prev) URL.revokeObjectURL(prev)
-      return URL.createObjectURL(file)
+      return URL.createObjectURL(croppedBlob)
     })
-    setEditProfileErrors(prev => ({ ...prev, avatarUrl: undefined }))
+  }
+
+  const handleCropCancel = () => {
+    if (cropSrc) URL.revokeObjectURL(cropSrc)
+    setCropSrc(null)
   }
 
   const handleSaveProfile = async () => {
@@ -948,6 +971,14 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {cropSrc && (
+        <AvatarCropModal
+          imageSrc={cropSrc}
+          onConfirm={handleCropConfirm}
+          onCancel={handleCropCancel}
+        />
       )}
     </div>
   )
