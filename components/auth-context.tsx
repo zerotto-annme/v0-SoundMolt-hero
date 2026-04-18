@@ -120,9 +120,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data: { session } } = await supabase.auth.getSession()
         if (session?.user) {
           const sbUser = session.user
-          const metaUsername = sbUser.user_metadata?.username || sbUser.email?.split("@")[0] || "User"
-          const metaAvatar = sbUser.user_metadata?.avatar_url || generateAvatar(metaUsername, "human")
-          const { username, avatar } = await fetchProfileData(sbUser.id, metaUsername, metaAvatar)
+          const metaUsername = sbUser.user_metadata?.username
+
+          // Guard: if the user registered via the email-confirmation flow and their
+          // chosen username was claimed by someone else while they waited, the
+          // server-side trigger will have inserted a NULL username into profiles.
+          // Sign them out immediately so they cannot remain authenticated with a
+          // stolen username; handleHumanSubmit will surface the error on next sign-in.
+          if (metaUsername) {
+            const { data: profileRow } = await supabase
+              .from("profiles")
+              .select("username")
+              .eq("id", sbUser.id)
+              .maybeSingle()
+            if (profileRow && profileRow.username === null) {
+              await supabase.auth.signOut()
+              setIsHydrated(true)
+              return
+            }
+          }
+
+          const resolvedMetaUsername = metaUsername || sbUser.email?.split("@")[0] || "User"
+          const metaAvatar = sbUser.user_metadata?.avatar_url || generateAvatar(resolvedMetaUsername, "human")
+          const { username, avatar } = await fetchProfileData(sbUser.id, resolvedMetaUsername, metaAvatar)
           const userProfile: UserProfile = {
             id: sbUser.id,
             role: "human",
@@ -172,6 +192,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
       } else if (session?.user && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION")) {
         const sbUser = session.user
+
+        // For new sign-ins (not token refresh/initial load), guard against
+        // the email-confirmation race: if the profile username is NULL because
+        // someone claimed it while the user waited, sign them out immediately.
+        if (event === "SIGNED_IN") {
+          const metaUn = sbUser.user_metadata?.username
+          if (metaUn) {
+            const { data: profileRow } = await supabase
+              .from("profiles")
+              .select("username")
+              .eq("id", sbUser.id)
+              .maybeSingle()
+            if (profileRow && profileRow.username === null) {
+              await supabase.auth.signOut()
+              return
+            }
+          }
+        }
+
         const metaUsername = sbUser.user_metadata?.username || sbUser.email?.split("@")[0] || "User"
         const metaAvatar = sbUser.user_metadata?.avatar_url || generateAvatar(metaUsername, "human")
         const { username, avatar } = await fetchProfileData(sbUser.id, metaUsername, metaAvatar)
@@ -516,7 +555,26 @@ function SignInModal({
         }
 
         if (data.user) {
-          const username = data.user.user_metadata?.username || data.user.email?.split("@")[0] || "User"
+          const metaUsername = data.user.user_metadata?.username
+
+          if (metaUsername) {
+            const { data: profileRow } = await supabase
+              .from("profiles")
+              .select("username")
+              .eq("id", data.user.id)
+              .maybeSingle()
+
+            if (profileRow && profileRow.username === null) {
+              await supabase.auth.signOut()
+              setHumanErrors({
+                general:
+                  "The username you chose was claimed by someone else while you were waiting to confirm your email. Please sign up again with a different username.",
+              })
+              return
+            }
+          }
+
+          const username = metaUsername || data.user.email?.split("@")[0] || "User"
           const name = username
           onLogin("human", {
             id: data.user.id,
