@@ -73,12 +73,13 @@ export function useAuth() {
   return context
 }
 
-// Fetch username and avatar_url from public.profiles, falling back to user_metadata values
+// Fetch username and avatar_url from public.profiles, falling back to user_metadata values.
+// profileUsernameIsNull is true when the row exists but username is explicitly NULL in the DB.
 async function fetchProfileData(
   userId: string,
   fallbackUsername: string,
   fallbackAvatar: string,
-): Promise<{ username: string; avatar: string }> {
+): Promise<{ username: string; avatar: string; profileUsernameIsNull: boolean }> {
   try {
     const { data, error } = await supabase
       .from("profiles")
@@ -93,6 +94,7 @@ async function fetchProfileData(
       return {
         username: data.username || fallbackUsername,
         avatar: data.avatar_url || fallbackAvatar,
+        profileUsernameIsNull: data.username === null,
       }
     }
   } catch (err) {
@@ -100,7 +102,7 @@ async function fetchProfileData(
       console.warn("[auth] fetchProfileData unexpected error for user", userId, err)
     }
   }
-  return { username: fallbackUsername, avatar: fallbackAvatar }
+  return { username: fallbackUsername, avatar: fallbackAvatar, profileUsernameIsNull: false }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -110,6 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   })
   const [showSignInModal, setShowSignInModal] = useState(false)
   const [showAgentOnlyModal, setShowAgentOnlyModal] = useState(false)
+  const [showSetUsernameModal, setShowSetUsernameModal] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
   const router = useRouter()
   // Stable ref so realtime callbacks can read the latest user without adding
@@ -127,37 +130,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const sbUser = session.user
           const metaUsername = sbUser.user_metadata?.username
 
-          // Guard: if the user registered via the email-confirmation flow and their
-          // chosen username was claimed by someone else while they waited, the
-          // server-side trigger will have inserted a NULL username into profiles.
-          // Sign them out immediately so they cannot remain authenticated with a
-          // stolen username; handleHumanSubmit will surface the error on next sign-in.
-          if (metaUsername) {
-            const { data: profileRow } = await supabase
-              .from("profiles")
-              .select("username")
-              .eq("id", sbUser.id)
-              .maybeSingle()
-            if (profileRow && profileRow.username === null) {
-              await supabase.auth.signOut()
-              setIsHydrated(true)
-              return
-            }
-          }
-
           const resolvedMetaUsername = metaUsername || sbUser.email?.split("@")[0] || "User"
           const metaAvatar = sbUser.user_metadata?.avatar_url || generateAvatar(resolvedMetaUsername, "human")
-          const { username, avatar } = await fetchProfileData(sbUser.id, resolvedMetaUsername, metaAvatar)
+          const { username, avatar, profileUsernameIsNull } = await fetchProfileData(sbUser.id, resolvedMetaUsername, metaAvatar)
           const userProfile: UserProfile = {
             id: sbUser.id,
             role: "human",
             name: username,
-            username,
+            username: profileUsernameIsNull ? undefined : username,
             email: sbUser.email,
             avatar,
             createdAt: new Date(sbUser.created_at).getTime(),
           }
           setState({ user: userProfile, isAuthenticated: true })
+          if (profileUsernameIsNull) {
+            setShowSetUsernameModal(true)
+          }
         } else {
           // Fall back to localStorage for agent sessions
           const stored = localStorage.getItem(STORAGE_KEY)
@@ -195,40 +183,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           return prev
         })
+        setShowSetUsernameModal(false)
       } else if (session?.user && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION")) {
         const sbUser = session.user
 
-        // For new sign-ins (not token refresh/initial load), guard against
-        // the email-confirmation race: if the profile username is NULL because
-        // someone claimed it while the user waited, sign them out immediately.
-        if (event === "SIGNED_IN") {
-          const metaUn = sbUser.user_metadata?.username
-          if (metaUn) {
-            const { data: profileRow } = await supabase
-              .from("profiles")
-              .select("username")
-              .eq("id", sbUser.id)
-              .maybeSingle()
-            if (profileRow && profileRow.username === null) {
-              await supabase.auth.signOut()
-              return
-            }
-          }
-        }
-
         const metaUsername = sbUser.user_metadata?.username || sbUser.email?.split("@")[0] || "User"
         const metaAvatar = sbUser.user_metadata?.avatar_url || generateAvatar(metaUsername, "human")
-        const { username, avatar } = await fetchProfileData(sbUser.id, metaUsername, metaAvatar)
+        const { username, avatar, profileUsernameIsNull } = await fetchProfileData(sbUser.id, metaUsername, metaAvatar)
         const userProfile: UserProfile = {
           id: sbUser.id,
           role: "human",
           name: username,
-          username,
+          username: profileUsernameIsNull ? undefined : username,
           email: sbUser.email,
           avatar,
           createdAt: new Date(sbUser.created_at).getTime(),
         }
         setState({ user: userProfile, isAuthenticated: true })
+        if (profileUsernameIsNull) {
+          setShowSetUsernameModal(true)
+        } else {
+          setShowSetUsernameModal(false)
+        }
       }
     })
 
@@ -399,6 +375,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {/* Agent Only Modal */}
       {showAgentOnlyModal && (
         <AgentOnlyModal onClose={() => setShowAgentOnlyModal(false)} />
+      )}
+
+      {/* Set Username Modal — shown when profile has a NULL username */}
+      {showSetUsernameModal && state.user && (
+        <SetUsernameModal
+          userId={state.user.id}
+          onSaved={(username) => {
+            updateProfile({ username, name: username })
+            setShowSetUsernameModal(false)
+          }}
+        />
       )}
     </AuthContext.Provider>
   )
@@ -626,32 +613,19 @@ function SignInModal({
 
         if (data.user) {
           const metaUsername = data.user.user_metadata?.username
-
-          if (metaUsername) {
-            const { data: profileRow } = await supabase
-              .from("profiles")
-              .select("username")
-              .eq("id", data.user.id)
-              .maybeSingle()
-
-            if (profileRow && profileRow.username === null) {
-              await supabase.auth.signOut()
-              setHumanErrors({
-                general:
-                  "The username you chose was claimed by someone else while you were waiting to confirm your email. Please sign up again with a different username.",
-              })
-              return
-            }
-          }
-
-          const username = metaUsername || data.user.email?.split("@")[0] || "User"
-          const name = username
+          const resolvedUsername = metaUsername || data.user.email?.split("@")[0] || "User"
+          const metaAvatar = data.user.user_metadata?.avatar_url || generateAvatar(resolvedUsername, "human")
+          const { username, avatar, profileUsernameIsNull } = await fetchProfileData(
+            data.user.id,
+            resolvedUsername,
+            metaAvatar,
+          )
           onLogin("human", {
             id: data.user.id,
-            username,
-            name,
+            username: profileUsernameIsNull ? undefined : username,
+            name: profileUsernameIsNull ? resolvedUsername : username,
             email: data.user.email,
-            avatar: data.user.user_metadata?.avatar_url || generateAvatar(name, "human"),
+            avatar,
             createdAt: new Date(data.user.created_at).getTime(),
           })
         }
@@ -1051,6 +1025,171 @@ function SignInModal({
             </button>
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+// Set Username Modal — for users who have a NULL username in their profile
+function SetUsernameModal({
+  userId,
+  onSaved,
+}: {
+  userId: string
+  onSaved: (username: string) => void
+}) {
+  const [username, setUsername] = useState("")
+  const [status, setStatus] = useState<"idle" | "invalid" | "checking" | "available" | "taken" | "error">("idle")
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState("")
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const USERNAME_REGEX = /^[a-zA-Z0-9_]+$/
+
+  useEffect(() => {
+    const trimmed = username.trim()
+    if (!trimmed) {
+      setStatus("idle")
+      return
+    }
+
+    if (!USERNAME_REGEX.test(trimmed)) {
+      setStatus("invalid")
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      return
+    }
+
+    setStatus("checking")
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+
+    let cancelled = false
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/username-available?username=${encodeURIComponent(trimmed)}`)
+        if (cancelled) return
+        if (res.status === 429) { setStatus("error"); return }
+        if (!res.ok) { setStatus("error"); return }
+        const json = await res.json()
+        setStatus(json.available === true ? "available" : "taken")
+      } catch {
+        if (!cancelled) setStatus("error")
+      }
+    }, 500)
+
+    return () => {
+      cancelled = true
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [username])
+
+  const isValid = (status === "available" || status === "error") && username.trim() !== "" && USERNAME_REGEX.test(username.trim())
+
+  const handleSave = async () => {
+    if (!isValid) return
+    setSaving(true)
+    setSaveError("")
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ username: username.trim() })
+        .eq("id", userId)
+
+      if (error) {
+        if (error.code === "23505") {
+          setStatus("taken")
+          setSaveError("That username was just taken. Please choose another.")
+        } else {
+          setSaveError("Could not save username. Please try again.")
+        }
+        return
+      }
+
+      onSaved(username.trim())
+    } catch {
+      setSaveError("Something went wrong. Please try again.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+      <div className="relative w-full max-w-md mx-4 bg-[#111113] border border-white/10 rounded-2xl p-8">
+        <div className="text-center mb-8">
+          <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center mx-auto mb-4">
+            <User className="w-6 h-6 text-white" />
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2">Choose a username</h2>
+          <p className="text-white/50 text-sm">
+            Your account needs a username before you can continue. Pick something unique — only letters, numbers, and underscores.
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm text-white/60 mb-2">Username *</label>
+            <div className="relative">
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => {
+                  setUsername(e.target.value)
+                  setSaveError("")
+                }}
+                placeholder="your_username"
+                className={`w-full h-12 px-4 pr-10 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${
+                  status === "taken" || status === "invalid"
+                    ? "border-red-500/60 focus:border-red-500"
+                    : status === "available"
+                    ? "border-green-500/60 focus:border-green-500"
+                    : status === "error"
+                    ? "border-yellow-500/40 focus:border-yellow-500/60"
+                    : "border-white/10 focus:border-white/30"
+                }`}
+              />
+              {username.trim() && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  {status === "checking" && (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white/70 rounded-full animate-spin" />
+                  )}
+                  {status === "available" && (
+                    <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                  {(status === "taken" || status === "invalid") && (
+                    <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  )}
+                </div>
+              )}
+            </div>
+            {status === "invalid" && (
+              <p className="mt-1.5 text-xs text-red-400">Only letters, numbers, and underscores allowed</p>
+            )}
+            {status === "available" && (
+              <p className="mt-1.5 text-xs text-green-400">Username is available</p>
+            )}
+            {status === "taken" && (
+              <p className="mt-1.5 text-xs text-red-400">That username is already taken. Please choose a different one.</p>
+            )}
+            {status === "error" && (
+              <p className="mt-1.5 text-xs text-yellow-400/80">{"Couldn't verify availability — you can still save."}</p>
+            )}
+            {saveError && (
+              <p className="mt-1.5 text-xs text-red-400">{saveError}</p>
+            )}
+          </div>
+        </div>
+
+        <Button
+          onClick={handleSave}
+          disabled={!isValid || saving}
+          className="w-full h-12 mt-6 bg-white text-black hover:bg-white/90 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {saving ? "Saving…" : "Set Username"}
+        </Button>
       </div>
     </div>
   )
