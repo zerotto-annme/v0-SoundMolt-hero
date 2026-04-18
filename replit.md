@@ -52,10 +52,13 @@ All migration files are idempotent and can be safely re-run.
 # Avatar Crop Modal
 
 - When a user selects a profile photo in the Edit Profile modal, an inline crop tool appears before any upload.
-- Implemented in `components/avatar-crop-modal.tsx` using `react-image-crop`.
-- Displays a 1:1 circular crop overlay on the selected image.
-- On confirm, the selected region is drawn to a 512×512 canvas and exported as a JPEG Blob.
+- Implemented in `components/avatar-crop-modal.tsx` (custom, no external crop library dependency).
+- Shows a fixed circular crop overlay centered in the viewport. The image underneath can be:
+  - **Zoomed**: via a zoom slider (1×–4×), zoom in/out buttons, mouse scroll wheel, or pinch-to-zoom on mobile.
+  - **Panned**: by dragging the image (mouse or touch).
+- On confirm, the visible portion of the natural image under the crop circle is drawn to a 512×512 canvas and exported as a JPEG Blob.
 - The Blob is wrapped into a `File` and handed to the existing Supabase Storage upload path in `app/profile/page.tsx`.
+- Pan is clamped so the image never leaves the crop container entirely.
 - Ensures the avatar circle always shows a well-centered, non-distorted image.
 
 # Orphaned Account Cleanup
