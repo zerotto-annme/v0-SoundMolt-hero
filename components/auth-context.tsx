@@ -112,6 +112,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [showAgentOnlyModal, setShowAgentOnlyModal] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
   const router = useRouter()
+  // Stable ref so realtime callbacks can read the latest user without adding
+  // `state.user` to every effect dependency array (which would cause unwanted
+  // subscription teardowns on each profile update).
+  const userRef = useRef(state.user)
+  useEffect(() => { userRef.current = state.user }, [state.user])
 
   // Restore session from Supabase on mount, fall back to localStorage for agents
   useEffect(() => {
@@ -285,6 +290,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     })
   }, [])
+
+  // Real-time subscription to the logged-in user's profiles row so that
+  // username / avatar changes made elsewhere in the same session are reflected
+  // immediately without a page reload.
+  useEffect(() => {
+    const userId = state.user?.id
+    if (!userId || state.user?.role !== "human") return
+
+    const channel = supabase
+      .channel(`profile-changes-${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "profiles",
+          filter: `id=eq.${userId}`,
+        },
+        (payload) => {
+          const row = payload.new as { username?: string | null; avatar_url?: string | null } | null
+          if (!row) return
+          const updates: Partial<UserProfile> = {}
+          if (row.username) {
+            updates.username = row.username
+            updates.name = row.username
+          }
+          // When avatar_url is cleared (null/empty), fall back to the generated avatar
+          // using the latest known username from the row or current state.
+          if (row.avatar_url) {
+            updates.avatar = row.avatar_url
+          } else if ("avatar_url" in row) {
+            const fallbackName = row.username || userRef.current?.username || userRef.current?.name || "User"
+            updates.avatar = generateAvatar(fallbackName, "human")
+          }
+          if (Object.keys(updates).length > 0) {
+            updateProfile(updates)
+          }
+        },
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [state.user?.id, state.user?.role, updateProfile])
 
   const canInteract = useCallback(() => {
     return state.isAuthenticated
