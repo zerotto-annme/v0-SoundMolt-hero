@@ -117,40 +117,6 @@ const TRACK_NAMES: Record<StyleType, { prefixes: string[]; suffixes: string[] }>
   },
 }
 
-// Generate a random date within the last 60 days
-function randomDate(): string {
-  const now = new Date()
-  const daysAgo = Math.floor(Math.random() * 60)
-  const date = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000)
-  return date.toISOString()
-}
-
-// Generate play counts with realistic distribution
-function generatePlays(isPopular: boolean): number {
-  if (isPopular) {
-    return Math.floor(Math.random() * 5000000) + 500000 // 500K - 5.5M
-  }
-  return Math.floor(Math.random() * 500000) + 1000 // 1K - 500K
-}
-
-// Generate likes based on plays
-function generateLikes(plays: number): number {
-  const likeRate = 0.02 + Math.random() * 0.08 // 2-10% like rate
-  return Math.floor(plays * likeRate)
-}
-
-// Generate downloads based on plays
-function generateDownloads(plays: number): number {
-  const downloadRate = 0.005 + Math.random() * 0.02 // 0.5-2.5% download rate
-  return Math.floor(plays * downloadRate)
-}
-
-// Generate track duration
-function generateDuration(): number {
-  const durations = [120, 150, 180, 210, 240, 270, 300] // 2-5 minutes
-  return durations[Math.floor(Math.random() * durations.length)]
-}
-
 // Generate unique track name
 function generateTrackName(style: StyleType, index: number): string {
   const { prefixes, suffixes } = TRACK_NAMES[style]
@@ -159,24 +125,42 @@ function generateTrackName(style: StyleType, index: number): string {
   return `${prefix} ${suffix}`
 }
 
-// Seeded random for consistent results
+// Seeded random for consistent results — deterministic, never uses Math.random()
 function seededRandom(seed: number): number {
-  const x = Math.sin(seed) * 10000
+  const x = Math.sin(seed + 1) * 10000
   return x - Math.floor(x)
 }
 
-// Generate all 100 tracks
+// Generate all 100 tracks with fully deterministic values (no Math.random())
 function generateSeedTracks(): SeedTrack[] {
   const tracks: SeedTrack[] = []
   const styles: StyleType[] = ["lofi", "techno", "ambient", "synthwave", "trap", "cinematic"]
-  
+  // Fixed epoch so uploadedAt values never depend on Date.now()
+  const BASE_EPOCH = 1700000000000
+
   for (let i = 0; i < 100; i++) {
     const style = styles[i % styles.length]
     const agent = AGENTS[i % AGENTS.length]
     const model = MODELS[i % MODELS.length]
-    const isPopular = i < 20 // First 20 tracks are "popular"
-    const plays = generatePlays(isPopular)
-    
+    const isPopular = i < 20
+
+    // Each property uses a unique seed offset so values are independent
+    const plays = isPopular
+      ? Math.floor(seededRandom(i * 11 + 1) * 5000000) + 500000
+      : Math.floor(seededRandom(i * 11 + 1) * 500000) + 1000
+
+    const likeRate = 0.02 + seededRandom(i * 11 + 2) * 0.08
+    const likes = Math.floor(plays * likeRate)
+
+    const downloadRate = 0.005 + seededRandom(i * 11 + 3) * 0.02
+    const downloads = Math.floor(plays * downloadRate)
+
+    const durations = [120, 150, 180, 210, 240, 270, 300]
+    const duration = durations[Math.floor(seededRandom(i * 11 + 4) * durations.length)]
+
+    const daysAgo = Math.floor(seededRandom(i * 11 + 5) * 60)
+    const uploadedAt = new Date(BASE_EPOCH - daysAgo * 86400000).toISOString()
+
     tracks.push({
       id: `seed_${i + 1}`,
       title: generateTrackName(style, i),
@@ -187,18 +171,18 @@ function generateSeedTracks(): SeedTrack[] {
       modelProvider: model.provider,
       style,
       coverUrl: AI_COVERS[i % AI_COVERS.length],
-      duration: generateDuration(),
+      duration,
       plays,
-      likes: generateLikes(plays),
-      downloads: generateDownloads(plays),
-      uploadedAt: randomDate(),
+      likes,
+      downloads,
+      uploadedAt,
     })
   }
-  
+
   return tracks
 }
 
-// Pre-generated seed tracks
+// Pre-generated seed tracks — module-level constant, same on server and client
 export const SEED_TRACKS = generateSeedTracks()
 
 // Sort by plays for trending
@@ -216,10 +200,15 @@ export const NEW_RELEASES = [...SEED_TRACKS]
   .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
   .slice(0, 16)
 
-// Recommended - random mix
-export const RECOMMENDED = [...SEED_TRACKS]
-  .sort(() => Math.random() - 0.5)
-  .slice(0, 8)
+// Recommended - deterministic shuffle using seeded Fisher-Yates
+export const RECOMMENDED = (() => {
+  const arr = [...SEED_TRACKS]
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(seededRandom(i * 31 + 7) * (i + 1))
+    ;[arr[i], arr[j]] = [arr[j], arr[i]]
+  }
+  return arr.slice(0, 8)
+})()
 
 // By style
 export const TRACKS_BY_STYLE: Record<StyleType, SeedTrack[]> = {
