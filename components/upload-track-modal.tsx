@@ -5,7 +5,6 @@ import { X, Upload, Music, Image as ImageIcon, FileAudio, Loader2, Check, AlertC
 import { Button } from "@/components/ui/button"
 import { usePlayer, type Track } from "./player-context"
 import { supabase } from "@/lib/supabase"
-import { transcodeToMp3, isWav } from "@/lib/audio-transcoder"
 import Image from "next/image"
 
 interface UploadTrackModalProps {
@@ -171,7 +170,10 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
       const originalName = audioFile!.name
       const audioExt = originalName.split('.').pop()?.toLowerCase() || 'wav'
       const originalMime = audioFile!.type || guessMime(audioExt)
-      const shouldTranscode = isWav(audioFile!)
+      const isWavFile =
+        audioExt === "wav" ||
+        originalMime === "audio/wav" ||
+        originalMime === "audio/x-wav"
 
       // ── Step 1: Upload original file to originals/ (never modified) ──────
       setUploadStatus("Uploading original…")
@@ -187,48 +189,84 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
       const { data: origPublic } = supabase.storage.from("audio").getPublicUrl(originalPath)
       const originalAudioUrl = origPublic.publicUrl
 
-      // ── Step 2: Generate or copy the streaming version ───────────────────
-      let streamAudioUrl = originalAudioUrl
+      console.log(`[upload] Original file: ${audioFile!.size} bytes → ${originalAudioUrl}`)
 
-      if (shouldTranscode) {
-        // WAV → MP3 via lamejs for better browser streaming quality
+      // ── Step 2: Generate the streaming version ───────────────────────────
+      let streamAudioUrl = originalAudioUrl // fallback: stream = original
+
+      if (isWavFile) {
+        // WAV → MP3 via server-side ffmpeg (reliable, real encoding)
         setUploadStatus("Transcoding to MP3…")
-        let streamBlob: Blob
         try {
-          streamBlob = await transcodeToMp3(
-            audioFile!,
-            192,
-            (pct) => setUploadStatus(`Transcoding… ${pct}%`)
-          )
-          setUploadStatus("Uploading stream…")
-          const streamPath = `streams/${userId}/${timestamp}.mp3`
-          const { error: streamError } = await supabase.storage
-            .from("audio")
-            .upload(streamPath, streamBlob, { upsert: false, contentType: "audio/mpeg" })
+          const transcodeRes = await fetch("/api/transcode", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              wavUrl: originalAudioUrl,
+              userId,
+              timestamp,
+            }),
+          })
 
-          if (streamError) {
-            // Non-fatal: fall back to original for streaming
-            console.warn("Stream upload failed, using original:", streamError.message)
+          if (!transcodeRes.ok) {
+            const errData = await transcodeRes.json().catch(() => ({}))
+            console.warn(
+              `[upload] Transcoding API error ${transcodeRes.status}:`,
+              errData
+            )
+            // Non-fatal: use original WAV for streaming
           } else {
-            const { data: streamPublic } = supabase.storage.from("audio").getPublicUrl(streamPath)
-            streamAudioUrl = streamPublic.publicUrl
+            const mp3Blob = await transcodeRes.blob()
+            console.log(`[upload] MP3 received: ${mp3Blob.size} bytes`)
+
+            // Validate: real MP3s are always larger than 10 KB
+            if (mp3Blob.size < 10 * 1024) {
+              console.warn(
+                `[upload] MP3 too small (${mp3Blob.size} bytes) — rejecting, using original WAV for stream`
+              )
+            } else {
+              setUploadStatus("Uploading stream…")
+              const streamPath = `streams/${userId}/${timestamp}.mp3`
+              const { error: streamError } = await supabase.storage
+                .from("audio")
+                .upload(streamPath, mp3Blob, {
+                  upsert: false,
+                  contentType: "audio/mpeg",
+                })
+
+              if (streamError) {
+                console.warn("[upload] Stream upload failed:", streamError.message)
+              } else {
+                const { data: streamPublic } = supabase.storage
+                  .from("audio")
+                  .getPublicUrl(streamPath)
+                streamAudioUrl = streamPublic.publicUrl
+                console.log(`[upload] Stream URL: ${streamAudioUrl}`)
+              }
+            }
           }
         } catch (transcodeErr) {
-          // Non-fatal: transcoding failed, stream = original WAV
-          console.warn("Transcoding failed, using original for stream:", transcodeErr)
+          // Non-fatal: network error or API crash — use original WAV for streaming
+          console.warn("[upload] Transcoding request failed:", transcodeErr)
         }
       } else {
-        // Non-WAV (MP3, FLAC, etc.) — upload a copy to streams/ so both paths exist
+        // Non-WAV (MP3, FLAC, etc.) — copy to streams/ with same format
         setUploadStatus("Uploading stream…")
         const streamPath = `streams/${userId}/${timestamp}.${audioExt}`
         const { error: streamError } = await supabase.storage
           .from("audio")
           .upload(streamPath, audioFile!, { upsert: false, contentType: originalMime })
         if (!streamError) {
-          const { data: streamPublic } = supabase.storage.from("audio").getPublicUrl(streamPath)
+          const { data: streamPublic } = supabase.storage
+            .from("audio")
+            .getPublicUrl(streamPath)
           streamAudioUrl = streamPublic.publicUrl
         }
       }
+
+      console.log(
+        `[upload] Playback URL (stream): ${streamAudioUrl} | Download URL (original): ${originalAudioUrl}`
+      )
 
       // ── Step 3: Upload cover image ────────────────────────────────────────
       setUploadStatus("Uploading cover…")

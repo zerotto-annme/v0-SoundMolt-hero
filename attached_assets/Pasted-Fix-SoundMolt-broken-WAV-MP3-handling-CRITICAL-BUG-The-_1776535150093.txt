@@ -1,0 +1,80 @@
+Fix SoundMolt broken WAV->MP3 handling.
+
+CRITICAL BUG:
+The app currently produces a fake/broken MP3 file from uploaded WAV files.
+Downloaded/generated MP3 files are around 1 KB and do not play.
+This means the app is not creating a real MP3 stream file.
+
+IMPORTANT:
+- do NOT redesign UI
+- do NOT change layout or styling
+- keep current SoundMolt design
+- ONLY fix real audio file generation, storage, playback source, and download integrity
+
+GOAL:
+When a user uploads a WAV file:
+1. the original WAV must be stored untouched
+2. a real valid playable MP3 streaming file must be generated
+3. the player must use the real MP3 stream file
+4. Download must return a real valid playable file, never a fake 1 KB file
+
+REQUIRED DIAGNOSIS:
+Audit the current upload/conversion pipeline and find exactly where the broken fake MP3 is created.
+
+Look for these bad patterns:
+- creating a Blob without real encoded MP3 data
+- renaming raw data to .mp3 without transcoding
+- saving empty/invalid ArrayBuffer
+- using placeholder bytes instead of real audio encoding
+- storing an HTML/error response as .mp3
+- writing a stream URL for a file that was never actually generated
+
+REQUIRED FIX:
+1. Original file handling
+- Store uploaded WAV unchanged in Supabase Storage under audio/originals/
+
+2. Real MP3 generation
+- Generate a REAL playable MP3 file from WAV
+- Do NOT fake conversion in the browser
+- Use a real encoding pipeline
+- If server-side ffmpeg or equivalent is available in Replit, use that
+- If current environment cannot truly encode MP3, then DO NOT pretend to generate MP3
+- In that case, store WAV as original only and keep playback/download pointing to the valid original until real transcoding exists
+
+3. Validation before save
+Before saving stream_audio_url:
+- verify output file exists
+- verify output file size is realistic (not 1 KB / empty)
+- verify MIME/content is valid audio
+- if generated MP3 is invalid, do not save it as stream file
+
+4. Database logic
+Tracks should store:
+- original_audio_url = real original WAV URL
+- stream_audio_url = real valid MP3 URL only if actual MP3 was generated
+- audio_url = stream_audio_url if valid, otherwise fallback to original_audio_url
+
+5. Player logic
+- Player must use stream_audio_url only if it points to a valid playable file
+- otherwise fallback to original_audio_url
+
+6. Download logic
+- Download must default to original_audio_url
+- never download the broken generated MP3
+- never return fake tiny files
+
+7. Logging/debugging
+Add temporary logs for:
+- uploaded original file size
+- generated stream file size
+- generated stream path
+- whether transcoding succeeded
+- URL chosen for playback
+- URL chosen for download
+
+8. Success criteria
+- uploaded WAV remains intact
+- generated MP3 is a real playable file with realistic size
+- player plays valid audio
+- downloaded file plays locally
+- no more 1 KB broken mp3 files
