@@ -498,7 +498,7 @@ export function BrowseFeed() {
                           <IconComponent className="w-8 h-8 text-white mb-3" />
                           <h3 className="font-bold text-white text-lg">{config.label}</h3>
                           <p className="text-white/70 text-sm">{trackCount} tracks</p>
-                          <p className="text-white/50 text-xs mt-1">{formatPlays(totalPlays)} plays</p>
+                          <p suppressHydrationWarning className="text-white/50 text-xs mt-1">{mounted ? `${formatPlays(totalPlays)} plays` : ""}</p>
                         </div>
                       </button>
                     )
@@ -538,7 +538,7 @@ export function BrowseFeed() {
                     <div className="text-sm text-muted-foreground">Music Styles</div>
                   </div>
                   <div className="text-center p-4 rounded-xl bg-card/30">
-                    <div className="text-2xl font-bold text-foreground">{formatPlays(SEED_TRACKS.reduce((acc, t) => acc + t.plays, 0))}</div>
+                    <div suppressHydrationWarning className="text-2xl font-bold text-foreground">{mounted ? formatPlays(SEED_TRACKS.reduce((acc, t) => acc + t.plays, 0)) : ""}</div>
                     <div className="text-sm text-muted-foreground">Total Plays</div>
                   </div>
                 </div>
