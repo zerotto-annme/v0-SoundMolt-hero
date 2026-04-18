@@ -232,32 +232,54 @@ export default function ProfilePage() {
       let trimmedAvatarUrl = editProfileForm.avatarUrl.trim()
 
       if (avatarFile) {
-        const oldAvatarUrl = user!.avatar || ""
-        const storageBucketMarker = "/storage/v1/object/public/avatars/"
-        const markerIndex = oldAvatarUrl.indexOf(storageBucketMarker)
-        if (markerIndex !== -1) {
-          const oldPath = oldAvatarUrl.slice(markerIndex + storageBucketMarker.length).split("?")[0]
-          if (oldPath) {
-            const { error: removeError } = await supabase.storage.from("avatars").remove([oldPath])
-            if (removeError) {
-              console.warn("Failed to delete old avatar from storage:", removeError.message)
-            }
-          }
-        }
-
-        const ext = avatarFile.name.split(".").pop() ?? "jpg"
-        const path = `${user!.id}/${Date.now()}.${ext}`
-        const { error: uploadError } = await supabase.storage
-          .from("avatars")
-          .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type })
-        if (uploadError) {
-          setEditProfileErrors({ general: "Failed to upload image. Please try again." })
+        // Route upload through the server-side API so the service role key is
+        // used for storage access — this works regardless of bucket RLS policies.
+        const { data: sessionData } = await supabase.auth.getSession()
+        const jwt = sessionData?.session?.access_token
+        if (!jwt) {
+          setEditProfileErrors({ general: "Session expired. Please sign in again." })
           return
         }
-        const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path)
-        trimmedAvatarUrl = urlData.publicUrl
+
+        console.log("[profile] Uploading avatar:", {
+          bucket: "avatars",
+          fileType: avatarFile.type,
+          fileSizeBytes: avatarFile.size,
+          userId: user!.id,
+        })
+
+        const form = new FormData()
+        form.append("file", avatarFile)
+
+        const uploadRes = await fetch("/api/upload-avatar", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${jwt}` },
+          body: form,
+        })
+
+        const uploadJson = await uploadRes.json()
+
+        if (!uploadRes.ok) {
+          console.error("[profile] Avatar upload error:", {
+            status: uploadRes.status,
+            bucket: "avatars",
+            fileType: avatarFile.type,
+            fileSizeBytes: avatarFile.size,
+            serverError: uploadJson?.error,
+          })
+          setEditProfileErrors({
+            general: uploadJson?.error
+              ? `Upload failed: ${uploadJson.error}`
+              : "Failed to upload image. Please try again.",
+          })
+          return
+        }
+
+        trimmedAvatarUrl = uploadJson.url as string
+        console.log("[profile] Avatar uploaded successfully:", trimmedAvatarUrl)
       }
 
+      // Save username (and avatar_url when changed via URL paste) to profile.
       const { error: profileError } = await supabase
         .from("profiles")
         .upsert(
@@ -271,6 +293,7 @@ export default function ProfilePage() {
         )
 
       if (profileError) {
+        console.error("[profile] Profile upsert error:", profileError.message)
         setEditProfileErrors({ general: "Failed to save profile. Please try again." })
         return
       }
@@ -295,7 +318,8 @@ export default function ProfilePage() {
         handleCloseEditProfile()
         setEditProfileSuccess(false)
       }, 1200)
-    } catch {
+    } catch (err) {
+      console.error("[profile] Unexpected error during save:", err)
       setEditProfileErrors({ general: "Something went wrong. Please try again." })
     } finally {
       setEditProfileLoading(false)
