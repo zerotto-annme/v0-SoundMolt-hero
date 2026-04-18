@@ -40,6 +40,7 @@ SQL migrations live in the `migrations/` directory at the project root.
 | `migrations/004_profiles_username_unique.sql` | Adds a `UNIQUE` constraint (`profiles_username_unique`) on `public.profiles.username` to prevent duplicate usernames. |
 | `migrations/005_auto_create_profile_trigger.sql` | Adds `handle_new_user()` trigger function and `on_auth_user_created` trigger on `auth.users`. Automatically inserts a minimal profile row into `public.profiles` on every new auth user INSERT (server-side safety net). Uses `SECURITY DEFINER`. Falls back to `NULL` username if a uniqueness collision occurs so user creation is never aborted. |
 | `migrations/009_backfill_missing_profiles.sql` | One-time backfill that inserts a minimal profile row (username from email prefix, role='human') for every `auth.users` record that has no matching row in `public.profiles`. Uses `ON CONFLICT (id) DO NOTHING` so it is safe to re-run. Covers accounts created before migration 005's trigger was in place. |
+| `migrations/013_get_orphaned_user_ids_fn.sql` | Creates `get_orphaned_user_ids(older_than_days integer DEFAULT 7)` — a `SECURITY DEFINER` read-only RPC that returns the IDs and creation timestamps of profiles whose `username` has been `NULL` for longer than the given number of days. Execute is granted only to `service_role`; anon and authenticated roles cannot call it. |
 
 **How to apply a migration:**
 1. Open the Supabase project dashboard.
@@ -56,6 +57,32 @@ All migration files are idempotent and can be safely re-run.
 - On confirm, the selected region is drawn to a 512×512 canvas and exported as a JPEG Blob.
 - The Blob is wrapped into a `File` and handed to the existing Supabase Storage upload path in `app/profile/page.tsx`.
 - Ensures the avatar circle always shows a well-centered, non-distorted image.
+
+# Orphaned Account Cleanup
+
+When two users race to register the same username and one confirms their email first, the loser ends up with an `auth.users` row and a `public.profiles` row whose `username` is `NULL`. The login guard in `components/auth-context.tsx` immediately signs out such users, but their database rows accumulate indefinitely. Migration 013 and the admin API below clean these up.
+
+## Admin endpoint: `POST /api/admin/cleanup-orphaned-accounts`
+
+Finds all profiles whose `username IS NULL` and `created_at` is older than a configurable threshold, then permanently deletes the corresponding auth users via the Supabase Admin SDK (which also cascades through the profile).
+
+**Authentication:** pass the Supabase service-role key as a Bearer token:
+```
+Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>
+```
+
+**Optional JSON body:**
+```json
+{ "olderThanDays": 7 }
+```
+Defaults to 7 days if omitted.
+
+**Response:**
+```json
+{ "deleted": 3, "errors": [] }
+```
+
+This endpoint can be called manually (e.g. from a cron job, CI script, or Supabase Edge Function) to periodically prune orphaned accounts.
 
 # Track Upload (Supabase-backed)
 
