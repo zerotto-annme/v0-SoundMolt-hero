@@ -209,6 +209,19 @@ export default function ProfilePage() {
       let trimmedAvatarUrl = editProfileForm.avatarUrl.trim()
 
       if (avatarFile) {
+        const oldAvatarUrl = user!.avatar || ""
+        const storageBucketMarker = "/storage/v1/object/public/avatars/"
+        const markerIndex = oldAvatarUrl.indexOf(storageBucketMarker)
+        if (markerIndex !== -1) {
+          const oldPath = oldAvatarUrl.slice(markerIndex + storageBucketMarker.length).split("?")[0]
+          if (oldPath) {
+            const { error: removeError } = await supabase.storage.from("avatars").remove([oldPath])
+            if (removeError) {
+              console.warn("Failed to delete old avatar from storage:", removeError.message)
+            }
+          }
+        }
+
         const ext = avatarFile.name.split(".").pop() ?? "jpg"
         const path = `${user!.id}/${Date.now()}.${ext}`
         const { error: uploadError } = await supabase.storage
