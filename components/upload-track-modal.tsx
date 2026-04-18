@@ -195,8 +195,8 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
       let streamAudioUrl = originalAudioUrl // fallback: stream = original
 
       if (isWavFile) {
-        // WAV → MP3 via server-side ffmpeg (reliable, real encoding)
-        setUploadStatus("Transcoding to MP3…")
+        // WAV → MP3 via server-side ffmpeg — optional streaming copy, not the primary file
+        setUploadStatus("Creating streaming version…")
         try {
           const transcodeRes = await fetch("/api/transcode", {
             method: "POST",
@@ -250,8 +250,8 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
           console.warn("[upload] Transcoding request failed:", transcodeErr)
         }
       } else {
-        // Non-WAV (MP3, FLAC, etc.) — copy to streams/ with same format
-        setUploadStatus("Uploading stream…")
+        // Non-WAV (MP3, FLAC, etc.) — copy to streams/ as a streaming-optimised duplicate
+        setUploadStatus("Uploading streaming copy…")
         const streamPath = `streams/${userId}/${timestamp}.${audioExt}`
         const { error: streamError } = await supabase.storage
           .from("audio")
@@ -265,10 +265,9 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
       }
 
       const streamDiffers = streamAudioUrl !== originalAudioUrl
-      console.log(`[upload] Original (download + playback): ${originalAudioUrl}`)
-      console.log(`[upload] Stream (transcoded MP3, if any): ${streamDiffers ? streamAudioUrl : "(none — using original)"}`)
-      console.log(`[upload] DB audio_url = original_audio_url = ${originalAudioUrl}`)
-      console.log(`[upload] DB stream_audio_url = ${streamDiffers ? streamAudioUrl : "null"}`)
+      console.log(`[upload] original_audio_url (WAV, source of truth for downloads): ${originalAudioUrl}`)
+      console.log(`[upload] stream_audio_url   (MP3 streaming copy, if any):         ${streamDiffers ? streamAudioUrl : "null — skipped or failed"}`)
+      console.log(`[upload] audio_url          (player URL = stream if valid, else original): ${streamAudioUrl}`)
       console.log(`[upload] original file size: ${audioFile!.size} bytes (${(audioFile!.size / 1024 / 1024).toFixed(2)} MB)`)
 
       // ── Step 3: Upload cover image ────────────────────────────────────────
@@ -298,11 +297,14 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
           title: title.trim(),
           style: genre || null,
           description: description.trim() || null,
-          // audio_url = ALWAYS the original valid file (never a stream that might be broken)
-          audio_url: originalAudioUrl,
+          // original_audio_url = always the real uploaded WAV (source of truth for downloads)
           original_audio_url: originalAudioUrl,
-          // stream_audio_url = MP3 only if it was actually transcoded and is different from original
+          // stream_audio_url = transcoded MP3 only when it is real and valid (> 10 KB verified above)
+          //                    null when transcoding was skipped or failed
           stream_audio_url: streamAudioUrl !== originalAudioUrl ? streamAudioUrl : null,
+          // audio_url = streaming MP3 if available (for playback), else the original file
+          //             guaranteed to point to a real, playable audio file — never a broken placeholder
+          audio_url: streamAudioUrl,
           original_filename: originalName,
           original_mime_type: originalMime,
           original_file_size: audioFile!.size,
@@ -326,8 +328,9 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
         modelType: "Uploaded",
         modelProvider: "user",
         coverUrl: inserted.cover_url || "",
-        // Player always uses original WAV — stream_audio_url is only for future optimized playback
-        audioUrl: originalAudioUrl,
+        // audioUrl = streaming MP3 if transcoding succeeded, otherwise the original WAV
+        // (streamAudioUrl is already guaranteed to be > 10 KB or equal to originalAudioUrl)
+        audioUrl: streamAudioUrl,
         originalAudioUrl: originalAudioUrl,
         originalFilename: originalName,
         originalMimeType: originalMime,

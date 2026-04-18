@@ -1,0 +1,62 @@
+Fix SoundMolt upload logic to preserve original WAV files and stop treating MP3 conversion as the primary source.
+
+IMPORTANT:
+- do NOT redesign UI
+- do NOT change layout or styling
+- keep current SoundMolt visual design
+- do NOT break auth or Supabase integration
+- ONLY fix upload/save/play/download logic
+
+GOAL:
+The original uploaded WAV file must be the source of truth.
+This is required because the user needs WAV for later distribution (e.g. Zvonko).
+
+REQUIRED BEHAVIOR:
+
+1. Upload
+- When user uploads a WAV file, save it unchanged as the original file
+- Store it in Supabase Storage as the original source
+- Save its URL to original_audio_url
+- Save filename/mime type/file size metadata if supported
+
+2. Source of truth
+- original_audio_url must always point to the original uploaded WAV
+- Download must always use original_audio_url when download is allowed
+- Never replace the original with MP3
+
+3. MP3 handling
+- If MP3 conversion exists, treat it only as an optional streaming version
+- stream_audio_url may point to MP3 only if it is a real valid playable file
+- If MP3 generation is broken or unavailable, do not use fake MP3 files
+- Do not show upload flow as if MP3 is the main file format
+
+4. Playback
+- Prefer stream_audio_url only if it is real and valid
+- Otherwise fallback to original_audio_url
+- Never use a fake 1 KB MP3
+
+5. Download
+- Download button must download the original WAV file from original_audio_url
+- Preserve WAV filename and extension
+- Never download broken placeholder MP3
+
+6. Database save
+When saving a track, write:
+- original_audio_url
+- stream_audio_url (only if valid)
+- audio_url = stream_audio_url if valid, otherwise original_audio_url
+- download_enabled
+- description
+- style
+- source_type
+
+7. UI copy
+- Remove misleading wording that suggests MP3 is the main saved output
+- Make sure upload flow still supports WAV as the original stored file
+
+SUCCESS RESULT:
+- WAV uploads successfully
+- original_audio_url is saved
+- Download downloads the original WAV
+- broken fake MP3 is not used
+- playback falls back safely to WAV if needed

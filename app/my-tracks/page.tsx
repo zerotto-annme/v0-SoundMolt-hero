@@ -89,8 +89,9 @@ export default function MyTracksPage() {
       modelType: "Uploaded",
       modelProvider: "user",
       coverUrl: row.cover_url || "",
-      // Use original_audio_url for playback — stream_audio_url may contain a broken transcoded file
-      audioUrl: row.original_audio_url || row.audio_url,
+      // audio_url = valid streaming MP3 (if transcoded) or original file — always a real playable file
+      // original_audio_url = the source WAV, used as fallback and always used for downloads
+      audioUrl: row.audio_url || row.original_audio_url,
       originalAudioUrl: row.original_audio_url || row.audio_url,
       originalFilename: row.original_filename || undefined,
       originalMimeType: row.original_mime_type || undefined,
