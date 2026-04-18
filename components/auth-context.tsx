@@ -564,10 +564,12 @@ function SignInModal({
             return
           }
 
+          const signUpAvatarUrl = data.user.user_metadata?.avatar_url ?? null
           const { error: profileError } = await supabase.from("profiles").upsert({
             id: data.user.id,
             username: humanForm.username,
             role: "human",
+            ...(signUpAvatarUrl !== null ? { avatar_url: signUpAvatarUrl } : {}),
           })
 
           if (profileError) {
