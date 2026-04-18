@@ -5,10 +5,10 @@ import { Sidebar } from "@/components/sidebar"
 import { 
   Bot, User, Music, Heart, Clock, Play, Disc, Shield, Settings, 
   Copy, RefreshCw, Plug, Key, CheckCircle, X, Upload, TrendingUp,
-  Zap, Activity, Pencil
+  Zap, Activity, Pencil, Camera
 } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { BrowseTrackCard } from "@/components/browse-track-card"
 import { useActivitySimulation } from "@/hooks/use-activity-simulation"
@@ -65,6 +65,9 @@ export default function ProfilePage() {
   const [editProfileErrors, setEditProfileErrors] = useState<{ username?: string; avatarUrl?: string; general?: string }>({})
   const [editProfileLoading, setEditProfileLoading] = useState(false)
   const [editProfileSuccess, setEditProfileSuccess] = useState(false)
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setIsHydrated(true)
@@ -144,7 +147,51 @@ export default function ProfilePage() {
     })
     setEditProfileErrors({})
     setEditProfileSuccess(false)
+    setAvatarFile(null)
+    setAvatarPreview(prev => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
     setIsEditProfileOpen(true)
+  }
+
+  const handleCloseEditProfile = () => {
+    setAvatarPreview(prev => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
+    setAvatarFile(null)
+    setIsEditProfileOpen(false)
+  }
+
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ""
+    if (!file) return
+    if (!file.type.startsWith("image/")) {
+      setAvatarFile(null)
+      setAvatarPreview(prev => {
+        if (prev) URL.revokeObjectURL(prev)
+        return null
+      })
+      setEditProfileErrors(prev => ({ ...prev, avatarUrl: "Please select an image file." }))
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarFile(null)
+      setAvatarPreview(prev => {
+        if (prev) URL.revokeObjectURL(prev)
+        return null
+      })
+      setEditProfileErrors(prev => ({ ...prev, avatarUrl: "Image must be smaller than 5 MB." }))
+      return
+    }
+    setAvatarFile(file)
+    setAvatarPreview(prev => {
+      if (prev) URL.revokeObjectURL(prev)
+      return URL.createObjectURL(file)
+    })
+    setEditProfileErrors(prev => ({ ...prev, avatarUrl: undefined }))
   }
 
   const handleSaveProfile = async () => {
@@ -159,7 +206,21 @@ export default function ProfilePage() {
 
     setEditProfileLoading(true)
     try {
-      const trimmedAvatarUrl = editProfileForm.avatarUrl.trim()
+      let trimmedAvatarUrl = editProfileForm.avatarUrl.trim()
+
+      if (avatarFile) {
+        const ext = avatarFile.name.split(".").pop() ?? "jpg"
+        const path = `${user!.id}/${Date.now()}.${ext}`
+        const { error: uploadError } = await supabase.storage
+          .from("avatars")
+          .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type })
+        if (uploadError) {
+          setEditProfileErrors({ general: "Failed to upload image. Please try again." })
+          return
+        }
+        const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path)
+        trimmedAvatarUrl = urlData.publicUrl
+      }
 
       const { error: profileError } = await supabase
         .from("profiles")
@@ -195,7 +256,7 @@ export default function ProfilePage() {
 
       setEditProfileSuccess(true)
       setTimeout(() => {
-        setIsEditProfileOpen(false)
+        handleCloseEditProfile()
         setEditProfileSuccess(false)
       }, 1200)
     } catch {
@@ -603,14 +664,14 @@ export default function ProfilePage() {
       {isEditProfileOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-          onClick={() => setIsEditProfileOpen(false)}
+          onClick={handleCloseEditProfile}
         >
           <div
             className="relative w-full max-w-md mx-4 bg-[#111113] border border-white/10 rounded-2xl p-8"
             onClick={(e) => e.stopPropagation()}
           >
             <button
-              onClick={() => setIsEditProfileOpen(false)}
+              onClick={handleCloseEditProfile}
               className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors"
             >
               <X className="w-5 h-5" />
@@ -627,36 +688,82 @@ export default function ProfilePage() {
             </div>
 
             <div className="space-y-5">
-              {/* Avatar preview */}
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-full overflow-hidden border border-white/20 bg-white/5 flex items-center justify-center flex-shrink-0">
-                  {(editProfileForm.avatarUrl || user.avatar) ? (
-                    <img
-                      src={editProfileForm.avatarUrl || user.avatar}
-                      alt="Avatar preview"
-                      className="w-full h-full object-cover"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }}
-                    />
-                  ) : (
-                    <User className="w-8 h-8 text-white/40" />
-                  )}
+              {/* Avatar upload */}
+              <div>
+                <label className="block text-sm text-white/60 mb-3">Profile Photo</label>
+                <div className="flex items-center gap-4">
+                  {/* Preview circle with camera overlay */}
+                  <button
+                    type="button"
+                    onClick={() => avatarInputRef.current?.click()}
+                    className="relative w-16 h-16 rounded-full overflow-hidden border border-white/20 bg-white/5 flex items-center justify-center flex-shrink-0 group focus:outline-none"
+                    title="Click to upload photo"
+                  >
+                    {(avatarPreview || editProfileForm.avatarUrl || user.avatar) ? (
+                      <img
+                        src={avatarPreview || editProfileForm.avatarUrl || user.avatar}
+                        alt="Avatar preview"
+                        className="w-full h-full object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }}
+                      />
+                    ) : (
+                      <User className="w-8 h-8 text-white/40" />
+                    )}
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Camera className="w-5 h-5 text-white" />
+                    </div>
+                  </button>
+
+                  <div className="flex-1 space-y-2">
+                    {/* Upload button */}
+                    <button
+                      type="button"
+                      onClick={() => avatarInputRef.current?.click()}
+                      className="flex items-center gap-2 px-4 h-9 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-lg text-sm text-white/70 hover:text-white transition-colors"
+                    >
+                      <Upload className="w-4 h-4" />
+                      {avatarFile ? "Change photo" : "Upload photo"}
+                    </button>
+                    {avatarFile ? (
+                      <p className="text-xs text-white/40 truncate max-w-[180px]">{avatarFile.name}</p>
+                    ) : (
+                      <p className="text-xs text-white/30">JPG, PNG, GIF up to 5 MB</p>
+                    )}
+                  </div>
+
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleAvatarFileChange}
+                  />
                 </div>
-                <div className="flex-1">
-                  <label className="block text-sm text-white/60 mb-2">Avatar URL</label>
+
+                {/* URL fallback */}
+                <div className="mt-3">
+                  <label className="block text-xs text-white/40 mb-1.5">Or paste an image URL</label>
                   <input
                     type="url"
                     value={editProfileForm.avatarUrl}
                     onChange={(e) => {
                       setEditProfileForm(prev => ({ ...prev, avatarUrl: e.target.value }))
+                      if (e.target.value) {
+                        setAvatarFile(null)
+                        setAvatarPreview(prev => {
+                          if (prev) URL.revokeObjectURL(prev)
+                          return null
+                        })
+                      }
                       if (editProfileErrors.avatarUrl) setEditProfileErrors(prev => ({ ...prev, avatarUrl: undefined }))
                     }}
                     placeholder="https://example.com/avatar.png"
-                    className={`w-full h-11 px-4 bg-black/50 border rounded-lg text-white text-sm placeholder:text-white/30 focus:outline-none transition-colors ${editProfileErrors.avatarUrl ? "border-red-500/60 focus:border-red-500" : "border-white/10 focus:border-white/30"}`}
+                    className={`w-full h-10 px-4 bg-black/50 border rounded-lg text-white text-sm placeholder:text-white/30 focus:outline-none transition-colors ${editProfileErrors.avatarUrl ? "border-red-500/60 focus:border-red-500" : "border-white/10 focus:border-white/30"}`}
                   />
-                  {editProfileErrors.avatarUrl && (
-                    <p className="mt-1.5 text-xs text-red-400">{editProfileErrors.avatarUrl}</p>
-                  )}
                 </div>
+                {editProfileErrors.avatarUrl && (
+                  <p className="mt-1.5 text-xs text-red-400">{editProfileErrors.avatarUrl}</p>
+                )}
               </div>
 
               {/* Username */}
@@ -698,7 +805,7 @@ export default function ProfilePage() {
                 {editProfileLoading ? "Saving…" : "Save Changes"}
               </Button>
               <Button
-                onClick={() => setIsEditProfileOpen(false)}
+                onClick={handleCloseEditProfile}
                 variant="outline"
                 className="h-11 px-6 border-white/10 text-white hover:bg-white/5 rounded-lg"
               >
