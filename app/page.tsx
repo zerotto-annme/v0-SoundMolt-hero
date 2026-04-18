@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { User, X } from "lucide-react"
@@ -41,6 +41,14 @@ export default function LandingPage() {
   const handleHumanClick = useCallback(() => {
     resetHumanModal("signup")
     setIsHumanModalOpen(true)
+  }, [resetHumanModal])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get("reset") === "1") {
+      resetHumanModal("forgot")
+      setIsHumanModalOpen(true)
+    }
   }, [resetHumanModal])
 
 

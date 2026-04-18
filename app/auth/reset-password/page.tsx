@@ -76,7 +76,7 @@ function ResetPasswordForm() {
           <div className="text-center space-y-4">
             <p className="text-red-400 text-sm">{linkError}</p>
             <Button
-              onClick={() => router.push("/")}
+              onClick={() => router.push("/?reset=1")}
               className="w-full h-12 bg-white text-black hover:bg-white/90 rounded-lg font-semibold"
             >
               Request a new reset link
