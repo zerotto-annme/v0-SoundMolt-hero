@@ -73,6 +73,36 @@ export function useAuth() {
   return context
 }
 
+// Fetch username and avatar_url from public.profiles, falling back to user_metadata values
+async function fetchProfileData(
+  userId: string,
+  fallbackUsername: string,
+  fallbackAvatar: string,
+): Promise<{ username: string; avatar: string }> {
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("username, avatar_url")
+      .eq("id", userId)
+      .maybeSingle()
+    if (error) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[auth] fetchProfileData failed for user", userId, error)
+      }
+    } else if (data) {
+      return {
+        username: data.username || fallbackUsername,
+        avatar: data.avatar_url || fallbackAvatar,
+      }
+    }
+  } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[auth] fetchProfileData unexpected error for user", userId, err)
+    }
+  }
+  return { username: fallbackUsername, avatar: fallbackAvatar }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
     user: null,
@@ -90,15 +120,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data: { session } } = await supabase.auth.getSession()
         if (session?.user) {
           const sbUser = session.user
-          const username = sbUser.user_metadata?.username || sbUser.email?.split("@")[0] || "User"
-          const name = username
+          const metaUsername = sbUser.user_metadata?.username || sbUser.email?.split("@")[0] || "User"
+          const metaAvatar = sbUser.user_metadata?.avatar_url || generateAvatar(metaUsername, "human")
+          const { username, avatar } = await fetchProfileData(sbUser.id, metaUsername, metaAvatar)
           const userProfile: UserProfile = {
             id: sbUser.id,
             role: "human",
-            name,
+            name: username,
             username,
             email: sbUser.email,
-            avatar: sbUser.user_metadata?.avatar_url || generateAvatar(name, "human"),
+            avatar,
             createdAt: new Date(sbUser.created_at).getTime(),
           }
           setState({ user: userProfile, isAuthenticated: true })
@@ -141,15 +172,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
       } else if (session?.user && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION")) {
         const sbUser = session.user
-        const username = sbUser.user_metadata?.username || sbUser.email?.split("@")[0] || "User"
-        const name = username
+        const metaUsername = sbUser.user_metadata?.username || sbUser.email?.split("@")[0] || "User"
+        const metaAvatar = sbUser.user_metadata?.avatar_url || generateAvatar(metaUsername, "human")
+        const { username, avatar } = await fetchProfileData(sbUser.id, metaUsername, metaAvatar)
         const userProfile: UserProfile = {
           id: sbUser.id,
           role: "human",
-          name,
+          name: username,
           username,
           email: sbUser.email,
-          avatar: sbUser.user_metadata?.avatar_url || generateAvatar(name, "human"),
+          avatar,
           createdAt: new Date(sbUser.created_at).getTime(),
         }
         setState({ user: userProfile, isAuthenticated: true })
