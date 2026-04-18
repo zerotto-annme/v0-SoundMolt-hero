@@ -1,0 +1,114 @@
+Implement SoundMolt audio storage and playback architecture using separate original and streaming files.
+
+IMPORTANT:
+- do NOT redesign UI
+- do NOT change layout or styling
+- keep current SoundMolt visual design
+- do NOT break auth, upload, comments, or current Supabase integration
+- ONLY update audio storage, track persistence, playback source, and download source
+
+GOAL:
+Use a dual-audio architecture like modern music platforms:
+
+- original source file stored as WAV
+- separate streaming file stored as MP3
+- player uses streaming file only
+- download uses original file only
+
+STORAGE STRUCTURE:
+Use Supabase Storage bucket: audio
+
+Store files in these folder paths:
+
+- audio/originals/...wav
+- audio/streams/...mp3
+
+Use unique file paths per uploaded track.
+
+DATABASE:
+Use public.tracks and extend schema safely if needed.
+
+Required columns in tracks:
+- original_audio_url text
+- stream_audio_url text
+- download_enabled boolean
+
+Keep existing columns working if already present:
+- id
+- user_id
+- title
+- style
+- description
+- audio_url
+- cover_url
+- source_type
+- plays
+- likes
+- created_at
+
+RULES:
+- original_audio_url = URL of uploaded WAV source file
+- stream_audio_url = URL of playable MP3 streaming file
+- audio_url should remain compatible and point to stream_audio_url if existing UI still expects audio_url
+- download_enabled controls whether original file can be downloaded
+
+UPLOAD FLOW:
+1. User uploads original WAV
+2. Save the original file to:
+   audio/originals/...
+3. Generate or save the streaming MP3 version to:
+   audio/streams/...
+4. Insert/update tracks row with:
+   - user_id
+   - title
+   - style
+   - description
+   - cover_url
+   - original_audio_url
+   - stream_audio_url
+   - audio_url = stream_audio_url
+   - download_enabled
+   - source_type = 'uploaded'
+
+PLAYER LOGIC:
+- the web player must read and play ONLY stream_audio_url
+- if stream_audio_url is missing for old records, fallback to audio_url
+- do not use original WAV for browser playback if stream_audio_url exists
+
+DOWNLOAD LOGIC:
+- Download button must use original_audio_url
+- if download_enabled = false:
+  - do NOT download
+  - show existing message:
+    "Download is disabled by the track owner"
+- if original_audio_url is missing for old records:
+  - fallback to a valid playable audio_url only if necessary
+- never download a broken silent placeholder file
+
+QUALITY RULES:
+- original WAV must stay untouched
+- streaming MP3 must be valid and playable
+- browser playback should use the stream file, not the original WAV
+- preserve maximum practical quality for streaming
+
+SUPABASE COMPATIBILITY:
+- use Storage bucket "audio"
+- use folder structure inside that bucket:
+  - originals/
+  - streams/
+- keep current auth/session model
+- keep current tracks table compatible
+
+BACKWARD COMPATIBILITY:
+- old tracks that only have audio_url should still work
+- new uploads must save both original_audio_url and stream_audio_url
+- existing UI components should not need visual redesign
+
+SUCCESS RESULT:
+- uploaded WAV is stored in audio/originals/
+- stream MP3 is stored in audio/streams/
+- tracks row stores original_audio_url + stream_audio_url + download_enabled
+- player uses stream_audio_url only
+- download uses original_audio_url only
+- sound quality in browser improves
+- original download stays intact

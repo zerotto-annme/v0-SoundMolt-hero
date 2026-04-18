@@ -5,6 +5,7 @@ import { X, Upload, Music, Image as ImageIcon, FileAudio, Loader2, Check, AlertC
 import { Button } from "@/components/ui/button"
 import { usePlayer, type Track } from "./player-context"
 import { supabase } from "@/lib/supabase"
+import { transcodeToMp3, isWav } from "@/lib/audio-transcoder"
 import Image from "next/image"
 
 interface UploadTrackModalProps {
@@ -43,6 +44,7 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
   const [genre, setGenre] = useState("")
   const [downloadEnabled, setDownloadEnabled] = useState(true)
   const [isUploading, setIsUploading] = useState(false)
+  const [uploadStatus, setUploadStatus] = useState("")
   const [errors, setErrors] = useState<{ audio?: string; cover?: string; title?: string; submit?: string }>({})
   const [isDraggingAudio, setIsDraggingAudio] = useState(false)
   const [isDraggingCover, setIsDraggingCover] = useState(false)
@@ -154,7 +156,6 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
       return
     }
 
-    // Require authentication
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) {
       setErrors({ submit: "You must be signed in to upload a track." })
@@ -162,29 +163,75 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
     }
 
     setIsUploading(true)
+    setUploadStatus("Preparing upload…")
 
     try {
       const userId = session.user.id
       const timestamp = Date.now()
       const originalName = audioFile!.name
       const audioExt = originalName.split('.').pop()?.toLowerCase() || 'wav'
-      const mimeType = audioFile!.type || guessMime(audioExt)
+      const originalMime = audioFile!.type || guessMime(audioExt)
+      const shouldTranscode = isWav(audioFile!)
 
-      // Upload original file to "originals/" subfolder — never modified
-      const audioPath = `originals/${userId}/${timestamp}.${audioExt}`
-      const { error: audioError } = await supabase.storage
+      // ── Step 1: Upload original file to originals/ (never modified) ──────
+      setUploadStatus("Uploading original…")
+      const originalPath = `originals/${userId}/${timestamp}.${audioExt}`
+      const { error: origError } = await supabase.storage
         .from("audio")
-        .upload(audioPath, audioFile!, { upsert: false, contentType: mimeType })
+        .upload(originalPath, audioFile!, { upsert: false, contentType: originalMime })
 
-      if (audioError) {
-        setErrors({ submit: `Audio upload failed: ${audioError.message}` })
+      if (origError) {
+        setErrors({ submit: `Audio upload failed: ${origError.message}` })
         return
       }
+      const { data: origPublic } = supabase.storage.from("audio").getPublicUrl(originalPath)
+      const originalAudioUrl = origPublic.publicUrl
 
-      const { data: audioPublic } = supabase.storage.from("audio").getPublicUrl(audioPath)
-      const audioUrl = audioPublic.publicUrl
+      // ── Step 2: Generate or copy the streaming version ───────────────────
+      let streamAudioUrl = originalAudioUrl
 
-      // Upload cover image to "covers" bucket
+      if (shouldTranscode) {
+        // WAV → MP3 via lamejs for better browser streaming quality
+        setUploadStatus("Transcoding to MP3…")
+        let streamBlob: Blob
+        try {
+          streamBlob = await transcodeToMp3(
+            audioFile!,
+            192,
+            (pct) => setUploadStatus(`Transcoding… ${pct}%`)
+          )
+          setUploadStatus("Uploading stream…")
+          const streamPath = `streams/${userId}/${timestamp}.mp3`
+          const { error: streamError } = await supabase.storage
+            .from("audio")
+            .upload(streamPath, streamBlob, { upsert: false, contentType: "audio/mpeg" })
+
+          if (streamError) {
+            // Non-fatal: fall back to original for streaming
+            console.warn("Stream upload failed, using original:", streamError.message)
+          } else {
+            const { data: streamPublic } = supabase.storage.from("audio").getPublicUrl(streamPath)
+            streamAudioUrl = streamPublic.publicUrl
+          }
+        } catch (transcodeErr) {
+          // Non-fatal: transcoding failed, stream = original WAV
+          console.warn("Transcoding failed, using original for stream:", transcodeErr)
+        }
+      } else {
+        // Non-WAV (MP3, FLAC, etc.) — upload a copy to streams/ so both paths exist
+        setUploadStatus("Uploading stream…")
+        const streamPath = `streams/${userId}/${timestamp}.${audioExt}`
+        const { error: streamError } = await supabase.storage
+          .from("audio")
+          .upload(streamPath, audioFile!, { upsert: false, contentType: originalMime })
+        if (!streamError) {
+          const { data: streamPublic } = supabase.storage.from("audio").getPublicUrl(streamPath)
+          streamAudioUrl = streamPublic.publicUrl
+        }
+      }
+
+      // ── Step 3: Upload cover image ────────────────────────────────────────
+      setUploadStatus("Uploading cover…")
       let coverUrl: string | null = null
       if (coverFile) {
         const coverExt = coverFile.name.split('.').pop() || 'jpg'
@@ -201,7 +248,8 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
         coverUrl = coverPublic.publicUrl
       }
 
-      // Insert track record into database with full audio pipeline metadata
+      // ── Step 4: Insert track into database ───────────────────────────────
+      setUploadStatus("Saving track…")
       const { data: inserted, error: dbError } = await supabase
         .from("tracks")
         .insert({
@@ -209,14 +257,12 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
           title: title.trim(),
           style: genre || null,
           description: description.trim() || null,
-          // audio_url = playback URL (original file used for both playback and download)
-          audio_url: audioUrl,
-          // original_audio_url = exact source file for download
-          original_audio_url: audioUrl,
-          // stream_audio_url = same for now (no server-side transcoding in browser)
-          stream_audio_url: audioUrl,
+          // audio_url = stream URL for backward-compat UI that only knows audio_url
+          audio_url: streamAudioUrl,
+          original_audio_url: originalAudioUrl,
+          stream_audio_url: streamAudioUrl,
           original_filename: originalName,
-          original_mime_type: mimeType,
+          original_mime_type: originalMime,
           original_file_size: audioFile!.size,
           cover_url: coverUrl,
           download_enabled: downloadEnabled,
@@ -230,7 +276,7 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
         return
       }
 
-      // Add to player context for immediate playback
+      // ── Step 5: Publish to player for immediate playback ─────────────────
       const newTrack: Track = {
         id: inserted.id,
         title: inserted.title,
@@ -238,7 +284,12 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
         modelType: "Uploaded",
         modelProvider: "user",
         coverUrl: inserted.cover_url || "",
-        audioUrl: inserted.audio_url,
+        // Player uses the stream URL (MP3 or original for non-WAV)
+        audioUrl: streamAudioUrl,
+        originalAudioUrl: originalAudioUrl,
+        originalFilename: originalName,
+        originalMimeType: originalMime,
+        originalFileSize: audioFile!.size,
         duration: 0,
         plays: 0,
         style: inserted.style || undefined,
@@ -256,6 +307,7 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
       setErrors({ submit: err instanceof Error ? err.message : "Upload failed. Please try again." })
     } finally {
       setIsUploading(false)
+      setUploadStatus("")
     }
   }
 
@@ -269,6 +321,7 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
     setDownloadEnabled(true)
     setErrors({})
     setIsUploading(false)
+    setUploadStatus("")
     setShowDiscardConfirm(false)
     onClose()
   }, [onClose])
@@ -548,7 +601,7 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
               {isUploading ? (
                 <>
                   <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                  Uploading...
+                  <span className="truncate">{uploadStatus || "Uploading…"}</span>
                 </>
               ) : (
                 <>
