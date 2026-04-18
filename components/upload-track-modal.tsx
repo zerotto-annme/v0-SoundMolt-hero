@@ -146,9 +146,9 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
       const userId = session.user.id
       const timestamp = Date.now()
       const audioExt = audioFile!.name.split('.').pop() || 'wav'
-      const audioPath = `tracks/${userId}/${timestamp}.${audioExt}`
+      const audioPath = `${userId}/${timestamp}.${audioExt}`
 
-      // Upload audio file
+      // Upload audio file to "audio" bucket
       const { error: audioError } = await supabase.storage
         .from("audio")
         .upload(audioPath, audioFile!, { upsert: false, contentType: audioFile!.type || "audio/wav" })
@@ -161,20 +161,20 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
       const { data: audioPublic } = supabase.storage.from("audio").getPublicUrl(audioPath)
       const audioUrl = audioPublic.publicUrl
 
-      // Upload cover image (if provided)
+      // Upload cover image to "covers" bucket
       let coverUrl: string | null = null
       if (coverFile) {
         const coverExt = coverFile.name.split('.').pop() || 'jpg'
-        const coverPath = `covers/${userId}/${timestamp}.${coverExt}`
+        const coverPath = `${userId}/${timestamp}.${coverExt}`
         const { error: coverError } = await supabase.storage
-          .from("audio")
+          .from("covers")
           .upload(coverPath, coverFile, { upsert: false, contentType: coverFile.type })
 
         if (coverError) {
           setErrors({ submit: `Cover upload failed: ${coverError.message}` })
           return
         }
-        const { data: coverPublic } = supabase.storage.from("audio").getPublicUrl(coverPath)
+        const { data: coverPublic } = supabase.storage.from("covers").getPublicUrl(coverPath)
         coverUrl = coverPublic.publicUrl
       }
 

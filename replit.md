@@ -46,8 +46,8 @@ All migration files are idempotent and can be safely re-run.
 
 # Track Upload (Supabase-backed)
 
-- Audio files uploaded to Supabase Storage bucket **`audio`** at path `tracks/{userId}/{timestamp}.wav`.
-- Cover images uploaded to the same bucket at path `covers/{userId}/{timestamp}.{ext}`.
+- Audio files uploaded to Supabase Storage bucket **`audio`** at path `{userId}/{timestamp}.{ext}`.
+- Cover images uploaded to Supabase Storage bucket **`covers`** at path `{userId}/{timestamp}.{ext}`.
 - After both uploads succeed, a row is inserted into `public.tracks`.
 - My Tracks page fetches from `public.tracks` on mount (filtered to the authenticated user).
 - Newly uploaded tracks appear immediately (via player context), then merge with DB-fetched list.
