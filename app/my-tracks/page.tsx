@@ -7,11 +7,12 @@ import {
   BarChart3, Globe, Pause, X, Check, Wand2, Upload, Sparkles
 } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { usePlayer, type Track } from "@/components/player-context"
 import { CreateTrackModal } from "@/components/create-track-modal"
 import { UploadTrackModal } from "@/components/upload-track-modal"
 import { Button } from "@/components/ui/button"
+import { supabase } from "@/lib/supabase"
 import Image from "next/image"
 import { formatPlays } from "@/lib/seed-tracks"
 
@@ -66,11 +67,44 @@ export default function MyTracksPage() {
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null)
   const [likedTracks, setLikedTracks] = useState<Set<string>>(new Set())
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [supabaseTracks, setSupabaseTracks] = useState<Track[]>([])
+  const [tracksLoading, setTracksLoading] = useState(false)
   const { createdTracks, playTrack, currentTrack, isPlaying, togglePlay, removeCreatedTrack } = usePlayer()
+
+  const fetchTracks = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return
+    setTracksLoading(true)
+    const { data, error } = await supabase
+      .from("tracks")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .order("created_at", { ascending: false })
+    setTracksLoading(false)
+    if (error || !data) return
+    const mapped: Track[] = data.map((row) => ({
+      id: row.id,
+      title: row.title,
+      agentName: session.user.user_metadata?.username || session.user.email?.split("@")[0] || "You",
+      modelType: "Uploaded",
+      modelProvider: "user",
+      coverUrl: row.cover_url || "",
+      audioUrl: row.audio_url,
+      plays: row.plays ?? 0,
+      likes: row.likes ?? 0,
+      style: row.style || undefined,
+      sourceType: "uploaded" as const,
+      description: row.description || undefined,
+      downloadEnabled: row.download_enabled,
+      createdAt: new Date(row.created_at).getTime(),
+    }))
+    setSupabaseTracks(mapped)
+  }, [])
 
   useEffect(() => {
     setIsHydrated(true)
-  }, [])
+    fetchTracks()
+  }, [fetchTracks])
 
   // Redirect to landing if not authenticated or not an agent
   useEffect(() => {
@@ -110,13 +144,23 @@ export default function MyTracksPage() {
     }
   }
 
-  const handleDelete = (trackId: string) => {
+  const handleDelete = async (trackId: string) => {
+    const isSupabaseTrack = supabaseTracks.some(t => t.id === trackId)
+    if (isSupabaseTrack) {
+      await supabase.from("tracks").delete().eq("id", trackId)
+      setSupabaseTracks(prev => prev.filter(t => t.id !== trackId))
+    }
     removeCreatedTrack(trackId)
     setDeleteConfirmId(null)
     setActiveMenuId(null)
   }
 
-  const totalPlays = createdTracks.reduce((sum, track) => sum + (track.plays || 0), 0)
+  // Merge Supabase tracks + in-memory created tracks not yet in Supabase
+  const supabaseIds = new Set(supabaseTracks.map(t => t.id))
+  const inMemoryOnly = createdTracks.filter(t => !supabaseIds.has(t.id))
+  const displayTracks = [...supabaseTracks, ...inMemoryOnly]
+
+  const totalPlays = displayTracks.reduce((sum, track) => sum + (track.plays || 0), 0)
   const totalLikes = likedTracks.size
 
   return (
@@ -137,7 +181,7 @@ export default function MyTracksPage() {
                 <p className="text-sm text-white/50 mb-1">Your Collection</p>
                 <h1 className="text-4xl font-bold text-white">My Tracks</h1>
                 <p className="text-white/50 text-sm mt-2">
-                  {createdTracks.length} tracks | {formatPlays(totalPlays)} plays
+                  {tracksLoading ? "Loading…" : `${displayTracks.length} tracks | ${formatPlays(totalPlays)} plays`}
                 </p>
               </div>
             </div>
@@ -154,7 +198,7 @@ export default function MyTracksPage() {
 
         {/* Content */}
         <div className="px-8 py-6">
-          {createdTracks.length > 0 ? (
+          {displayTracks.length > 0 ? (
             <div className="space-y-2">
               {/* Table Header */}
               <div className="grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-4 px-4 py-2 text-xs text-white/40 uppercase tracking-wider border-b border-border/30">
@@ -167,7 +211,7 @@ export default function MyTracksPage() {
               </div>
               
               {/* Track List */}
-              {createdTracks.map((track, index) => {
+              {displayTracks.map((track, index) => {
                 const isCurrentPlaying = currentTrack?.id === track.id && isPlaying
                 const isLiked = likedTracks.has(track.id)
                 const isDeleting = deleteConfirmId === track.id
@@ -371,7 +415,11 @@ export default function MyTracksPage() {
       <CreateTrackModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} />
       
       {/* Upload Track Modal */}
-      <UploadTrackModal isOpen={isUploadModalOpen} onClose={() => setIsUploadModalOpen(false)} />
+      <UploadTrackModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onSuccess={fetchTracks}
+      />
     </div>
   )
 }

@@ -35,6 +35,7 @@ SQL migrations live in the `migrations/` directory at the project root.
 | File | Description |
 |------|-------------|
 | `migrations/001_create_profiles_table.sql` | Creates `public.profiles`, enables RLS, and adds SELECT / INSERT / UPDATE policies so each user can only access their own row. |
+| `migrations/002_create_tracks_table.sql` | Creates `public.tracks` with columns: id, user_id, title, style, description, audio_url, cover_url, download_enabled, source_type, plays, likes, created_at. Enables RLS with policies for SELECT (public read), INSERT and DELETE (own rows only). |
 
 **How to apply a migration:**
 1. Open the Supabase project dashboard.
@@ -42,3 +43,13 @@ SQL migrations live in the `migrations/` directory at the project root.
 3. Paste the contents of the migration file and run it.
 
 All migration files are idempotent and can be safely re-run.
+
+# Track Upload (Supabase-backed)
+
+- Audio files uploaded to Supabase Storage bucket **`audio`** at path `tracks/{userId}/{timestamp}.wav`.
+- Cover images uploaded to the same bucket at path `covers/{userId}/{timestamp}.{ext}`.
+- After both uploads succeed, a row is inserted into `public.tracks`.
+- My Tracks page fetches from `public.tracks` on mount (filtered to the authenticated user).
+- Newly uploaded tracks appear immediately (via player context), then merge with DB-fetched list.
+- Delete removes the row from Supabase and from in-memory context simultaneously.
+- Upload is blocked at the Supabase session level if the user is not authenticated.

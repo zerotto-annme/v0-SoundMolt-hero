@@ -4,11 +4,13 @@ import { useState, useRef, useCallback, useEffect } from "react"
 import { X, Upload, Music, Image as ImageIcon, FileAudio, Loader2, Check, AlertCircle, Download, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { usePlayer, type Track } from "./player-context"
+import { supabase } from "@/lib/supabase"
 import Image from "next/image"
 
 interface UploadTrackModalProps {
   isOpen: boolean
   onClose: () => void
+  onSuccess?: () => void
 }
 
 const GENRES = [
@@ -24,7 +26,7 @@ const GENRES = [
   { id: "experimental", name: "Experimental" },
 ]
 
-export function UploadTrackModal({ isOpen, onClose }: UploadTrackModalProps) {
+export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModalProps) {
   const [audioFile, setAudioFile] = useState<File | null>(null)
   const [coverFile, setCoverFile] = useState<File | null>(null)
   const [coverPreview, setCoverPreview] = useState<string | null>(null)
@@ -33,7 +35,7 @@ export function UploadTrackModal({ isOpen, onClose }: UploadTrackModalProps) {
   const [genre, setGenre] = useState("")
   const [downloadEnabled, setDownloadEnabled] = useState(true)
   const [isUploading, setIsUploading] = useState(false)
-  const [errors, setErrors] = useState<{ audio?: string; cover?: string; title?: string }>({})
+  const [errors, setErrors] = useState<{ audio?: string; cover?: string; title?: string; submit?: string }>({})
   const [isDraggingAudio, setIsDraggingAudio] = useState(false)
   const [isDraggingCover, setIsDraggingCover] = useState(false)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
@@ -120,52 +122,110 @@ export function UploadTrackModal({ isOpen, onClose }: UploadTrackModalProps) {
   }, [])
 
   const handleUpload = async () => {
-    // Validate required fields
-    const newErrors: { audio?: string; cover?: string; title?: string } = {}
-    
-    if (!audioFile) {
-      newErrors.audio = "Audio file is required"
-    }
-    if (!coverFile) {
-      newErrors.cover = "Cover image is required"
-    }
-    if (!title.trim()) {
-      newErrors.title = "Track title is required"
-    }
+    const newErrors: { audio?: string; cover?: string; title?: string; submit?: string } = {}
+
+    if (!audioFile) newErrors.audio = "Audio file is required"
+    if (!coverFile) newErrors.cover = "Cover image is required"
+    if (!title.trim()) newErrors.title = "Track title is required"
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
       return
     }
 
-    setIsUploading(true)
-
-    // Simulate upload delay
-    await new Promise(resolve => setTimeout(resolve, 1500))
-
-    // Create the uploaded track
-    const newTrack: Track = {
-      id: `uploaded_${Date.now()}`,
-      title: title.trim(),
-      agentName: "You", // User's own upload
-      modelType: "Uploaded",
-      modelProvider: "user",
-      coverUrl: coverPreview || "",
-      audioUrl: URL.createObjectURL(audioFile!),
-      duration: 0, // Will be determined when played
-      plays: 0,
-      style: genre || undefined,
-      sourceType: "uploaded" as const,
-      description: description.trim() || undefined,
-      downloadEnabled,
+    // Require authentication
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      setErrors({ submit: "You must be signed in to upload a track." })
+      return
     }
 
-    addCreatedTrack(newTrack)
-    setIsUploading(false)
-    
-    // Play the uploaded track
-    playTrack(newTrack)
-    handleClose()
+    setIsUploading(true)
+
+    try {
+      const userId = session.user.id
+      const timestamp = Date.now()
+      const audioExt = audioFile!.name.split('.').pop() || 'wav'
+      const audioPath = `tracks/${userId}/${timestamp}.${audioExt}`
+
+      // Upload audio file
+      const { error: audioError } = await supabase.storage
+        .from("audio")
+        .upload(audioPath, audioFile!, { upsert: false, contentType: audioFile!.type || "audio/wav" })
+
+      if (audioError) {
+        setErrors({ submit: `Audio upload failed: ${audioError.message}` })
+        return
+      }
+
+      const { data: audioPublic } = supabase.storage.from("audio").getPublicUrl(audioPath)
+      const audioUrl = audioPublic.publicUrl
+
+      // Upload cover image (if provided)
+      let coverUrl: string | null = null
+      if (coverFile) {
+        const coverExt = coverFile.name.split('.').pop() || 'jpg'
+        const coverPath = `covers/${userId}/${timestamp}.${coverExt}`
+        const { error: coverError } = await supabase.storage
+          .from("audio")
+          .upload(coverPath, coverFile, { upsert: false, contentType: coverFile.type })
+
+        if (coverError) {
+          setErrors({ submit: `Cover upload failed: ${coverError.message}` })
+          return
+        }
+        const { data: coverPublic } = supabase.storage.from("audio").getPublicUrl(coverPath)
+        coverUrl = coverPublic.publicUrl
+      }
+
+      // Insert track record into database
+      const { data: inserted, error: dbError } = await supabase
+        .from("tracks")
+        .insert({
+          user_id: userId,
+          title: title.trim(),
+          style: genre || null,
+          description: description.trim() || null,
+          audio_url: audioUrl,
+          cover_url: coverUrl,
+          download_enabled: downloadEnabled,
+          source_type: "uploaded",
+        })
+        .select()
+        .single()
+
+      if (dbError) {
+        setErrors({ submit: `Failed to save track: ${dbError.message}` })
+        return
+      }
+
+      // Add to player context for immediate playback
+      const newTrack: Track = {
+        id: inserted.id,
+        title: inserted.title,
+        agentName: session.user.user_metadata?.username || session.user.email?.split("@")[0] || "You",
+        modelType: "Uploaded",
+        modelProvider: "user",
+        coverUrl: inserted.cover_url || "",
+        audioUrl: inserted.audio_url,
+        duration: 0,
+        plays: 0,
+        style: inserted.style || undefined,
+        sourceType: "uploaded" as const,
+        description: inserted.description || undefined,
+        downloadEnabled: inserted.download_enabled,
+        createdAt: new Date(inserted.created_at).getTime(),
+      }
+
+      addCreatedTrack(newTrack)
+      playTrack(newTrack)
+      onSuccess?.()
+      handleClose()
+    } catch (err) {
+      setErrors({ submit: err instanceof Error ? err.message : "Upload failed. Please try again." })
+    } finally {
+      setIsUploading(false)
+    }
   }
 
   const handleClose = useCallback(() => {
@@ -430,6 +490,14 @@ export function UploadTrackModal({ isOpen, onClose }: UploadTrackModalProps) {
               Track owner decides whether this track can be downloaded by users.
             </p>
           </div>
+
+          {/* Submit error */}
+          {errors.submit && (
+            <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/30">
+              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-red-400">{errors.submit}</p>
+            </div>
+          )}
 
           {/* Action buttons */}
           <div className="flex gap-3 pt-2">
