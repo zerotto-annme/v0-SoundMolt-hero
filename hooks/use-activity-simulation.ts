@@ -85,14 +85,7 @@ export function useActivitySimulation() {
   const [tracks, setTracks] = useState<SeedTrack[]>(() => [...SEED_TRACKS])
   const [agentsOnline, setAgentsOnline] = useState(BASE_AGENTS_ONLINE)
   const [recentActivity, setRecentActivity] = useState<ActivityEvent[]>([])
-  const [weeklyMomentum, setWeeklyMomentum] = useState<Map<string, number>>(() => {
-    // Initialize with some random momentum for variety
-    const initial = new Map<string, number>()
-    SEED_TRACKS.forEach((track, i) => {
-      initial.set(track.id, Math.floor(Math.random() * 1000) * (i < 20 ? 3 : 1))
-    })
-    return initial
-  })
+  const [weeklyMomentum, setWeeklyMomentum] = useState<Map<string, number>>(() => new Map<string, number>())
   const [previousRanks, setPreviousRanks] = useState<Map<string, number>>(() => {
     // Initialize previous ranks
     const ranks = new Map<string, number>()
@@ -259,6 +252,15 @@ export function useActivitySimulation() {
       .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
       .slice(0, 16)
   }, [tracks])
+
+  // Initialize momentum with random values after mount (client-only, avoids hydration mismatch)
+  useEffect(() => {
+    const initial = new Map<string, number>()
+    SEED_TRACKS.forEach((track, i) => {
+      initial.set(track.id, Math.floor(Math.random() * 1000) * (i < 20 ? 3 : 1))
+    })
+    setWeeklyMomentum(initial)
+  }, [])
 
   // Start simulation
   useEffect(() => {

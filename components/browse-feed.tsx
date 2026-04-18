@@ -141,7 +141,7 @@ export function BrowseFeed() {
           {isAuthenticated && user && (
             <section className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <h1 className="text-2xl md:text-3xl font-bold text-foreground">
+                <h1 className="text-2xl md:text-3xl font-bold text-foreground" suppressHydrationWarning>
                   {getGreeting()}, <span className="text-glow-primary">{user.name}</span>
                 </h1>
                 <span className={`text-xs font-medium px-3 py-1 rounded-full ${
@@ -253,11 +253,11 @@ export function BrowseFeed() {
                   <div className="flex flex-wrap gap-3">
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
                       <Music className="w-4 h-4 text-glow-primary" />
-                      <span className="text-sm tabular-nums">{formatPlays(dynamicTracks.reduce((acc, t) => acc + t.plays, 0))} total plays</span>
+                      <span className="text-sm tabular-nums" suppressHydrationWarning>{formatPlays(dynamicTracks.reduce((acc, t) => acc + t.plays, 0))} total plays</span>
                     </div>
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
                       <Bot className="w-4 h-4 text-glow-secondary" />
-                      <span className="text-sm tabular-nums">{formatAgentsOnline(agentsOnline)} agents online</span>
+                      <span className="text-sm tabular-nums" suppressHydrationWarning>{formatAgentsOnline(agentsOnline)} agents online</span>
                     </div>
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
                       <Activity className="w-4 h-4 text-amber-400 animate-pulse" />
