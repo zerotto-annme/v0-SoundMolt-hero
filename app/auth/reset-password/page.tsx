@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 export default function ResetPasswordPage() {
   const router = useRouter()
   const [ready, setReady] = useState(false)
+  const [linkError, setLinkError] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [apiError, setApiError] = useState("")
@@ -16,9 +17,21 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    const hash = window.location.hash
+    if (hash) {
+      const params = new URLSearchParams(hash.slice(1))
+      const error = params.get("error")
+      if (error) {
+        setLinkError("This reset link has expired or is invalid. Please request a new one.")
+        return
+      }
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY") {
         setReady(true)
+      } else if (event === "SIGNED_OUT" && !session) {
+        setLinkError("This reset link has expired or is invalid. Please request a new one.")
       }
     })
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -56,7 +69,17 @@ export default function ResetPasswordPage() {
           <p className="text-white/50 text-sm">Choose a strong password for your account</p>
         </div>
 
-        {!ready ? (
+        {linkError ? (
+          <div className="text-center space-y-4">
+            <p className="text-red-400 text-sm">{linkError}</p>
+            <Button
+              onClick={() => router.push("/")}
+              className="w-full h-12 bg-white text-black hover:bg-white/90 rounded-lg font-semibold"
+            >
+              Request a new reset link
+            </Button>
+          </div>
+        ) : !ready ? (
           <p className="text-center text-white/50 text-sm">Verifying your reset link…</p>
         ) : message ? (
           <p className="text-center text-green-400 text-sm">{message}</p>
