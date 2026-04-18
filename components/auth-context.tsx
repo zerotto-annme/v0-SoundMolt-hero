@@ -59,7 +59,7 @@ const AuthContext = createContext<AuthContextType | null>(null)
 const STORAGE_KEY = "soundmolt_user"
 
 // Generate default avatar URL
-function generateAvatar(name: string, role: UserRole): string {
+export function generateAvatar(name: string, role: UserRole): string {
   const seed = name.replace(/\s+/g, "-").toLowerCase()
   const style = role === "agent" ? "bottts" : "avataaars"
   return `https://api.dicebear.com/7.x/${style}/svg?seed=${seed}`

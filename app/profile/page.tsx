@@ -1,11 +1,11 @@
 "use client"
 
-import { useAuth } from "@/components/auth-context"
+import { useAuth, generateAvatar } from "@/components/auth-context"
 import { Sidebar } from "@/components/sidebar"
 import { 
   Bot, User, Music, Heart, Clock, Play, Disc, Shield, Settings, 
   Copy, RefreshCw, Plug, Key, CheckCircle, X, Upload, TrendingUp,
-  Zap, Activity
+  Zap, Activity, Pencil
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
@@ -14,6 +14,7 @@ import { BrowseTrackCard } from "@/components/browse-track-card"
 import { useActivitySimulation } from "@/hooks/use-activity-simulation"
 import { Button } from "@/components/ui/button"
 import { usePlayer } from "@/components/player-context"
+import { supabase } from "@/lib/supabase"
 
 // Agent status types
 type AgentStatus = "online" | "generating" | "idle"
@@ -57,6 +58,13 @@ export default function ProfilePage() {
     provider: "",
     endpoint: "",
   })
+
+  // Human profile edit state
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false)
+  const [editProfileForm, setEditProfileForm] = useState({ username: "", avatarUrl: "" })
+  const [editProfileErrors, setEditProfileErrors] = useState<{ username?: string; avatarUrl?: string; general?: string }>({})
+  const [editProfileLoading, setEditProfileLoading] = useState(false)
+  const [editProfileSuccess, setEditProfileSuccess] = useState(false)
 
   useEffect(() => {
     setIsHydrated(true)
@@ -127,6 +135,74 @@ export default function ProfilePage() {
       agentEndpoint: settingsForm.endpoint,
     })
     setIsSettingsOpen(false)
+  }
+
+  const handleOpenEditProfile = () => {
+    setEditProfileForm({
+      username: user?.username || user?.name || "",
+      avatarUrl: user?.avatar || "",
+    })
+    setEditProfileErrors({})
+    setEditProfileSuccess(false)
+    setIsEditProfileOpen(true)
+  }
+
+  const handleSaveProfile = async () => {
+    setEditProfileErrors({})
+    setEditProfileSuccess(false)
+
+    const trimmedUsername = editProfileForm.username.trim()
+    if (!trimmedUsername) {
+      setEditProfileErrors({ username: "Username is required" })
+      return
+    }
+
+    setEditProfileLoading(true)
+    try {
+      const trimmedAvatarUrl = editProfileForm.avatarUrl.trim()
+
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .upsert(
+          {
+            id: user!.id,
+            role: "human",
+            username: trimmedUsername,
+            avatar_url: trimmedAvatarUrl || null,
+          },
+          { onConflict: "id" }
+        )
+
+      if (profileError) {
+        setEditProfileErrors({ general: "Failed to save profile. Please try again." })
+        return
+      }
+
+      const { error: metaError } = await supabase.auth.updateUser({
+        data: {
+          username: trimmedUsername,
+          avatar_url: trimmedAvatarUrl || null,
+        },
+      })
+
+      const newAvatar = trimmedAvatarUrl || generateAvatar(trimmedUsername, "human")
+      updateProfile({ username: trimmedUsername, name: trimmedUsername, avatar: newAvatar })
+
+      if (metaError) {
+        setEditProfileErrors({ general: "Profile saved but session metadata could not be updated. Changes will appear after your next sign-in." })
+        return
+      }
+
+      setEditProfileSuccess(true)
+      setTimeout(() => {
+        setIsEditProfileOpen(false)
+        setEditProfileSuccess(false)
+      }, 1200)
+    } catch {
+      setEditProfileErrors({ general: "Something went wrong. Please try again." })
+    } finally {
+      setEditProfileLoading(false)
+    }
   }
 
   // Status indicator component
@@ -222,6 +298,18 @@ export default function ProfilePage() {
               >
                 <Settings className="w-4 h-4 mr-2" />
                 Agent Settings
+              </Button>
+            )}
+
+            {/* Edit Profile button - Human only */}
+            {!isAgent && (
+              <Button
+                onClick={handleOpenEditProfile}
+                variant="outline"
+                className="h-10 px-4 border-white/20 text-white hover:bg-white/10 rounded-lg"
+              >
+                <Pencil className="w-4 h-4 mr-2" />
+                Edit Profile
               </Button>
             )}
           </div>
@@ -510,6 +598,116 @@ export default function ProfilePage() {
           </section>
         </div>
       </main>
+
+      {/* Human Profile Edit Modal */}
+      {isEditProfileOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          onClick={() => setIsEditProfileOpen(false)}
+        >
+          <div
+            className="relative w-full max-w-md mx-4 bg-[#111113] border border-white/10 rounded-2xl p-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setIsEditProfileOpen(false)}
+              className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center">
+                <Pencil className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white">Edit Profile</h2>
+                <p className="text-xs text-white/40">Update your username and avatar</p>
+              </div>
+            </div>
+
+            <div className="space-y-5">
+              {/* Avatar preview */}
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-full overflow-hidden border border-white/20 bg-white/5 flex items-center justify-center flex-shrink-0">
+                  {(editProfileForm.avatarUrl || user.avatar) ? (
+                    <img
+                      src={editProfileForm.avatarUrl || user.avatar}
+                      alt="Avatar preview"
+                      className="w-full h-full object-cover"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }}
+                    />
+                  ) : (
+                    <User className="w-8 h-8 text-white/40" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <label className="block text-sm text-white/60 mb-2">Avatar URL</label>
+                  <input
+                    type="url"
+                    value={editProfileForm.avatarUrl}
+                    onChange={(e) => {
+                      setEditProfileForm(prev => ({ ...prev, avatarUrl: e.target.value }))
+                      if (editProfileErrors.avatarUrl) setEditProfileErrors(prev => ({ ...prev, avatarUrl: undefined }))
+                    }}
+                    placeholder="https://example.com/avatar.png"
+                    className={`w-full h-11 px-4 bg-black/50 border rounded-lg text-white text-sm placeholder:text-white/30 focus:outline-none transition-colors ${editProfileErrors.avatarUrl ? "border-red-500/60 focus:border-red-500" : "border-white/10 focus:border-white/30"}`}
+                  />
+                  {editProfileErrors.avatarUrl && (
+                    <p className="mt-1.5 text-xs text-red-400">{editProfileErrors.avatarUrl}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Username */}
+              <div>
+                <label className="block text-sm text-white/60 mb-2">Username *</label>
+                <input
+                  type="text"
+                  value={editProfileForm.username}
+                  onChange={(e) => {
+                    setEditProfileForm(prev => ({ ...prev, username: e.target.value }))
+                    if (editProfileErrors.username) setEditProfileErrors(prev => ({ ...prev, username: undefined }))
+                  }}
+                  placeholder="your_username"
+                  className={`w-full h-11 px-4 bg-black/50 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${editProfileErrors.username ? "border-red-500/60 focus:border-red-500" : "border-white/10 focus:border-white/30"}`}
+                />
+                {editProfileErrors.username && (
+                  <p className="mt-1.5 text-xs text-red-400">{editProfileErrors.username}</p>
+                )}
+              </div>
+
+              {editProfileErrors.general && (
+                <p className="text-xs text-red-400 text-center">{editProfileErrors.general}</p>
+              )}
+
+              {editProfileSuccess && (
+                <div className="flex items-center justify-center gap-2 text-green-400 text-sm">
+                  <CheckCircle className="w-4 h-4" />
+                  Profile updated!
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <Button
+                onClick={handleSaveProfile}
+                disabled={editProfileLoading || !editProfileForm.username.trim()}
+                className="flex-1 h-11 bg-white text-black hover:bg-white/90 font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {editProfileLoading ? "Saving…" : "Save Changes"}
+              </Button>
+              <Button
+                onClick={() => setIsEditProfileOpen(false)}
+                variant="outline"
+                className="h-11 px-6 border-white/10 text-white hover:bg-white/5 rounded-lg"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Agent Settings Modal */}
       {isSettingsOpen && (
