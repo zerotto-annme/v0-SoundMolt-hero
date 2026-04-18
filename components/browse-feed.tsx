@@ -471,7 +471,8 @@ export function BrowseFeed() {
                 )}
               </section>
 
-              {/* Browse by Style */}
+              {/* Browse by Style — client-only: totalPlays uses module-level Math.random() */}
+              {mounted && (
               <section>
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
@@ -486,7 +487,6 @@ export function BrowseFeed() {
                     const IconComponent = config.icon
                     const trackCount = TRACKS_BY_STYLE[style].length
                     const totalPlays = TRACKS_BY_STYLE[style].reduce((acc, t) => acc + t.plays, 0)
-                    
                     return (
                       <button
                         key={style}
@@ -498,15 +498,17 @@ export function BrowseFeed() {
                           <IconComponent className="w-8 h-8 text-white mb-3" />
                           <h3 className="font-bold text-white text-lg">{config.label}</h3>
                           <p className="text-white/70 text-sm">{trackCount} tracks</p>
-                          <p suppressHydrationWarning className="text-white/50 text-xs mt-1">{mounted ? `${formatPlays(totalPlays)} plays` : ""}</p>
+                          <p className="text-white/50 text-xs mt-1">{formatPlays(totalPlays)} plays</p>
                         </div>
                       </button>
                     )
                   })}
                 </div>
               </section>
+              )}
 
-              {/* Recommended For You */}
+              {/* Recommended For You — client-only: RECOMMENDED is shuffled with Math.random() at module level */}
+              {mounted && (
               <section>
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
@@ -521,6 +523,7 @@ export function BrowseFeed() {
                   ))}
                 </div>
               </section>
+              )}
 
               {/* Footer stats */}
               <section className="pt-8 border-t border-border/30">
