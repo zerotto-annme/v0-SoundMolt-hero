@@ -84,6 +84,30 @@ Defaults to 7 days if omitted.
 
 This endpoint can be called manually (e.g. from a cron job, CI script, or Supabase Edge Function) to periodically prune orphaned accounts.
 
+# Orphaned Avatar Cleanup
+
+Old avatar files (uploaded before the delete-on-upload fix) are cleaned up with a one-time Node.js script.
+
+## Script: `scripts/cleanup-orphaned-avatars.js`
+
+Scans every user folder in the Supabase Storage `avatars` bucket, compares each file against the user's current `avatar_url` in `public.profiles`, and deletes any file that is no longer the active avatar.
+
+**Requirements:**
+- `NEXT_PUBLIC_SUPABASE_URL` — Supabase project URL
+- `SUPABASE_SERVICE_ROLE_KEY` — service-role key (NOT the anon key)
+
+**Run:**
+```
+node scripts/cleanup-orphaned-avatars.js
+```
+
+**Dry-run (log what would be deleted without deleting):**
+```
+DRY_RUN=1 node scripts/cleanup-orphaned-avatars.js
+```
+
+The script is idempotent: it can be run multiple times safely. It never deletes the file that matches the user's current `avatar_url`. Users whose `avatar_url` points to an external URL (e.g. Google OAuth) are handled correctly — their entire storage folder is cleared since no local file is active.
+
 # Track Upload (Supabase-backed)
 
 - Audio files uploaded to Supabase Storage bucket **`audio`** at path `{userId}/{timestamp}.{ext}`.
