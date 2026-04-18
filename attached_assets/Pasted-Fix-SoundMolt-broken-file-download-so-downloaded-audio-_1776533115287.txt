@@ -1,0 +1,80 @@
+Fix SoundMolt broken file download so downloaded audio files are real, playable, and not corrupted.
+
+IMPORTANT:
+- do NOT redesign UI
+- do NOT change layout or styling
+- keep current SoundMolt visual design
+- do NOT break auth, upload, comments, or Supabase integration
+- ONLY fix download behavior and file integrity
+
+CURRENT BUG:
+- when clicking Download, the downloaded file is broken
+- file downloads but does not play
+- likely causes: wrong URL, bad blob creation, empty response, incorrect content-type, wrong file extension, or broken fetch/download logic
+
+GOAL:
+When user clicks Download, the browser must download a real valid audio file that opens and plays correctly.
+
+TASKS:
+
+1. Audit current download implementation
+Check for all common causes of broken downloads:
+- downloading wrong URL
+- using a placeholder/silent MP3
+- bad fetch -> blob conversion
+- corrupted ArrayBuffer/Blob handling
+- missing or incorrect content-type
+- incorrect extension in downloaded filename
+- downloading stream URL when original should be downloaded
+- saving HTML/error response as .mp3 or .wav
+
+2. Use the correct source file
+Download source priority:
+- if original_audio_url exists and download is allowed -> download original_audio_url
+- else if stream_audio_url exists -> download valid stream_audio_url
+- else fallback to audio_url only if it is a real playable file
+
+3. Validate response before saving
+Before triggering browser download:
+- ensure HTTP response is OK
+- ensure response body is not empty
+- ensure content-type is audio/* or a valid known binary format
+- ensure blob size is realistic and not tiny broken placeholder content
+- if invalid -> show inline error and do not save corrupted file
+
+4. Preserve real filename and extension
+- use original_filename if available
+- otherwise derive extension from content-type or URL
+- ensure .wav downloads as .wav
+- ensure .mp3 downloads as .mp3
+- do not force wrong extension
+
+5. Fix browser download logic
+Implement robust client-side download:
+- fetch actual file
+- convert to blob correctly
+- create object URL
+- trigger anchor download
+- revoke object URL after download
+Do not produce empty blobs or broken files
+
+6. Add defensive debugging
+Temporarily log:
+- download URL used
+- response status
+- content-type
+- blob size
+- final filename
+This helps verify the fix
+
+7. Backward compatibility
+- keep existing UI button
+- old tracks should still download if they have only audio_url
+- new tracks should prefer original_audio_url
+
+SUCCESS RESULT:
+- clicking Download downloads a real playable file
+- downloaded WAV opens and plays
+- downloaded MP3 opens and plays
+- no more broken or silent files
+- no more tiny fake downloaded files

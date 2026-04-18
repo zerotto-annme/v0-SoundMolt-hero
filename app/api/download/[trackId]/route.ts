@@ -17,14 +17,23 @@ export async function GET(
   }
 
   try {
-    // Fetch track metadata from database
+    // Use select("*") so query never fails if audio pipeline columns
+    // (original_audio_url, original_filename, etc.) haven't been migrated yet
     const { data: track, error: dbError } = await supabase
       .from("tracks")
-      .select("id, title, audio_url, original_audio_url, original_filename, original_mime_type, download_enabled")
+      .select("*")
       .eq("id", trackId)
       .single()
 
-    if (dbError || !track) {
+    if (dbError) {
+      console.error(`[download] DB error for track ${trackId}:`, dbError.message)
+      return NextResponse.json(
+        { error: "Track not found", detail: dbError.message },
+        { status: 404 }
+      )
+    }
+    if (!track) {
+      console.error(`[download] Track ${trackId} not in DB`)
       return NextResponse.json({ error: "Track not found" }, { status: 404 })
     }
 
@@ -33,37 +42,64 @@ export async function GET(
       return NextResponse.json({ error: "Downloads disabled for this track" }, { status: 403 })
     }
 
-    // Use original file if available, fall back to audio_url (stream/legacy)
-    const fileUrl = track.original_audio_url || track.audio_url
+    // Source priority: original_audio_url > audio_url
+    const fileUrl: string | null = track.original_audio_url || track.audio_url || null
     if (!fileUrl) {
-      return NextResponse.json({ error: "Audio file not found" }, { status: 404 })
+      console.error(`[download] No audio URL found for track ${trackId}`)
+      return NextResponse.json({ error: "No audio file found for this track" }, { status: 404 })
     }
 
+    console.log(`[download] Fetching track ${trackId} from: ${fileUrl}`)
+
     // Fetch the actual file from Supabase Storage
-    const fileResponse = await fetch(fileUrl)
+    const fileResponse = await fetch(fileUrl, { cache: "no-store" })
+
+    console.log(`[download] Storage response: ${fileResponse.status} ${fileResponse.statusText}`)
+    console.log(`[download] Storage content-type: ${fileResponse.headers.get("content-type")}`)
+
     if (!fileResponse.ok) {
-      return NextResponse.json({ error: "Failed to fetch audio file" }, { status: 502 })
+      console.error(`[download] Storage fetch failed: ${fileResponse.status}`)
+      return NextResponse.json(
+        { error: `Storage fetch failed: ${fileResponse.status} ${fileResponse.statusText}` },
+        { status: 502 }
+      )
     }
 
     const fileBuffer = await fileResponse.arrayBuffer()
+    console.log(`[download] Fetched ${fileBuffer.byteLength} bytes`)
 
-    // Validate file is non-empty
-    if (fileBuffer.byteLength < 100) {
-      return NextResponse.json({ error: "Audio file appears to be empty or corrupt" }, { status: 502 })
+    // Guard against empty or suspiciously tiny responses
+    if (fileBuffer.byteLength < 512) {
+      console.error(`[download] File too small (${fileBuffer.byteLength} bytes) — likely corrupt or empty`)
+      return NextResponse.json(
+        { error: "Audio file appears empty or corrupt", bytes: fileBuffer.byteLength },
+        { status: 502 }
+      )
     }
 
-    // Determine content type
-    const contentType =
+    // Determine content-type: prefer stored mime, then infer from storage headers, then from URL
+    const rawContentType = fileResponse.headers.get("content-type") || ""
+    const contentType: string =
       track.original_mime_type ||
-      fileResponse.headers.get("content-type") ||
+      (rawContentType.startsWith("audio/") || rawContentType.startsWith("application/octet") ? rawContentType : null) ||
       guessContentType(fileUrl)
 
-    // Build a clean filename for the download
-    const safeTitle = (track.title || "track").replace(/[^a-zA-Z0-9_\-. ]/g, "_").trim()
-    const ext = track.original_filename
-      ? track.original_filename.split(".").pop()
-      : extensionFromMime(contentType)
+    // Determine file extension: prefer stored original filename, then mime, then URL
+    let ext: string
+    if (track.original_filename) {
+      ext = track.original_filename.split(".").pop()?.toLowerCase() || "wav"
+    } else {
+      ext = extensionFromMime(contentType) || extensionFromUrl(fileUrl)
+    }
+
+    // Build download filename
+    const safeTitle = (track.title || "track")
+      .replace(/[^a-zA-Z0-9_\-. ]/g, "_")
+      .replace(/\s+/g, "_")
+      .trim()
     const filename = `${safeTitle}_SoundMolt.${ext}`
+
+    console.log(`[download] Serving ${filename} (${contentType}, ${fileBuffer.byteLength} bytes)`)
 
     return new NextResponse(fileBuffer, {
       status: 200,
@@ -72,26 +108,36 @@ export async function GET(
         "Content-Disposition": `attachment; filename="${filename}"`,
         "Content-Length": fileBuffer.byteLength.toString(),
         "Cache-Control": "private, no-cache",
+        // Expose headers to browser JS (needed to read Content-Disposition via fetch)
+        "Access-Control-Expose-Headers": "Content-Disposition, Content-Type, Content-Length",
       },
     })
   } catch (error) {
-    console.error("Download error:", error)
-    return NextResponse.json({ error: "Download failed" }, { status: 500 })
+    console.error("[download] Unexpected error:", error)
+    return NextResponse.json({ error: "Download failed unexpectedly" }, { status: 500 })
   }
 }
 
 function guessContentType(url: string): string {
-  const lower = url.toLowerCase()
-  if (lower.includes(".wav")) return "audio/wav"
-  if (lower.includes(".mp3")) return "audio/mpeg"
-  if (lower.includes(".flac")) return "audio/flac"
-  if (lower.includes(".aac")) return "audio/aac"
-  if (lower.includes(".ogg")) return "audio/ogg"
-  if (lower.includes(".m4a")) return "audio/mp4"
-  return "audio/mpeg"
+  const lower = url.toLowerCase().split("?")[0]
+  if (lower.endsWith(".wav")) return "audio/wav"
+  if (lower.endsWith(".mp3")) return "audio/mpeg"
+  if (lower.endsWith(".flac")) return "audio/flac"
+  if (lower.endsWith(".aac")) return "audio/aac"
+  if (lower.endsWith(".ogg")) return "audio/ogg"
+  if (lower.endsWith(".m4a")) return "audio/mp4"
+  return "audio/wav"
+}
+
+function extensionFromUrl(url: string): string {
+  const path = url.toLowerCase().split("?")[0]
+  const ext = path.split(".").pop()
+  const known = ["wav", "mp3", "flac", "aac", "ogg", "m4a"]
+  return known.includes(ext || "") ? ext! : "wav"
 }
 
 function extensionFromMime(mime: string): string {
+  const base = mime.split(";")[0].trim()
   const map: Record<string, string> = {
     "audio/wav": "wav",
     "audio/x-wav": "wav",
@@ -102,6 +148,7 @@ function extensionFromMime(mime: string): string {
     "audio/aac": "aac",
     "audio/ogg": "ogg",
     "audio/mp4": "m4a",
+    "audio/x-m4a": "m4a",
   }
-  return map[mime] || "wav"
+  return map[base] || "wav"
 }

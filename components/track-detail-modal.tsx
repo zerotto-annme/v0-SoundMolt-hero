@@ -112,6 +112,7 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
   const [showCopied, setShowCopied] = useState(false)
   const [hoveredMarker, setHoveredMarker] = useState<Comment | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
+  const [downloadError, setDownloadError] = useState(false)
   const [showDownloadDisabled, setShowDownloadDisabled] = useState(false)
   const waveformRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
@@ -160,11 +161,38 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
     }
 
     setIsDownloading(true)
+    setDownloadError(false)
+
     try {
+      console.log(`[download] Starting download for track: ${track.id} "${track.title}"`)
+
       const response = await fetch(`/api/download/${track.id}`)
+
+      console.log(`[download] API response status: ${response.status}`)
+      console.log(`[download] Content-Type: ${response.headers.get("Content-Type")}`)
+      console.log(`[download] Content-Length: ${response.headers.get("Content-Length")}`)
+      console.log(`[download] Content-Disposition: ${response.headers.get("Content-Disposition")}`)
+
       if (!response.ok) {
-        const { error } = await response.json().catch(() => ({ error: "Download failed" }))
-        throw new Error(error || "Download failed")
+        const errData = await response.json().catch(() => ({ error: "Download failed" }))
+        console.error(`[download] API error ${response.status}:`, errData)
+        throw new Error(errData.error || `Server error ${response.status}`)
+      }
+
+      // Validate content-type is audio before saving
+      const contentType = response.headers.get("Content-Type") || ""
+      if (contentType && !contentType.startsWith("audio/") && !contentType.startsWith("application/octet")) {
+        console.error(`[download] Unexpected content-type: ${contentType} — aborting to prevent saving HTML/error as audio`)
+        throw new Error(`Unexpected content type: ${contentType}`)
+      }
+
+      const blob = await response.blob()
+      console.log(`[download] Blob size: ${blob.size} bytes, type: ${blob.type}`)
+
+      // Reject suspiciously small blobs — real audio files are at minimum a few KB
+      if (blob.size < 512) {
+        console.error(`[download] Blob too small (${blob.size} bytes) — file is corrupt or empty`)
+        throw new Error("Downloaded file is empty or corrupt")
       }
 
       // Prefer server-supplied filename from Content-Disposition header
@@ -172,27 +200,37 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
       const disposition = response.headers.get("Content-Disposition")
       if (disposition) {
         const match = disposition.match(/filename="?([^";\n]+)"?/)
-        if (match) filename = match[1]
+        if (match) filename = decodeURIComponent(match[1])
       }
-      // Fall back: build filename from track metadata
+      // Fall back: build filename from track metadata + inferred extension
       if (!filename) {
         const safeName = track.title.replace(/[^a-zA-Z0-9]/g, "_")
         const safeAgent = track.agentName.replace(/[^a-zA-Z0-9]/g, "_")
-        const ext = extFromContentType(response.headers.get("Content-Type") || "audio/wav")
+        const ext = extFromContentType(contentType || blob.type || "audio/wav")
         filename = `${safeName}_${safeAgent}_SoundMolt.${ext}`
       }
 
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
+      console.log(`[download] Saving as: ${filename}`)
+
+      // Trigger browser download
+      const objectUrl = window.URL.createObjectURL(blob)
       const a = document.createElement("a")
-      a.href = url
+      a.href = objectUrl
       a.download = filename
+      a.style.display = "none"
       document.body.appendChild(a)
       a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
+      // Small delay before revoking so browser has time to start the download
+      setTimeout(() => {
+        window.URL.revokeObjectURL(objectUrl)
+        document.body.removeChild(a)
+      }, 1000)
+
+      console.log(`[download] Download triggered successfully`)
     } catch (error) {
-      console.error("Download error:", error)
+      console.error("[download] Failed:", error)
+      setDownloadError(true)
+      setTimeout(() => setDownloadError(false), 4000)
     } finally {
       setIsDownloading(false)
     }
@@ -589,7 +627,9 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                 onClick={handleDownload}
                 disabled={isDownloading}
                 className={`h-10 px-3 rounded-full border flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                  track.downloadEnabled === false
+                  downloadError
+                    ? "border-red-500/50 text-red-400 bg-red-500/10"
+                    : track.downloadEnabled === false
                     ? "border-border/50 text-muted-foreground/50 hover:border-red-500/30 hover:text-red-400"
                     : "border-border hover:border-glow-secondary/50 hover:bg-glow-secondary/10 text-muted-foreground hover:text-glow-secondary"
                 }`}
@@ -598,6 +638,11 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     <span className="text-xs font-medium">Downloading...</span>
+                  </>
+                ) : downloadError ? (
+                  <>
+                    <Download className="w-4 h-4" />
+                    <span className="text-xs font-medium">Failed — retry</span>
                   </>
                 ) : track.downloadEnabled === false ? (
                   <>
