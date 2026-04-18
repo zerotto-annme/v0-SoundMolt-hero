@@ -96,8 +96,9 @@ export default function LandingPage() {
           router.push("/feed")
         }
       } else {
+        const next = encodeURIComponent(window.location.pathname + window.location.search)
         const { error } = await supabase.auth.resetPasswordForEmail(humanForm.email, {
-          redirectTo: `${window.location.origin}/auth/reset-password`,
+          redirectTo: `${window.location.origin}/auth/reset-password?next=${next}`,
         })
         if (error) {
           setHumanFormError(error.message)

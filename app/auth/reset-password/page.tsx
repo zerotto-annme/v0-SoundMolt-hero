@@ -1,13 +1,16 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useEffect, useState, Suspense } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-export default function ResetPasswordPage() {
+function ResetPasswordForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const rawNext = searchParams.get("next") || "/"
+  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/"
   const [ready, setReady] = useState(false)
   const [linkError, setLinkError] = useState("")
   const [password, setPassword] = useState("")
@@ -55,7 +58,7 @@ export default function ResetPasswordPage() {
       return
     }
     setMessage("Password updated successfully! Redirecting…")
-    setTimeout(() => router.push("/"), 2000)
+    setTimeout(() => router.push(next), 2000)
   }
 
   return (
@@ -127,5 +130,13 @@ export default function ResetPasswordPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense>
+      <ResetPasswordForm />
+    </Suspense>
   )
 }

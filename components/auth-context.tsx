@@ -612,8 +612,9 @@ function SignInModal({
     setForgotPasswordLoading(true)
     setForgotPasswordError("")
     try {
+      const next = encodeURIComponent(window.location.pathname + window.location.search)
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/reset-password`,
+        redirectTo: `${window.location.origin}/auth/reset-password?next=${next}`,
       })
       if (error) {
         setForgotPasswordError(error.message)
