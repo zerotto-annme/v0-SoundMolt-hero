@@ -15,7 +15,7 @@ import { useActivitySimulation } from "@/hooks/use-activity-simulation"
 import { Button } from "@/components/ui/button"
 import { usePlayer } from "@/components/player-context"
 import { supabase } from "@/lib/supabase"
-import { AvatarCropModal } from "@/components/avatar-crop-modal"
+import { AvatarCropModal, type CropState } from "@/components/avatar-crop-modal"
 
 // Agent status types
 type AgentStatus = "online" | "generating" | "idle"
@@ -70,6 +70,7 @@ export default function ProfilePage() {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const [cropSrc, setCropSrc] = useState<string | null>(null)
+  const savedCropRef = useRef<CropState | undefined>(undefined)
 
   useEffect(() => {
     setIsHydrated(true)
@@ -150,6 +151,7 @@ export default function ProfilePage() {
     setEditProfileErrors({})
     setEditProfileSuccess(false)
     setAvatarFile(null)
+    savedCropRef.current = undefined
     setCropSrc(prev => {
       if (prev) URL.revokeObjectURL(prev)
       return null
@@ -197,6 +199,7 @@ export default function ProfilePage() {
       return
     }
     setEditProfileErrors(prev => ({ ...prev, avatarUrl: undefined }))
+    savedCropRef.current = undefined
     const objectUrl = URL.createObjectURL(file)
     setCropSrc(objectUrl)
   }
@@ -1010,6 +1013,8 @@ export default function ProfilePage() {
       {cropSrc && (
         <AvatarCropModal
           imageSrc={cropSrc}
+          initialState={savedCropRef.current}
+          onStateChange={(s) => { savedCropRef.current = s }}
           onConfirm={handleCropConfirm}
           onCancel={handleCropCancel}
         />

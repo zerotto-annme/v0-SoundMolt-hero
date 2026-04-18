@@ -6,8 +6,16 @@ import { X, Check, CropIcon, ZoomIn, ZoomOut } from "lucide-react"
 const MAX_ZOOM = 4
 const CROP_FRACTION = 0.78
 
+export interface CropState {
+  zoom: number
+  panX: number
+  panY: number
+}
+
 interface AvatarCropModalProps {
   imageSrc: string
+  initialState?: CropState
+  onStateChange?: (state: CropState) => void
   onConfirm: (croppedBlob: Blob) => void
   onCancel: () => void
 }
@@ -58,14 +66,14 @@ async function getCroppedBlob(
   })
 }
 
-export function AvatarCropModal({ imageSrc, onConfirm, onCancel }: AvatarCropModalProps) {
+export function AvatarCropModal({ imageSrc, initialState, onStateChange, onConfirm, onCancel }: AvatarCropModalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const naturalSize = useRef({ w: 0, h: 0 })
-  const [zoom, setZoom] = useState(1)
+  const [zoom, setZoom] = useState(initialState?.zoom ?? 1)
   const [minZoom, setMinZoom] = useState(1)
   const [maxZoom, setMaxZoom] = useState(MAX_ZOOM)
-  const [panX, setPanX] = useState(0)
-  const [panY, setPanY] = useState(0)
+  const [panX, setPanX] = useState(initialState?.panX ?? 0)
+  const [panY, setPanY] = useState(initialState?.panY ?? 0)
   const [isProcessing, setIsProcessing] = useState(false)
   const [exportError, setExportError] = useState(false)
   const [imageLoaded, setImageLoaded] = useState(false)
@@ -73,8 +81,8 @@ export function AvatarCropModal({ imageSrc, onConfirm, onCancel }: AvatarCropMod
   const isDragging = useRef(false)
   const lastMouse = useRef({ x: 0, y: 0 })
   const lastPinchDist = useRef<number | null>(null)
-  const panRef = useRef({ x: 0, y: 0 })
-  const zoomRef = useRef(1)
+  const panRef = useRef({ x: initialState?.panX ?? 0, y: initialState?.panY ?? 0 })
+  const zoomRef = useRef(initialState?.zoom ?? 1)
   const minZoomRef = useRef(1)
   const maxZoomRef = useRef(MAX_ZOOM)
 
@@ -108,7 +116,8 @@ export function AvatarCropModal({ imageSrc, onConfirm, onCancel }: AvatarCropMod
     panRef.current = clamped
     setPanX(clamped.x)
     setPanY(clamped.y)
-  }, [clampPan])
+    onStateChange?.({ zoom: z, panX: clamped.x, panY: clamped.y })
+  }, [clampPan, onStateChange])
 
   const onImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
     const nW = e.currentTarget.naturalWidth
@@ -125,10 +134,21 @@ export function AvatarCropModal({ imageSrc, onConfirm, onCancel }: AvatarCropMod
     maxZoomRef.current = effectiveMax
     setMinZoom(computed)
     setMaxZoom(effectiveMax)
-    zoomRef.current = computed
-    setZoom(computed)
+
+    if (initialState) {
+      const z = Math.max(computed, Math.min(effectiveMax, initialState.zoom))
+      const clamped = clampPan(initialState.panX, initialState.panY, z)
+      zoomRef.current = z
+      panRef.current = clamped
+      setZoom(z)
+      setPanX(clamped.x)
+      setPanY(clamped.y)
+    } else {
+      zoomRef.current = computed
+      setZoom(computed)
+    }
     setImageLoaded(true)
-  }, [getContainerSize])
+  }, [getContainerSize, initialState, clampPan])
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     isDragging.current = true
@@ -149,7 +169,8 @@ export function AvatarCropModal({ imageSrc, onConfirm, onCancel }: AvatarCropMod
 
   const onMouseUp = useCallback(() => {
     isDragging.current = false
-  }, [])
+    onStateChange?.({ zoom: zoomRef.current, panX: panRef.current.x, panY: panRef.current.y })
+  }, [onStateChange])
 
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 1) {
@@ -185,8 +206,11 @@ export function AvatarCropModal({ imageSrc, onConfirm, onCancel }: AvatarCropMod
 
   const onTouchEnd = useCallback((e: React.TouchEvent) => {
     if (e.touches.length < 2) lastPinchDist.current = null
-    if (e.touches.length === 0) isDragging.current = false
-  }, [])
+    if (e.touches.length === 0) {
+      isDragging.current = false
+      onStateChange?.({ zoom: zoomRef.current, panX: panRef.current.x, panY: panRef.current.y })
+    }
+  }, [onStateChange])
 
   const onWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault()
