@@ -47,6 +47,9 @@ export function BrowseFeed() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [supabaseTracks, setSupabaseTracks] = useState<Track[]>([])
   const [isLoadingFeed, setIsLoadingFeed] = useState(false)
+  // mounted prevents seed/demo track sections from rendering during SSR,
+  // avoiding hydration mismatches caused by Math.random() in seed-tracks.ts
+  const [mounted, setMounted] = useState(false)
   const { createdTracks } = usePlayer()
   const { user, isAuthenticated } = useAuth()
   
@@ -116,6 +119,11 @@ export function BrowseFeed() {
     }
   }, [])
 
+  // Mark as mounted after first client render — gates seed/demo sections to client-only
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   // Fetch on mount and whenever the tab becomes visible again (covers navigation back to /feed)
   useEffect(() => {
     fetchSupabaseTracks()
@@ -127,20 +135,23 @@ export function BrowseFeed() {
     return () => document.removeEventListener("visibilitychange", handleVisibility)
   }, [fetchSupabaseTracks])
 
-  // "New Music Releases": real Supabase tracks (newest first), seeded with demo tracks as fallback
-  // Deduplicate by id so in-memory createdTracks don't duplicate Supabase rows
+  // "New Music Releases": driven exclusively by Supabase so tracks persist after navigation.
+  // localOnlyCreated is kept as a supplement only when Supabase is still loading.
   const supabaseIds = new Set(supabaseTracks.map((t) => t.id))
   const localOnlyCreated = createdTracks.filter((t) => !supabaseIds.has(t.id))
-  const newMusicReleases = [...localOnlyCreated, ...supabaseTracks]
+  const newMusicReleases = supabaseTracks.length > 0
+    ? supabaseTracks                                    // Supabase is the source of truth
+    : localOnlyCreated                                  // fallback while loading
 
-  // Trending: put real uploaded tracks first, then seed/demo tracks
-  const trendingWithCreated = [...newMusicReleases.slice(0, 4), ...trendingTracks].slice(0, 12)
+  // Trending: real uploaded tracks first, then seed/demo tracks (client-only to avoid hydration mismatch)
+  const trendingWithCreated = mounted
+    ? [...newMusicReleases.slice(0, 4), ...trendingTracks].slice(0, 12)
+    : []
 
-  // Search covers both Supabase tracks and seed/demo tracks (deduplicated by id)
-  const allSearchable = [
-    ...supabaseTracks,
-    ...dynamicTracks.filter((dt) => !supabaseIds.has(dt.id)),
-  ]
+  // Search covers Supabase tracks + seed/demo tracks (client-only for seed portion)
+  const allSearchable = mounted
+    ? [...supabaseTracks, ...dynamicTracks.filter((dt) => !supabaseIds.has(dt.id))]
+    : [...supabaseTracks]
   const filteredTracks = searchQuery
     ? allSearchable.filter(
         (track) =>
@@ -150,14 +161,14 @@ export function BrowseFeed() {
       )
     : null
 
-  // Get top charts based on active tab (using dynamic data)
+  // Top charts — client-only to avoid hydration mismatch with randomised seed data
   const topChartsCount = activeTab === "top10" ? 10 : activeTab === "top50" ? 50 : 100
-  const displayedTopCharts = topCharts.slice(0, topChartsCount)
+  const displayedTopCharts = mounted ? topCharts.slice(0, topChartsCount) : []
 
   return (
     <div className="min-h-screen bg-background">
       {/* Shared Sidebar */}
-      <Sidebar />
+      <Sidebar onUploadSuccess={fetchSupabaseTracks} />
 
       {/* Main content */}
       <main className="lg:ml-64 min-h-screen pb-32">
@@ -363,11 +374,11 @@ export function BrowseFeed() {
                   <div className="flex items-center gap-3">
                     <TrendingUp className="w-5 h-5 text-amber-400" />
                     <h2 className="text-xl font-bold text-foreground">Top Charts</h2>
-                    <span className="px-2 py-0.5 text-xs font-mono rounded bg-white/5 text-muted-foreground border border-white/10">
-                      {getChartPeriod()}
+                    <span suppressHydrationWarning className="px-2 py-0.5 text-xs font-mono rounded bg-white/5 text-muted-foreground border border-white/10">
+                      {mounted ? getChartPeriod() : ""}
                     </span>
-                    <span className="px-2 py-0.5 text-xs font-mono rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                      {formatChartUpdate()}
+                    <span suppressHydrationWarning className="px-2 py-0.5 text-xs font-mono rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                      {mounted ? formatChartUpdate() : ""}
                     </span>
                   </div>
                   <div className="flex gap-2">
@@ -538,7 +549,11 @@ export function BrowseFeed() {
       </main>
 
       {/* Mobile Create Track Modal */}
-      <CreateTrackModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} />
+      <CreateTrackModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSuccess={fetchSupabaseTracks}
+      />
     </div>
   )
 }

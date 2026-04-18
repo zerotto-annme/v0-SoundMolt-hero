@@ -8,6 +8,7 @@ import { usePlayer, type Track } from "./player-context"
 interface CreateTrackModalProps {
   isOpen: boolean
   onClose: () => void
+  onSuccess?: () => void
 }
 
 const STYLES = [
@@ -86,7 +87,7 @@ function GeneratingWaveform() {
   )
 }
 
-export function CreateTrackModal({ isOpen, onClose }: CreateTrackModalProps) {
+export function CreateTrackModal({ isOpen, onClose, onSuccess }: CreateTrackModalProps) {
   const [prompt, setPrompt] = useState("")
   const [selectedStyle, setSelectedStyle] = useState<string | null>(null)
   const [selectedDuration, setSelectedDuration] = useState<string>("60")

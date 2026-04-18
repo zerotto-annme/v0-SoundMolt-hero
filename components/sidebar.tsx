@@ -31,7 +31,7 @@ const BASE_NAV_ITEMS = [
   { href: "/library", label: "Library", icon: Library },
 ]
 
-export function Sidebar() {
+export function Sidebar({ onUploadSuccess }: { onUploadSuccess?: () => void } = {}) {
   const pathname = usePathname()
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
@@ -275,7 +275,11 @@ export function Sidebar() {
       <CreateTrackModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} />
       
       {/* Upload Track Modal */}
-      <UploadTrackModal isOpen={isUploadModalOpen} onClose={() => setIsUploadModalOpen(false)} />
+      <UploadTrackModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onSuccess={onUploadSuccess}
+      />
     </>
   )
 }
