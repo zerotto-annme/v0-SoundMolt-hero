@@ -399,7 +399,11 @@ function SignInModal({
           })
 
           if (profileError) {
-            setHumanErrors({ general: "Account created but profile could not be saved. Please try signing in." })
+            if (profileError.code === "23505") {
+              setHumanErrors({ username: "That username is already taken. Please choose a different one." })
+            } else {
+              setHumanErrors({ general: "Account created but profile could not be saved. Please try signing in." })
+            }
             return
           }
 
