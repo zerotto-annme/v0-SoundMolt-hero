@@ -40,3 +40,8 @@ externalPort = 5000
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 120000
+
+[deployment]
+run = ["sh", "-c", "npx next start -p 3000 -H 0.0.0.0"]
+deploymentTarget = "cloudrun"
+build = ["sh", "-c", "npm install && npm run build"]
