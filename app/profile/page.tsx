@@ -321,7 +321,7 @@ export default function ProfilePage() {
       })
 
       const newAvatar = trimmedAvatarUrl || generateAvatar(trimmedUsername, "human")
-      updateProfile({ username: trimmedUsername, name: trimmedUsername, avatar: newAvatar })
+      updateProfile({ username: trimmedUsername, name: trimmedUsername, avatar: newAvatar }, { persist: true })
 
       if (metaError) {
         setEditProfileErrors({ general: "Profile saved but session metadata could not be updated. Changes will appear after your next sign-in." })

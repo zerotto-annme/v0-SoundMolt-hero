@@ -39,7 +39,7 @@ interface AuthContextType {
   isAuthenticated: boolean
   login: (role: "human" | "agent", profile?: Partial<UserProfile>) => void
   logout: () => void
-  updateProfile: (updates: Partial<UserProfile>) => void
+  updateProfile: (updates: Partial<UserProfile>, options?: { persist?: boolean }) => void
   // Modal controls
   showSignInModal: boolean
   showAgentOnlyModal: boolean
@@ -257,9 +257,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     router.push("/")
   }, [router, state.user?.role])
 
-  const updateProfile = useCallback((updates: Partial<UserProfile>) => {
+  const updateProfile = useCallback((updates: Partial<UserProfile>, options?: { persist?: boolean }) => {
     setState(prev => {
       if (!prev.user) return prev
+
+      if (
+        options?.persist &&
+        updates.avatar !== undefined &&
+        prev.user.role === "human" &&
+        prev.user.id
+      ) {
+        supabase
+          .from("profiles")
+          .upsert(
+            { id: prev.user.id, role: "human", avatar_url: updates.avatar || null },
+            { onConflict: "id" }
+          )
+          .then(({ error }) => {
+            if (error) {
+              console.error("[auth-context] Failed to persist avatar_url to profiles:", error.message)
+            }
+          })
+      }
+
       return {
         ...prev,
         user: { ...prev.user, ...updates }
