@@ -11,45 +11,86 @@ export default function AuthCallbackPage() {
   const [errorMsg, setErrorMsg] = useState("")
 
   useEffect(() => {
-    const handleCallback = async () => {
-      // Check for error params in URL (e.g. provider not enabled, access denied)
-      const params = new URLSearchParams(window.location.search)
-      const hashParams = new URLSearchParams(window.location.hash.replace("#", "?"))
+    // --- 1. Fast-fail on provider-side errors in the URL ---
+    const params = new URLSearchParams(window.location.search)
+    const hashParams = new URLSearchParams(window.location.hash.replace("#", "?"))
 
-      const urlError = params.get("error") || hashParams.get("error")
-      const urlErrorDesc = params.get("error_description") || hashParams.get("error_description")
-      if (urlError) {
-        setErrorMsg(urlErrorDesc || urlError)
-        setStatus("error")
+    const urlError = params.get("error") || hashParams.get("error")
+    const urlErrorDesc = params.get("error_description") || hashParams.get("error_description")
+    if (urlError) {
+      console.error("[callback] OAuth provider error:", urlError, urlErrorDesc)
+      setErrorMsg(urlErrorDesc || urlError)
+      setStatus("error")
+      return
+    }
+
+    console.log("[callback] Handling OAuth callback — waiting for session")
+
+    let redirected = false
+
+    // --- 2. Primary: listen for SIGNED_IN / INITIAL_SESSION with a session.
+    //         Supabase's detectSessionInUrl processes the implicit-flow hash
+    //         (access_token) or PKCE code automatically and fires this event.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("[callback] onAuthStateChange:", event, "session:", !!session, "user:", session?.user?.id ?? null)
+
+      if (redirected) return
+
+      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session?.user) {
+        redirected = true
+        subscription.unsubscribe()
+        clearTimeout(fallbackTimer)
+        console.log("[callback] Session established via", event, "— redirecting to /feed")
+        router.replace("/feed")
         return
       }
 
-      // If there's a "code" in the URL (PKCE flow), exchange it for a session
+      // INITIAL_SESSION with no session means the auto-exchange hasn't finished
+      // yet (or there really is no session). We keep waiting for SIGNED_IN.
+      if (event === "INITIAL_SESSION" && !session) {
+        console.log("[callback] INITIAL_SESSION has no session yet — waiting for SIGNED_IN")
+      }
+    })
+
+    // --- 3. Fallback: if SIGNED_IN never fires within 8 seconds, try
+    //         exchanging a PKCE code manually (covers edge-cases where
+    //         detectSessionInUrl didn't handle it), then check getSession().
+    const fallbackTimer = setTimeout(async () => {
+      if (redirected) return
+      console.warn("[callback] Fallback timer fired — checking session directly")
+
+      // Try PKCE manual exchange if there is a code in the URL
       const code = params.get("code")
       if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code)
-        if (error) {
-          setErrorMsg(error.message)
-          setStatus("error")
-          return
+        console.log("[callback] Attempting manual PKCE code exchange")
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+        if (exchangeError) {
+          console.warn("[callback] Manual exchange failed:", exchangeError.message)
+        } else {
+          console.log("[callback] Manual exchange succeeded")
         }
       }
 
-      // Wait briefly for detectSessionInUrl to fire (covers implicit flow)
-      await new Promise((resolve) => setTimeout(resolve, 300))
-
       const { data, error: sessionError } = await supabase.auth.getSession()
-      if (sessionError || !data.session) {
+      console.log("[callback] Fallback getSession:", !!data?.session, sessionError?.message)
+
+      if (data?.session) {
+        redirected = true
+        subscription.unsubscribe()
+        console.log("[callback] Fallback session found — redirecting to /feed")
+        router.replace("/feed")
+      } else {
+        subscription.unsubscribe()
+        console.error("[callback] No session after fallback:", sessionError?.message)
         setErrorMsg(sessionError?.message || "Could not establish session. Please try again.")
         setStatus("error")
-        return
       }
+    }, 8000)
 
-      // Success — redirect to the feed
-      router.replace("/feed")
+    return () => {
+      clearTimeout(fallbackTimer)
+      subscription.unsubscribe()
     }
-
-    handleCallback()
   }, [router])
 
   return (
