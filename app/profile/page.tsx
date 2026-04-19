@@ -226,6 +226,62 @@ export default function ProfilePage() {
     setCropSrc(null)
   }
 
+  const [removePhotoLoading, setRemovePhotoLoading] = useState(false)
+
+  const handleRemovePhoto = async () => {
+    if (!user) return
+    setRemovePhotoLoading(true)
+    setEditProfileErrors({})
+    try {
+      const { data: { user: sbUser } } = await supabase.auth.getUser()
+      // Read the OAuth provider's original avatar from identity_data, which is
+      // populated by the OAuth flow and is never overwritten by updateUser calls.
+      // user_metadata.avatar_url is not reliable here because handleSaveProfile
+      // overwrites it with the custom avatar URL during upload.
+      const identityAvatar = sbUser?.identities?.find(i => i.identity_data?.avatar_url)?.identity_data?.avatar_url ?? null
+      const oauthAvatar: string | null = identityAvatar
+
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .upsert(
+          { id: user.id, role: "human", avatar_url: oauthAvatar, avatar_is_custom: false },
+          { onConflict: "id" },
+        )
+
+      if (profileError) {
+        setEditProfileErrors({ general: "Failed to remove photo. Please try again." })
+        return
+      }
+
+      const { error: metaError } = await supabase.auth.updateUser({
+        data: { avatar_url: oauthAvatar },
+      })
+
+      // For display, use the OAuth avatar if available, or fall back to a generated one.
+      // Do NOT use persist: true here — the DB was already updated explicitly above.
+      // persist: true would write the generated URL to profiles.avatar_url, overwriting
+      // the null we just stored (violating the "clear if none exists" requirement).
+      const newAvatar = oauthAvatar || generateAvatar(user.username || user.name, "human")
+      updateProfile({ avatar: newAvatar, avatarIsCustom: false })
+
+      if (metaError) {
+        setEditProfileErrors({ general: "Photo removed but session metadata could not be updated. Changes will appear after your next sign-in." })
+        return
+      }
+
+      setAvatarFile(null)
+      setAvatarPreview(prev => {
+        if (prev) URL.revokeObjectURL(prev)
+        return null
+      })
+      setEditProfileForm(prev => ({ ...prev, avatarUrl: oauthAvatar || "" }))
+    } catch {
+      setEditProfileErrors({ general: "Something went wrong. Please try again." })
+    } finally {
+      setRemovePhotoLoading(false)
+    }
+  }
+
   const handleSaveProfile = async () => {
     setEditProfileErrors({})
     setEditProfileSuccess(false)
@@ -309,7 +365,10 @@ export default function ProfilePage() {
       })
 
       const newAvatar = trimmedAvatarUrl || generateAvatar(trimmedUsername, "human")
-      updateProfile({ username: trimmedUsername, name: trimmedUsername, avatar: newAvatar }, { persist: true })
+      updateProfile(
+        { username: trimmedUsername, name: trimmedUsername, avatar: newAvatar, ...(avatarFile ? { avatarIsCustom: true } : {}) },
+        { persist: true },
+      )
 
       if (metaError) {
         setEditProfileErrors({ general: "Profile saved but session metadata could not be updated. Changes will appear after your next sign-in." })
@@ -791,6 +850,17 @@ export default function ProfilePage() {
                       <p className="text-xs text-white/40 truncate max-w-[180px]">{avatarFile.name}</p>
                     ) : (
                       <p className="text-xs text-white/40">Max 5 MB · JPEG, PNG, WebP</p>
+                    )}
+                    {user.avatarIsCustom && !avatarFile && (
+                      <button
+                        type="button"
+                        onClick={handleRemovePhoto}
+                        disabled={removePhotoLoading}
+                        className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <X className="w-3 h-3" />
+                        {removePhotoLoading ? "Removing…" : "Remove photo"}
+                      </button>
                     )}
                   </div>
 

@@ -18,6 +18,7 @@ export interface UserProfile {
   artistName?: string
   email?: string
   avatar?: string
+  avatarIsCustom?: boolean
   agentIdentifier?: string
   modelProvider?: string
   agentEndpoint?: string
@@ -79,11 +80,11 @@ async function fetchProfileData(
   userId: string,
   fallbackUsername: string,
   fallbackAvatar: string,
-): Promise<{ username: string; avatar: string; profileUsernameIsNull: boolean }> {
+): Promise<{ username: string; avatar: string; profileUsernameIsNull: boolean; avatarIsCustom: boolean }> {
   try {
     const { data, error } = await supabase
       .from("profiles")
-      .select("username, avatar_url")
+      .select("username, avatar_url, avatar_is_custom")
       .eq("id", userId)
       .maybeSingle()
     if (error) {
@@ -95,6 +96,7 @@ async function fetchProfileData(
         username: data.username || fallbackUsername,
         avatar: data.avatar_url || fallbackAvatar,
         profileUsernameIsNull: data.username === null,
+        avatarIsCustom: data.avatar_is_custom === true,
       }
     }
   } catch (err) {
@@ -102,7 +104,7 @@ async function fetchProfileData(
       console.warn("[auth] fetchProfileData unexpected error for user", userId, err)
     }
   }
-  return { username: fallbackUsername, avatar: fallbackAvatar, profileUsernameIsNull: false }
+  return { username: fallbackUsername, avatar: fallbackAvatar, profileUsernameIsNull: false, avatarIsCustom: false }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -132,7 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           const resolvedMetaUsername = metaUsername || sbUser.email?.split("@")[0] || "User"
           const metaAvatar = sbUser.user_metadata?.avatar_url || generateAvatar(resolvedMetaUsername, "human")
-          const { username, avatar, profileUsernameIsNull } = await fetchProfileData(sbUser.id, resolvedMetaUsername, metaAvatar)
+          const { username, avatar, profileUsernameIsNull, avatarIsCustom } = await fetchProfileData(sbUser.id, resolvedMetaUsername, metaAvatar)
           const userProfile: UserProfile = {
             id: sbUser.id,
             role: "human",
@@ -140,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             username: profileUsernameIsNull ? undefined : username,
             email: sbUser.email,
             avatar,
+            avatarIsCustom,
             createdAt: new Date(sbUser.created_at).getTime(),
           }
           setState({ user: userProfile, isAuthenticated: true })
@@ -189,7 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const metaUsername = sbUser.user_metadata?.username || sbUser.email?.split("@")[0] || "User"
         const metaAvatar = sbUser.user_metadata?.avatar_url || generateAvatar(metaUsername, "human")
-        const { username, avatar, profileUsernameIsNull } = await fetchProfileData(sbUser.id, metaUsername, metaAvatar)
+        const { username, avatar, profileUsernameIsNull, avatarIsCustom } = await fetchProfileData(sbUser.id, metaUsername, metaAvatar)
         const userProfile: UserProfile = {
           id: sbUser.id,
           role: "human",
@@ -197,6 +200,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           username: profileUsernameIsNull ? undefined : username,
           email: sbUser.email,
           avatar,
+          avatarIsCustom,
           createdAt: new Date(sbUser.created_at).getTime(),
         }
         setState({ user: userProfile, isAuthenticated: true })
@@ -704,7 +708,7 @@ function SignInModal({
           const metaUsername = data.user.user_metadata?.username
           const resolvedUsername = metaUsername || data.user.email?.split("@")[0] || "User"
           const metaAvatar = data.user.user_metadata?.avatar_url || generateAvatar(resolvedUsername, "human")
-          const { username, avatar, profileUsernameIsNull } = await fetchProfileData(
+          const { username, avatar, profileUsernameIsNull, avatarIsCustom } = await fetchProfileData(
             data.user.id,
             resolvedUsername,
             metaAvatar,
@@ -715,6 +719,7 @@ function SignInModal({
             name: profileUsernameIsNull ? resolvedUsername : username,
             email: data.user.email,
             avatar,
+            avatarIsCustom,
             createdAt: new Date(data.user.created_at).getTime(),
           })
         }
