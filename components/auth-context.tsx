@@ -1212,6 +1212,11 @@ function SetUsernameModal({
         return
       }
 
+      const { error: metaError } = await supabase.auth.updateUser({ data: { username: username.trim() } })
+      if (metaError && process.env.NODE_ENV !== "production") {
+        console.warn("[auth] Failed to sync username to auth metadata:", metaError.message)
+      }
+
       onSaved(username.trim())
     } catch {
       setSaveError("Something went wrong. Please try again.")
