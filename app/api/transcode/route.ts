@@ -4,6 +4,7 @@ import { writeFile, readFile, unlink, mkdir } from "fs/promises"
 import { join } from "path"
 import { tmpdir } from "os"
 import { randomUUID } from "crypto"
+import { checkRateLimit } from "@/lib/rate-limit"
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ""
 
@@ -42,6 +43,19 @@ function runFfmpeg(inputPath: string, outputPath: string): Promise<string> {
 }
 
 export async function POST(request: NextRequest) {
+  if (
+    await checkRateLimit(request, {
+      windowMs: 60_000,
+      maxRequests: 5,
+      label: "transcode",
+    })
+  ) {
+    return NextResponse.json(
+      { error: "Too many requests. Please slow down." },
+      { status: 429 }
+    )
+  }
+
   let inputPath: string | null = null
   let outputPath: string | null = null
 

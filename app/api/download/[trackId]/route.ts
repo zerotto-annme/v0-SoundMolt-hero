@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { checkRateLimit } from "@/lib/rate-limit"
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -14,6 +15,19 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ trackId: string }> }
 ) {
+  if (
+    await checkRateLimit(request, {
+      windowMs: 60_000,
+      maxRequests: 10,
+      label: "download",
+    })
+  ) {
+    return NextResponse.json(
+      { error: "Too many requests. Please slow down." },
+      { status: 429 }
+    )
+  }
+
   const { trackId } = await params
 
   if (!trackId) {
