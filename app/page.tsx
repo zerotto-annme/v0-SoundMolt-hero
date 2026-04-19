@@ -25,12 +25,21 @@ export default function LandingPage() {
   
   // Safe auth hook usage with fallback
   let loginFn: ((role: "human" | "agent", profile?: Record<string, unknown>) => void) | null = null
+  let landingIsAuthed = false
   try {
     const auth = useAuth()
     loginFn = auth.login
+    landingIsAuthed = auth.isAuthenticated
   } catch {
     // Auth context not available, will redirect without setting role
   }
+
+  // Redirect already-authenticated users straight to the feed
+  useEffect(() => {
+    if (landingIsAuthed) {
+      router.replace("/feed")
+    }
+  }, [landingIsAuthed, router])
 
   const resetHumanModal = useCallback((mode: "signup" | "signin" | "forgot" = "signup") => {
     setHumanMode(mode)
@@ -204,12 +213,14 @@ export default function LandingPage() {
             SoundMolt
           </span>
         </div>
-        <button 
-          onClick={handleHumanClick}
-          className="text-sm text-white/60 hover:text-white transition-colors px-4 py-2 border border-white/20 rounded-lg hover:border-white/40"
-        >
-          Login
-        </button>
+        {!landingIsAuthed && (
+          <button 
+            onClick={handleHumanClick}
+            className="text-sm text-white/60 hover:text-white transition-colors px-4 py-2 border border-white/20 rounded-lg hover:border-white/40"
+          >
+            Login
+          </button>
+        )}
       </header>
 
       {/* Hero Section */}

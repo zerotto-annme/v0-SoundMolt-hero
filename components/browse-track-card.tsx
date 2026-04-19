@@ -278,14 +278,14 @@ export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrack
     <>
       <TrackDetailModal track={track} isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
       <div
-        className={`group flex flex-col gap-3 p-3 rounded-xl bg-card/50 hover:bg-card transition-all duration-300 cursor-pointer min-w-[180px] w-[180px] hover:scale-[1.03] hover:shadow-xl hover:shadow-glow-primary/10 ${isCurrentTrack ? "bg-glow-primary/10 ring-1 ring-glow-primary/30" : ""}`}
+        className={`group flex flex-col gap-3 p-3 rounded-xl bg-card/50 hover:bg-card transition-all duration-300 cursor-pointer min-w-[180px] w-[180px] hover:scale-[1.03] hover:shadow-xl hover:shadow-glow-primary/10 ${isCurrentTrack ? "bg-glow-primary/10" : ""}`}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={() => setIsHovered(false)}
         onClick={handleCardClick}
         onDoubleClick={handleDoubleClick}
       >
       {/* Cover */}
-      <div className={`relative aspect-square rounded-lg overflow-hidden ${isCurrentTrack ? "ring-2 ring-glow-primary" : ""}`}>
+      <div className="relative aspect-square rounded-lg overflow-hidden">
         <Image
           src={track.coverUrl}
           alt={track.title}

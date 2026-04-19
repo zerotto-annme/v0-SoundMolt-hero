@@ -23,7 +23,7 @@ export default function StudioAgentsPage() {
   const [isHydrated, setIsHydrated] = useState(false)
 
   const [agents, setAgents] = useState<Agent[]>([])
-  const [isFetching, setIsFetching] = useState(true)
+  const [isFetching, setIsFetching] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
 
   useEffect(() => { setIsHydrated(true) }, [])
@@ -33,27 +33,39 @@ export default function StudioAgentsPage() {
   }, [isHydrated, isAuthenticated, router])
 
   const fetchAgents = useCallback(async () => {
-    if (!user) return
+    if (!user?.id) return
     setIsFetching(true)
-    const { data, error } = await supabase
-      .from("agents")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
+    try {
+      const { data, error } = await supabase
+        .from("agents")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
 
-    if (!error && data) setAgents(data as Agent[])
-    setIsFetching(false)
-  }, [user])
+      if (error) {
+        console.error("[studio-agents] fetch error:", error.message)
+      } else if (data) {
+        setAgents(data as Agent[])
+      }
+    } catch (err) {
+      console.error("[studio-agents] unexpected fetch error:", err)
+    } finally {
+      setIsFetching(false)
+    }
+  }, [user?.id])
 
   useEffect(() => {
-    if (user) fetchAgents()
-  }, [user, fetchAgents])
+    if (user?.id) fetchAgents()
+  }, [user?.id, fetchAgents])
 
   const handleAgentCreated = (agent: Agent) => {
     setAgents((prev) => [agent, ...prev])
   }
 
-  if (!isHydrated || !user) {
+  // Show loader only while hydration or auth state is still resolving.
+  // Once authenticated, render the page even if user data is still being fetched —
+  // the inner sections handle their own loading states.
+  if (!isHydrated || !isAuthenticated) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-glow-primary" />

@@ -1,0 +1,97 @@
+Fix the post-Google-login UX and authenticated dashboard bugs.
+
+Context:
+These bugs happen after logging in with Google. The user is authenticated, but several dashboard/profile/player behaviors are broken.
+
+Please fix all of the following:
+
+1) Uploaded track → "..." → "Edit track" does not open the edit screen
+Expected:
+- Clicking the 3-dot menu on a user-uploaded track and selecting "Edit track" should open the edit page/modal
+- User must be able to edit title and description
+Tasks:
+- Inspect the track actions menu handler
+- Ensure Edit track routes to the correct page or opens the correct modal
+- Verify the selected track id is passed correctly
+- Confirm authenticated Google users can edit their own uploaded tracks
+
+2) Home page → Trending AI Tracks → first track has an unwanted red outline
+Expected:
+- No track card should have a random red outline/border unless it is intentionally selected/focused
+Tasks:
+- Remove unwanted red border/highlight from the first card
+- Check default selected/active/focus/aria styles
+- Fix hover/focus styles so they only appear when actually interacting
+
+3) Studio Agents page stays stuck on loading spinner in the center
+Expected:
+- Studio Agents should load content for authenticated users
+Tasks:
+- Inspect Studio Agents data fetch
+- Check whether loading state is never cleared
+- Verify Google-authenticated human users either:
+  - see their agents list properly, or
+  - see a proper empty state, not an endless spinner
+- Add error logging and visible fallback UI if loading fails
+
+4) Profile page is blank / crashes
+Expected:
+- Google-authenticated users should get the same kind of working profile page as email/password users
+Tasks:
+- Make /profile work for Google-authenticated users
+- Reuse the same profile layout/logic as regular users
+- Ensure profile fetch works with the Google user row in public.profiles
+- Add safe fallbacks for nullable fields
+- Prevent crashes from missing optional fields
+- Human users must not require agent-only fields to render the page
+
+5) Top-left SoundMolt logo should not send logged-in users to the public landing page
+Expected:
+- When authenticated, clicking SoundMolt should either do nothing or route to the logged-in home/dashboard, not the public landing page
+Tasks:
+- Update header logo link behavior for authenticated users
+- Make sure logged-in users are never bounced to the public unauthenticated landing page from that logo
+
+6) Top-right "Login" button should not be visible when already logged in
+Expected:
+- If the user is authenticated, hide the Login button
+Tasks:
+- Fix header auth state detection
+- Conditionally hide Login when session/user exists
+
+7) Player remains visible and active after Sign out
+Expected:
+- When user clicks Sign out:
+  - audio playback must stop
+  - bottom player UI must disappear
+  - player state must reset
+Tasks:
+- On sign out, clear global player state/store
+- Stop audio element playback
+- Remove active track from state
+- Ensure unauthenticated landing page never shows authenticated player UI
+
+Implementation details:
+- Check auth/session hydration after Google login
+- Ensure all authenticated layout conditions use the real current session
+- Add logs where helpful, but keep UI stable
+- Fix both route-level and component-level auth checks
+
+Verification checklist:
+1. Login with Google
+2. Go to Home:
+   - no red outline on first Trending AI Tracks card
+3. Upload a track:
+   - 3-dot menu → Edit track opens correctly
+   - can edit title and description
+4. Go to Studio Agents:
+   - no infinite spinner
+5. Go to Profile:
+   - page renders normally
+6. Header:
+   - SoundMolt logo does not send to public landing
+   - Login button is hidden
+7. Play a track:
+   - bottom player appears and works
+   - click Sign out
+   - playback stops and player disappears

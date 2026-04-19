@@ -11,6 +11,7 @@ import { useEffect, useState, useCallback } from "react"
 import { usePlayer, type Track } from "@/components/player-context"
 import { CreateTrackModal } from "@/components/create-track-modal"
 import { UploadTrackModal } from "@/components/upload-track-modal"
+import { EditTrackModal } from "@/components/edit-track-modal"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import Image from "next/image"
@@ -67,6 +68,7 @@ export default function MyTracksPage() {
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null)
   const [likedTracks, setLikedTracks] = useState<Set<string>>(new Set())
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [editingTrack, setEditingTrack] = useState<Track | null>(null)
   const [supabaseTracks, setSupabaseTracks] = useState<Track[]>([])
   const [tracksLoading, setTracksLoading] = useState(false)
   const { createdTracks, playTrack, currentTrack, isPlaying, togglePlay, removeCreatedTrack } = usePlayer()
@@ -356,7 +358,7 @@ export default function MyTracksPage() {
                             onClose={() => setActiveMenuId(null)}
                             onEdit={() => {
                               setActiveMenuId(null)
-                              // Edit functionality would go here
+                              setEditingTrack(track)
                             }}
                             onDelete={() => {
                               setActiveMenuId(null)
@@ -425,6 +427,18 @@ export default function MyTracksPage() {
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         onSuccess={fetchTracks}
+      />
+
+      {/* Edit Track Modal */}
+      <EditTrackModal
+        isOpen={editingTrack !== null}
+        onClose={() => setEditingTrack(null)}
+        track={editingTrack}
+        onSaved={({ id, title, description }) => {
+          setSupabaseTracks(prev =>
+            prev.map(t => (t.id === id ? { ...t, title, description } : t))
+          )
+        }}
       />
     </div>
   )

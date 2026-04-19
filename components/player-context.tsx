@@ -1,6 +1,7 @@
 "use client"
 
 import { createContext, useContext, useState, useCallback, useRef, useEffect, type ReactNode } from "react"
+import { supabase } from "@/lib/supabase"
 
 export interface Track {
   id: string
@@ -184,6 +185,34 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       audioRef.current.volume = state.volume / 100
     }
   }, [state.volume])
+
+  // Reset the player when the user signs out so audio doesn't keep playing
+  // and the bottom player bar disappears for unauthenticated visitors.
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        if (audioRef.current) {
+          try { audioRef.current.pause() } catch {}
+          audioRef.current.src = ""
+        }
+        currentTrackIdRef.current = null
+        preloadedTracksRef.current.clear()
+        setState({
+          currentTrack: null,
+          isPlaying: false,
+          progress: 0,
+          currentTime: 0,
+          duration: 0,
+          volume: 80,
+          queue: [],
+          queueIndex: -1,
+          isLoading: false,
+          createdTracks: [],
+        })
+      }
+    })
+    return () => { subscription.unsubscribe() }
+  }, [])
 
   const playTrack = useCallback((track: Track) => {
     const audioUrl = track.audioUrl || getAudioUrl(track.id)

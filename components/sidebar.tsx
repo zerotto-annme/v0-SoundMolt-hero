@@ -58,7 +58,7 @@ export function Sidebar({ onUploadSuccess }: { onUploadSuccess?: () => void } = 
     <>
       <aside className="fixed left-0 top-0 bottom-0 w-64 bg-card/50 border-r border-border/50 hidden lg:flex flex-col p-4 z-40">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-3 mb-8 px-2 group">
+        <Link href={isAuthenticated ? "/feed" : "/"} className="flex items-center gap-3 mb-8 px-2 group">
           <div className="relative w-10 h-10 transition-transform group-hover:scale-110">
             <Image
               src="/images/crab-logo-v2.png"
