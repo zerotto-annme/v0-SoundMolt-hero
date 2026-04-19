@@ -202,13 +202,15 @@ export default function ProfilePage() {
 
   const isAgent = user.role === "agent"
 
-  // Mock data for demonstration
-  const likedTracks = tracks.slice(0, 4)
-  const recentlyPlayed = tracks.slice(4, 8)
-  
+  // Mock data for demonstration — guard arrays against undefined at call time
+  const safeTracks = tracks ?? []
+  const safeCreatedTracks = createdTracks ?? []
+  const likedTracks = safeTracks.slice(0, 4)
+  const recentlyPlayed = safeTracks.slice(4, 8)
+
   // Get top track from created tracks
-  const topTrack = createdTracks.length > 0 
-    ? createdTracks.reduce((max, track) => (track.plays || 0) > (max.plays || 0) ? track : max, createdTracks[0])
+  const topTrack = safeCreatedTracks.length > 0
+    ? safeCreatedTracks.reduce((max, track) => (track.plays ?? 0) > (max.plays ?? 0) ? track : max, safeCreatedTracks[0])
     : null
 
   const handleCopyApiKey = () => {
@@ -355,7 +357,7 @@ export default function ProfilePage() {
       // Do NOT use persist: true here — the DB was already updated explicitly above.
       // persist: true would write the generated URL to profiles.avatar_url, overwriting
       // the null we just stored (violating the "clear if none exists" requirement).
-      const newAvatar = oauthAvatar || generateAvatar(user.username || user.name, "human")
+      const newAvatar = oauthAvatar || generateAvatar(user.username || user.name || "User", "human")
       updateProfile({ avatar: newAvatar, avatarIsCustom: false })
 
       if (metaError) {
@@ -410,17 +412,19 @@ export default function ProfilePage() {
 
     setEditProfileLoading(true)
     try {
-      let trimmedAvatarUrl = editProfileForm.avatarUrl.trim()
+      let trimmedAvatarUrl = (editProfileForm.avatarUrl ?? "").trim()
 
       if (avatarFile) {
-        const path = `${user!.id}/${Date.now()}-${avatarFile.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`
+        const userId = user?.id ?? ""
+        const safeName = (avatarFile.name ?? "avatar").replace(/[^a-zA-Z0-9._-]/g, "_")
+        const path = `${userId}/${Date.now()}-${safeName}`
 
         console.log("[profile] Uploading avatar:", {
           bucket: "avatars",
           path,
           fileType: avatarFile.type,
           fileSizeBytes: avatarFile.size,
-          userId: user!.id,
+          userId,
         })
 
         const uploadResult = await uploadWithRetry(
@@ -455,7 +459,7 @@ export default function ProfilePage() {
       // duplicate write. When a file was uploaded, also set avatar_is_custom = true
       // so that any future OAuth sync will not overwrite the user's chosen photo.
       const profilePayload: Record<string, unknown> = {
-        id: user!.id,
+        id: user?.id ?? "",
         role: "human",
         username: trimmedUsername,
       }
@@ -506,7 +510,7 @@ export default function ProfilePage() {
 
   // Render trace — identify which section throws
   console.log("[profile/render] user:", { id: user?.id, role: user?.role, name: user?.name, isAgent })
-  console.log("[profile/render] tracks:", tracks?.length, "liked:", likedTracks?.length, "recent:", recentlyPlayed?.length, "created:", createdTracks?.length)
+  console.log("[profile/render] tracks:", safeTracks.length, "liked:", likedTracks.length, "recent:", recentlyPlayed.length, "created:", safeCreatedTracks.length)
   console.log("[profile/render] agentStatus:", agentStatus, "connectionStatus:", connectionStatus)
 
   // Helper: logs a section start and renders nothing — use as first child of each section
@@ -608,7 +612,7 @@ export default function ProfilePage() {
                 </span>
                 {isAgent && <StatusIndicator status={agentStatus} />}
               </div>
-              <h1 className="text-4xl font-bold text-white mb-2">{user.name}</h1>
+              <h1 className="text-4xl font-bold text-white mb-2">{user.name ?? ""}</h1>
               {user.email && (
                 <p className="text-white/50 text-sm">{user.email}</p>
               )}
@@ -857,9 +861,9 @@ export default function ProfilePage() {
                     View all
                   </Link>
                 </div>
-                {createdTracks.length > 0 ? (
+                {safeCreatedTracks.length > 0 ? (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {createdTracks.slice(0, 4).map((track) => (
+                    {safeCreatedTracks.slice(0, 4).map((track) => (
                       <ErrorBoundary key={track.id} label={`track-card-${track.id}`}>
                         <BrowseTrackCard track={track} />
                       </ErrorBoundary>
@@ -985,7 +989,7 @@ export default function ProfilePage() {
                   >
                     {(avatarPreview || editProfileForm.avatarUrl || user.avatar) ? (
                       <img
-                        src={avatarPreview || editProfileForm.avatarUrl || user.avatar}
+                        src={avatarPreview || editProfileForm.avatarUrl || user.avatar || ""}
                         alt="Avatar preview"
                         className="w-full h-full object-cover"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }}
