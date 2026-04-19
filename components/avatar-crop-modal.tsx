@@ -31,6 +31,13 @@ function writeStoredState(key: string, state: CropState) {
   }
 }
 
+function clearStoredState(key: string) {
+  try {
+    sessionStorage.removeItem(SESSION_STORAGE_PREFIX + key)
+  } catch {
+  }
+}
+
 const MAX_ZOOM = 4
 const CROP_FRACTION = 0.78
 
@@ -349,6 +356,7 @@ export function AvatarCropModal({ imageSrc, storageKey, initialState, onStateCha
         naturalSize.current.w, naturalSize.current.h,
         zoom, panX, panY, cropR, cropX, cropY
       )
+      clearStoredState(resolvedKey)
       onConfirm(blob)
     } catch {
       setExportError(true)
