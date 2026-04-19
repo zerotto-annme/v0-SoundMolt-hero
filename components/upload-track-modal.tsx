@@ -5,6 +5,7 @@ import { X, Upload, Music, Image as ImageIcon, FileAudio, Loader2, Check, AlertC
 import { Button } from "@/components/ui/button"
 import { usePlayer, type Track } from "./player-context"
 import { supabase } from "@/lib/supabase"
+import { uploadWithRetry } from "@/lib/upload-with-retry"
 import Image from "next/image"
 
 interface UploadTrackModalProps {
@@ -178,9 +179,10 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
       // ── Step 1: Upload original file to originals/ (never modified) ──────
       setUploadStatus("Uploading original…")
       const originalPath = `originals/${userId}/${timestamp}.${audioExt}`
-      const { error: origError } = await supabase.storage
-        .from("audio")
-        .upload(originalPath, audioFile!, { upsert: false, contentType: originalMime })
+      const { error: origError } = await uploadWithRetry(
+        () => supabase.storage.from("audio").upload(originalPath, audioFile!, { upsert: false, contentType: originalMime }),
+        "Original audio upload"
+      )
 
       if (origError) {
         setErrors({ submit: `Audio upload failed: ${origError.message}` })
@@ -227,12 +229,10 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
             } else {
               setUploadStatus("Uploading stream…")
               const streamPath = `streams/${userId}/${timestamp}.mp3`
-              const { error: streamError } = await supabase.storage
-                .from("audio")
-                .upload(streamPath, mp3Blob, {
-                  upsert: false,
-                  contentType: "audio/mpeg",
-                })
+              const { error: streamError } = await uploadWithRetry(
+                () => supabase.storage.from("audio").upload(streamPath, mp3Blob, { upsert: false, contentType: "audio/mpeg" }),
+                "MP3 stream upload"
+              )
 
               if (streamError) {
                 console.warn("[upload] Stream upload failed:", streamError.message)
@@ -253,9 +253,10 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
         // Non-WAV (MP3, FLAC, etc.) — copy to streams/ as a streaming-optimised duplicate
         setUploadStatus("Uploading streaming copy…")
         const streamPath = `streams/${userId}/${timestamp}.${audioExt}`
-        const { error: streamError } = await supabase.storage
-          .from("audio")
-          .upload(streamPath, audioFile!, { upsert: false, contentType: originalMime })
+        const { error: streamError } = await uploadWithRetry(
+          () => supabase.storage.from("audio").upload(streamPath, audioFile!, { upsert: false, contentType: originalMime }),
+          "Non-WAV stream upload"
+        )
         if (!streamError) {
           const { data: streamPublic } = supabase.storage
             .from("audio")
@@ -276,9 +277,10 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
       if (coverFile) {
         const coverExt = coverFile.name.split('.').pop() || 'jpg'
         const coverPath = `${userId}/${timestamp}.${coverExt}`
-        const { error: coverError } = await supabase.storage
-          .from("covers")
-          .upload(coverPath, coverFile, { upsert: false, contentType: coverFile.type })
+        const { error: coverError } = await uploadWithRetry(
+          () => supabase.storage.from("covers").upload(coverPath, coverFile, { upsert: false, contentType: coverFile.type }),
+          "Cover image upload"
+        )
 
         if (coverError) {
           setErrors({ submit: `Cover upload failed: ${coverError.message}` })
