@@ -806,14 +806,14 @@ export default function ProfilePage() {
                     {avatarFile ? (
                       <p className="text-xs text-white/40 truncate max-w-[180px]">{avatarFile.name}</p>
                     ) : (
-                      <p className="text-xs text-white/30">JPG, PNG, GIF up to 5 MB</p>
+                      <p className="text-xs text-white/40">Max 5 MB · JPEG, PNG, WebP</p>
                     )}
                   </div>
 
                   <input
                     ref={avatarInputRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp"
                     className="hidden"
                     onChange={handleAvatarFileChange}
                   />
