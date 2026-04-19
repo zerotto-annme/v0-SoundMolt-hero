@@ -285,6 +285,21 @@ A Replit console workflow named **"Avatar Cleanup Cron"** runs `scripts/run-avat
 
 > **Note:** cleanup only runs while the workflow is active. If the Replit workspace is stopped or the workflow is paused, no cleanup occurs until the workflow is restarted. For 24/7 guarantees, the cleanup logic can be moved to an external always-on scheduler (e.g. a Supabase Edge Function with pg_cron) in the future.
 
+## Admin Dashboard: Migration Status
+
+A dedicated admin page at `/admin/migrations` shows which SQL migration files in the repo have (or have not) been applied to the live database.
+
+- **API endpoint:** `GET /api/admin/migrations`
+  - Reads all `.sql` files from the `migrations/` directory
+  - Queries `public.schema_migrations` for applied migrations
+  - Returns per-file status (applied/not applied + `applied_at` timestamp), plus totals
+  - Auth: valid Supabase user JWT + email in `ADMIN_EMAILS` env var
+- **UI page:** `app/admin/migrations/page.tsx`
+  - Stat cards for total / applied / not-applied counts
+  - Warning banner when any migrations are missing
+  - Full table listing every `.sql` file with status badge and applied-at timestamp
+  - Refresh button; unauthenticated users are redirected to `/`
+
 # Track Upload (Supabase-backed)
 
 - Audio files uploaded to Supabase Storage bucket **`audio`** at path `{userId}/{timestamp}.{ext}`.
