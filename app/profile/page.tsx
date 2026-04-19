@@ -68,6 +68,7 @@ export default function ProfilePage() {
   const [editProfileLoading, setEditProfileLoading] = useState(false)
   const [isRetryingUpload, setIsRetryingUpload] = useState(false)
   const [editProfileSuccess, setEditProfileSuccess] = useState(false)
+  const [editProfileMetaWarning, setEditProfileMetaWarning] = useState<string | null>(null)
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const avatarInputRef = useRef<HTMLInputElement>(null)
@@ -153,6 +154,7 @@ export default function ProfilePage() {
     })
     setEditProfileErrors({})
     setEditProfileSuccess(false)
+    setEditProfileMetaWarning(null)
     setAvatarFile(null)
     savedCropRef.current = undefined
     pendingFileKeyRef.current = undefined
@@ -177,6 +179,7 @@ export default function ProfilePage() {
       return null
     })
     setAvatarFile(null)
+    setEditProfileMetaWarning(null)
     setIsEditProfileOpen(false)
   }
 
@@ -285,6 +288,7 @@ export default function ProfilePage() {
   const handleSaveProfile = async () => {
     setEditProfileErrors({})
     setEditProfileSuccess(false)
+    setEditProfileMetaWarning(null)
 
     const trimmedUsername = editProfileForm.username.trim()
     if (!trimmedUsername) {
@@ -382,8 +386,8 @@ export default function ProfilePage() {
       )
 
       if (metaError) {
-        setEditProfileErrors({ general: "Profile saved but session metadata could not be updated. Changes will appear after your next sign-in." })
-        return
+        console.warn("[profile] Auth metadata update failed (non-critical):", metaError.message)
+        setEditProfileMetaWarning("Profile saved. Session metadata could not be refreshed — your changes will appear fully after your next sign-in.")
       }
 
       setEditProfileSuccess(true)
@@ -940,6 +944,10 @@ export default function ProfilePage() {
 
               {editProfileErrors.general && (
                 <p className="text-xs text-red-400 text-center">{editProfileErrors.general}</p>
+              )}
+
+              {editProfileMetaWarning && (
+                <p className="text-xs text-yellow-400/80 text-center">{editProfileMetaWarning}</p>
               )}
 
               {editProfileSuccess && (
