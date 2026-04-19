@@ -76,6 +76,8 @@ export default function ProfilePage() {
   const [cropSrc, setCropSrc] = useState<string | null>(null)
   const savedCropRef = useRef<CropState | undefined>(undefined)
   const pendingFileKeyRef = useRef<string | undefined>(undefined)
+  const [usernameCheckStatus, setUsernameCheckStatus] = useState<"idle" | "checking" | "available" | "taken" | "rate_limited" | "error">("idle")
+  const usernameDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [playsToday] = useState(() => Math.floor(Math.random() * 500 + 100))
   const [likesToday] = useState(() => Math.floor(Math.random() * 100 + 20))
@@ -95,6 +97,48 @@ export default function ProfilePage() {
       })
     }
   }, [user])
+
+  // Debounced username availability check for the edit profile form
+  useEffect(() => {
+    if (!isEditProfileOpen) return
+    const trimmed = editProfileForm.username.trim()
+    const currentUsername = user?.username || user?.name || ""
+
+    if (!trimmed || trimmed === currentUsername) {
+      setUsernameCheckStatus("idle")
+      if (usernameDebounceRef.current) clearTimeout(usernameDebounceRef.current)
+      return
+    }
+
+    const USERNAME_REGEX = /^[a-zA-Z0-9_]+$/
+    if (trimmed.length < 3 || trimmed.length > 30 || !USERNAME_REGEX.test(trimmed)) {
+      setUsernameCheckStatus("idle")
+      if (usernameDebounceRef.current) clearTimeout(usernameDebounceRef.current)
+      return
+    }
+
+    setUsernameCheckStatus("checking")
+    if (usernameDebounceRef.current) clearTimeout(usernameDebounceRef.current)
+
+    let cancelled = false
+    usernameDebounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/username-available?username=${encodeURIComponent(trimmed)}`)
+        if (cancelled) return
+        if (res.status === 429) { setUsernameCheckStatus("rate_limited"); return }
+        if (!res.ok) { setUsernameCheckStatus("error"); return }
+        const json = await res.json()
+        setUsernameCheckStatus(json.available === true ? "available" : "taken")
+      } catch {
+        if (!cancelled) setUsernameCheckStatus("error")
+      }
+    }, 500)
+
+    return () => {
+      cancelled = true
+      if (usernameDebounceRef.current) clearTimeout(usernameDebounceRef.current)
+    }
+  }, [editProfileForm.username, isEditProfileOpen, user])
 
   // Redirect to landing if not authenticated
   useEffect(() => {
@@ -159,6 +203,7 @@ export default function ProfilePage() {
     setEditProfileErrors({})
     setEditProfileSuccess(false)
     setEditProfileMetaWarning(null)
+    setUsernameCheckStatus("idle")
     setAvatarFile(null)
     savedCropRef.current = undefined
     pendingFileKeyRef.current = undefined
@@ -308,6 +353,15 @@ export default function ProfilePage() {
     const USERNAME_REGEX = /^[a-zA-Z0-9_]+$/
     if (!USERNAME_REGEX.test(trimmedUsername)) {
       setEditProfileErrors({ username: "Username can only contain letters, numbers, and underscores." })
+      return
+    }
+
+    if (usernameCheckStatus === "taken") {
+      setEditProfileErrors({ username: "That username is already taken. Please choose a different one." })
+      return
+    }
+
+    if (usernameCheckStatus === "checking") {
       return
     }
 
@@ -955,22 +1009,75 @@ export default function ProfilePage() {
               {/* Username */}
               <div>
                 <label className="block text-sm text-white/60 mb-2">Username *</label>
-                <input
-                  type="text"
-                  value={editProfileForm.username}
-                  onChange={(e) => {
-                    const val = e.target.value
-                    setEditProfileForm(prev => ({ ...prev, username: val }))
-                    const trimmed = val.trim()
-                    if (trimmed.length > 0 && (trimmed.length < 3 || trimmed.length > 30)) {
-                      setEditProfileErrors(prev => ({ ...prev, username: "Username must be between 3 and 30 characters." }))
-                    } else if (editProfileErrors.username) {
-                      setEditProfileErrors(prev => ({ ...prev, username: undefined }))
-                    }
-                  }}
-                  placeholder="your_username"
-                  className={`w-full h-11 px-4 bg-black/50 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${editProfileErrors.username ? "border-red-500/60 focus:border-red-500" : "border-white/10 focus:border-white/30"}`}
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={editProfileForm.username}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setEditProfileForm(prev => ({ ...prev, username: val }))
+                      if (editProfileErrors.username) {
+                        setEditProfileErrors(prev => ({ ...prev, username: undefined }))
+                      }
+                      const trimmed = val.trim()
+                      const currentUsername = user?.username || user?.name || ""
+                      const USERNAME_REGEX = /^[a-zA-Z0-9_]+$/
+                      if (
+                        trimmed &&
+                        trimmed !== currentUsername &&
+                        trimmed.length >= 3 &&
+                        trimmed.length <= 30 &&
+                        USERNAME_REGEX.test(trimmed)
+                      ) {
+                        setUsernameCheckStatus("checking")
+                      } else {
+                        setUsernameCheckStatus("idle")
+                      }
+                    }}
+                    placeholder="your_username"
+                    maxLength={30}
+                    className={`w-full h-11 px-4 pr-10 bg-black/50 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${
+                      usernameCheckStatus === "taken"
+                        ? "border-red-500/60 focus:border-red-500"
+                        : usernameCheckStatus === "available"
+                        ? "border-green-500/60 focus:border-green-500"
+                        : usernameCheckStatus === "rate_limited" || usernameCheckStatus === "error"
+                        ? "border-yellow-500/40 focus:border-yellow-500/60"
+                        : editProfileErrors.username
+                        ? "border-red-500/60 focus:border-red-500"
+                        : "border-white/10 focus:border-white/30"
+                    }`}
+                  />
+                  {editProfileForm.username.trim() && editProfileForm.username.trim() !== (user?.username || user?.name || "") && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      {usernameCheckStatus === "checking" && (
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white/70 rounded-full animate-spin" />
+                      )}
+                      {usernameCheckStatus === "available" && (
+                        <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                      {usernameCheckStatus === "taken" && (
+                        <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {usernameCheckStatus === "available" && (
+                  <p className="mt-1.5 text-xs text-green-400">Username is available</p>
+                )}
+                {usernameCheckStatus === "taken" && (
+                  <p className="mt-1.5 text-xs text-red-400">That username is already taken. Please choose a different one.</p>
+                )}
+                {usernameCheckStatus === "rate_limited" && (
+                  <p className="mt-1.5 text-xs text-yellow-400/80">Too many requests — please slow down and try again.</p>
+                )}
+                {usernameCheckStatus === "error" && (
+                  <p className="mt-1.5 text-xs text-yellow-400/80">{"Couldn't verify availability — you can still save."}</p>
+                )}
                 {editProfileErrors.username && (
                   <p className="mt-1.5 text-xs text-red-400">{editProfileErrors.username}</p>
                 )}
@@ -999,10 +1106,10 @@ export default function ProfilePage() {
             <div className="flex gap-3 mt-6">
               <Button
                 onClick={handleSaveProfile}
-                disabled={editProfileLoading || !editProfileForm.username.trim()}
+                disabled={editProfileLoading || !editProfileForm.username.trim() || usernameCheckStatus === "checking" || usernameCheckStatus === "taken"}
                 className="flex-1 h-11 bg-white text-black hover:bg-white/90 font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {editProfileLoading ? "Saving…" : "Save Changes"}
+                {editProfileLoading ? "Saving…" : usernameCheckStatus === "checking" ? "Checking…" : "Save Changes"}
               </Button>
               <Button
                 onClick={handleCloseEditProfile}
