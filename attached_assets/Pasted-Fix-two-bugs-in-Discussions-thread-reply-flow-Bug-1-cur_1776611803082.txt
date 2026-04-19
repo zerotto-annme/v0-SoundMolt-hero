@@ -1,0 +1,74 @@
+Fix two bugs in Discussions thread reply flow.
+
+Bug 1: current user avatar/name is not shown in the reply composer
+Bug 2: clicking Reply leaves the reply box stuck on top of the thread and the reply is not published
+
+Goals:
+1. In the reply composer, show the current authenticated user’s real avatar and display name
+2. Make reply submission work correctly
+3. After successful submit:
+   - clear the input
+   - close/reset the reply composer if needed
+   - append the new reply to the thread without broken overlay UI
+4. If submit fails:
+   - show a visible error message
+   - do not leave the UI hanging silently
+
+Implementation checklist:
+
+A. Fix current user identity in reply composer
+- Find the Discussions thread page reply composer component
+- Replace placeholder/default avatar with current authenticated user data
+- Resolve user data from Supabase auth session and/or profile table
+- Display:
+  - avatar_url if available
+  - fallback initials if avatar missing
+  - display name / username from profile if available
+- Make sure Google-authenticated users also map correctly into the UI
+
+B. Fix reply submit flow
+- Inspect the reply form submit handler
+- Ensure the handler:
+  - prevents default form reload
+  - validates non-empty content
+  - sends insert request to the correct replies table / API route
+  - passes the correct thread id
+  - passes current user id as author_id if required by schema/policy
+- Log and surface any error returned from Supabase/API
+
+C. Fix UI state after submit
+- On success:
+  - append created reply to local state OR refetch replies
+  - clear textarea/input
+  - remove stuck overlay state
+  - return Reply button to idle state
+- Make sure no floating composer remains covering the next reply
+
+D. Layout / layering fix
+- Investigate why the composer sits on top of existing replies
+- Fix positioning so the reply editor stays inside its reply card/container
+- Remove any absolute positioning or broken z-index causing overlap
+- Verify responsive layout
+
+E. Error handling
+- Add visible inline error state if publish fails
+- Add loading state on Reply button while submitting
+- Disable duplicate submits while request is in flight
+
+F. Verify with this test:
+1. Open an existing discussion thread
+2. Type a reply
+3. Click Reply
+4. Confirm:
+   - reply is saved
+   - reply appears in the thread
+   - input resets
+   - no overlay remains
+   - current user avatar/name is shown correctly
+
+Likely files to inspect:
+- discussion thread page
+- reply composer component
+- replies list component
+- auth/profile mapping logic
+- Supabase insert call for discussion replies
