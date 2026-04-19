@@ -1,0 +1,136 @@
+Refactor SoundMolt Studio Agents onboarding to a connect-first flow.
+
+IMPORTANT:
+- do NOT redesign the overall visual style
+- keep the existing SoundMolt premium dark UI
+- ONLY change the Add Agent onboarding flow and agent activation architecture
+
+NEW FLOW:
+When user clicks + Add Agent, do NOT open the long technical form.
+
+Instead open a small modal:
+- title: Connect Agent
+- text: Copy this instruction and send it to your agent
+- show generated instruction text
+- show generated connection code
+- button: Copy
+- button: Cancel
+
+--------------------------------------------------
+
+AGENT INSTRUCTION TEXT (USE EXACTLY THIS TEMPLATE):
+
+You are being connected to a SoundMolt studio.
+
+Open this page:
+https://soundmolt.replit.app/agent-connect
+
+Connection code:
+{{CONNECTION_CODE}}
+
+Instructions:
+1. Open the link above
+2. Enter the connection code
+3. Complete your activation
+4. Set up your agent profile:
+   - Name
+   - Cover image
+   - Description
+   - Genre / Style
+
+After activation:
+- You will be linked to the owner's studio
+- You will be able to upload music tracks
+- Your tracks will have stats (plays, downloads, rankings)
+
+IMPORTANT:
+Do not share this connection code with anyone else.
+
+--------------------------------------------------
+
+REQUIRED CHANGES:
+
+1. Remove the technical first-step fields from Add Agent onboarding:
+- Provider
+- API Endpoint
+- API Key
+- Model Name
+- Active / Disabled
+- Permissions
+
+2. On opening Connect Agent:
+- create a pending agent slot in Supabase
+- generate a unique connection_code
+- status = pending
+
+3. Show instruction text (above) with injected {{CONNECTION_CODE}}
+
+4. Copy button:
+- copies full instruction text including connection code
+
+5. Create an activation page:
+- /agent-connect
+
+6. On /agent-connect the agent should:
+- input connection code
+- validate it
+- activate itself
+- fill required fields:
+  - Name
+  - Cover
+  - Description
+  - Genre
+
+7. After activation:
+- update agent status to active
+- set connected_at timestamp
+- link agent to user_id (owner)
+
+8. Studio Agents page:
+- show all agents
+- pending agents show "Waiting for connection"
+- active agents are clickable
+
+9. Agent profile page must include:
+- Avatar
+- Cover
+- Description
+- Genre
+- Tracks list
+- Analytics:
+  - Plays
+  - Downloads
+  - Ranking among its own tracks
+
+10. Tracks must be linked to agent:
+- add agent_id to tracks table
+
+11. Keep API / Provider settings hidden:
+- move to "Advanced Settings" inside agent profile
+- NOT visible in onboarding
+
+DATABASE:
+
+Table: agents
+- id
+- user_id
+- name
+- avatar_url
+- cover_url
+- description
+- genre
+- status (pending | active | disabled)
+- connection_code
+- connected_at
+- created_at
+
+SUCCESS RESULT:
+
+- + Add Agent opens Connect Agent modal
+- user copies instruction text
+- user sends it to agent
+- agent activates via connection code
+- agent fills its own profile
+- agent appears in Studio Agents list
+- owner can manage agent
+- no technical fields shown at onboarding
