@@ -339,6 +339,7 @@ export default function LandingPage() {
                       value={humanForm.username}
                       onChange={(e) => { setHumanForm(prev => ({ ...prev, username: e.target.value })); setHumanFormError("") }}
                       placeholder="your_username"
+                      maxLength={30}
                       className={`w-full h-12 px-4 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${
                         humanForm.username.trim() && !usernameFormatValid
                           ? "border-red-500/60 focus:border-red-500"

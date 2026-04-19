@@ -839,6 +839,7 @@ function SignInModal({
                         if (humanErrors.username) setHumanErrors(prev => ({ ...prev, username: undefined }))
                       }}
                       placeholder="your_username"
+                      maxLength={30}
                       className={`w-full h-12 px-4 pr-10 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${
                         humanErrors.username || usernameStatus === "taken" || usernameStatus === "invalid" || usernameStatus === "too_short" || usernameStatus === "too_long"
                           ? "border-red-500/60 focus:border-red-500"
@@ -1253,6 +1254,7 @@ function SetUsernameModal({
                   setSaveError("")
                 }}
                 placeholder="your_username"
+                maxLength={30}
                 className={`w-full h-12 px-4 pr-10 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${
                   status === "taken" || status === "invalid" || status === "too_short" || status === "too_long"
                     ? "border-red-500/60 focus:border-red-500"
