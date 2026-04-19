@@ -71,6 +71,7 @@ export default function ProfilePage() {
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const [cropSrc, setCropSrc] = useState<string | null>(null)
   const savedCropRef = useRef<CropState | undefined>(undefined)
+  const pendingFileKeyRef = useRef<string | undefined>(undefined)
 
   useEffect(() => {
     setIsHydrated(true)
@@ -152,6 +153,7 @@ export default function ProfilePage() {
     setEditProfileSuccess(false)
     setAvatarFile(null)
     savedCropRef.current = undefined
+    pendingFileKeyRef.current = undefined
     setCropSrc(prev => {
       if (prev) URL.revokeObjectURL(prev)
       return null
@@ -200,6 +202,7 @@ export default function ProfilePage() {
     }
     setEditProfileErrors(prev => ({ ...prev, avatarUrl: undefined }))
     savedCropRef.current = undefined
+    pendingFileKeyRef.current = `file:${file.name}:${file.size}:${file.lastModified}`
     const objectUrl = URL.createObjectURL(file)
     setCropSrc(objectUrl)
   }
@@ -207,6 +210,7 @@ export default function ProfilePage() {
   const handleCropConfirm = (croppedBlob: Blob) => {
     if (cropSrc) URL.revokeObjectURL(cropSrc)
     setCropSrc(null)
+    pendingFileKeyRef.current = undefined
     const croppedFile = new File([croppedBlob], "avatar.jpg", { type: "image/jpeg" })
     setAvatarFile(croppedFile)
     setAvatarPreview(prev => {
@@ -1040,6 +1044,7 @@ export default function ProfilePage() {
       {cropSrc && (
         <AvatarCropModal
           imageSrc={cropSrc}
+          storageKey={pendingFileKeyRef.current}
           initialState={savedCropRef.current}
           onStateChange={(s) => { savedCropRef.current = s }}
           onConfirm={handleCropConfirm}

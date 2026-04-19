@@ -3,6 +3,34 @@
 import { useCallback, useRef, useState } from "react"
 import { X, Check, CropIcon, ZoomIn, ZoomOut } from "lucide-react"
 
+const SESSION_STORAGE_PREFIX = "avatar-crop-state:"
+
+function readStoredState(key: string): CropState | undefined {
+  try {
+    const raw = sessionStorage.getItem(SESSION_STORAGE_PREFIX + key)
+    if (!raw) return undefined
+    const parsed = JSON.parse(raw)
+    if (
+      typeof parsed.zoom === "number" &&
+      typeof parsed.panX === "number" &&
+      typeof parsed.panY === "number" &&
+      typeof parsed.cropX === "number" &&
+      typeof parsed.cropY === "number"
+    ) {
+      return parsed as CropState
+    }
+  } catch {
+  }
+  return undefined
+}
+
+function writeStoredState(key: string, state: CropState) {
+  try {
+    sessionStorage.setItem(SESSION_STORAGE_PREFIX + key, JSON.stringify(state))
+  } catch {
+  }
+}
+
 const MAX_ZOOM = 4
 const CROP_FRACTION = 0.78
 
@@ -16,6 +44,7 @@ export interface CropState {
 
 interface AvatarCropModalProps {
   imageSrc: string
+  storageKey?: string
   initialState?: CropState
   onStateChange?: (state: CropState) => void
   onConfirm: (croppedBlob: Blob) => void
@@ -70,16 +99,18 @@ async function getCroppedBlob(
   })
 }
 
-export function AvatarCropModal({ imageSrc, initialState, onStateChange, onConfirm, onCancel }: AvatarCropModalProps) {
+export function AvatarCropModal({ imageSrc, storageKey, initialState, onStateChange, onConfirm, onCancel }: AvatarCropModalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const naturalSize = useRef({ w: 0, h: 0 })
-  const [zoom, setZoom] = useState(initialState?.zoom ?? 1)
+  const resolvedKey = storageKey ?? imageSrc
+  const effectiveInitial = initialState ?? readStoredState(resolvedKey)
+  const [zoom, setZoom] = useState(effectiveInitial?.zoom ?? 1)
   const [minZoom, setMinZoom] = useState(1)
   const [maxZoom, setMaxZoom] = useState(MAX_ZOOM)
-  const [panX, setPanX] = useState(initialState?.panX ?? 0)
-  const [panY, setPanY] = useState(initialState?.panY ?? 0)
-  const [cropX, setCropX] = useState(initialState?.cropX ?? 0)
-  const [cropY, setCropY] = useState(initialState?.cropY ?? 0)
+  const [panX, setPanX] = useState(effectiveInitial?.panX ?? 0)
+  const [panY, setPanY] = useState(effectiveInitial?.panY ?? 0)
+  const [cropX, setCropX] = useState(effectiveInitial?.cropX ?? 0)
+  const [cropY, setCropY] = useState(effectiveInitial?.cropY ?? 0)
   const [isProcessing, setIsProcessing] = useState(false)
   const [exportError, setExportError] = useState(false)
   const [imageLoaded, setImageLoaded] = useState(false)
@@ -88,9 +119,9 @@ export function AvatarCropModal({ imageSrc, initialState, onStateChange, onConfi
   const isCropDragging = useRef(false)
   const lastMouse = useRef({ x: 0, y: 0 })
   const lastPinchDist = useRef<number | null>(null)
-  const panRef = useRef({ x: initialState?.panX ?? 0, y: initialState?.panY ?? 0 })
-  const cropRef = useRef({ x: initialState?.cropX ?? 0, y: initialState?.cropY ?? 0 })
-  const zoomRef = useRef(initialState?.zoom ?? 1)
+  const panRef = useRef({ x: effectiveInitial?.panX ?? 0, y: effectiveInitial?.panY ?? 0 })
+  const cropRef = useRef({ x: effectiveInitial?.cropX ?? 0, y: effectiveInitial?.cropY ?? 0 })
+  const zoomRef = useRef(effectiveInitial?.zoom ?? 1)
   const minZoomRef = useRef(1)
   const maxZoomRef = useRef(MAX_ZOOM)
 
@@ -129,6 +160,11 @@ export function AvatarCropModal({ imageSrc, initialState, onStateChange, onConfi
     }
   }, [getContainerSize])
 
+  const persistState = useCallback((state: CropState) => {
+    writeStoredState(resolvedKey, state)
+    onStateChange?.(state)
+  }, [resolvedKey, onStateChange])
+
   const applyZoom = useCallback((newZoom: number) => {
     const z = Math.max(minZoomRef.current, Math.min(maxZoomRef.current, newZoom))
     zoomRef.current = z
@@ -137,8 +173,8 @@ export function AvatarCropModal({ imageSrc, initialState, onStateChange, onConfi
     panRef.current = clamped
     setPanX(clamped.x)
     setPanY(clamped.y)
-    onStateChange?.({ zoom: z, panX: clamped.x, panY: clamped.y, cropX: cropRef.current.x, cropY: cropRef.current.y })
-  }, [clampPan, onStateChange])
+    persistState({ zoom: z, panX: clamped.x, panY: clamped.y, cropX: cropRef.current.x, cropY: cropRef.current.y })
+  }, [clampPan, persistState])
 
   const onImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
     const nW = e.currentTarget.naturalWidth
@@ -156,13 +192,13 @@ export function AvatarCropModal({ imageSrc, initialState, onStateChange, onConfi
     setMinZoom(computed)
     setMaxZoom(effectiveMax)
 
-    if (initialState) {
-      const z = Math.max(computed, Math.min(effectiveMax, initialState.zoom))
-      const clampedCrop = clampCrop(initialState.cropX ?? 0, initialState.cropY ?? 0)
+    if (effectiveInitial) {
+      const z = Math.max(computed, Math.min(effectiveMax, effectiveInitial.zoom))
+      const clampedCrop = clampCrop(effectiveInitial.cropX ?? 0, effectiveInitial.cropY ?? 0)
       cropRef.current = clampedCrop
       setCropX(clampedCrop.x)
       setCropY(clampedCrop.y)
-      const clamped = clampPan(initialState.panX, initialState.panY, z)
+      const clamped = clampPan(effectiveInitial.panX, effectiveInitial.panY, z)
       zoomRef.current = z
       panRef.current = clamped
       setZoom(z)
@@ -173,7 +209,7 @@ export function AvatarCropModal({ imageSrc, initialState, onStateChange, onConfi
       setZoom(computed)
     }
     setImageLoaded(true)
-  }, [getContainerSize, initialState, clampPan, clampCrop])
+  }, [getContainerSize, effectiveInitial, clampPan, clampCrop])
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     isDragging.current = true
@@ -212,11 +248,11 @@ export function AvatarCropModal({ imageSrc, initialState, onStateChange, onConfi
 
   const onMouseUp = useCallback(() => {
     if (isDragging.current || isCropDragging.current) {
-      onStateChange?.({ zoom: zoomRef.current, panX: panRef.current.x, panY: panRef.current.y, cropX: cropRef.current.x, cropY: cropRef.current.y })
+      persistState({ zoom: zoomRef.current, panX: panRef.current.x, panY: panRef.current.y, cropX: cropRef.current.x, cropY: cropRef.current.y })
     }
     isDragging.current = false
     isCropDragging.current = false
-  }, [onStateChange])
+  }, [persistState])
 
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 1) {
@@ -274,9 +310,9 @@ export function AvatarCropModal({ imageSrc, initialState, onStateChange, onConfi
     if (e.touches.length === 0) {
       isDragging.current = false
       isCropDragging.current = false
-      onStateChange?.({ zoom: zoomRef.current, panX: panRef.current.x, panY: panRef.current.y, cropX: cropRef.current.x, cropY: cropRef.current.y })
+      persistState({ zoom: zoomRef.current, panX: panRef.current.x, panY: panRef.current.y, cropX: cropRef.current.x, cropY: cropRef.current.y })
     }
-  }, [onStateChange])
+  }, [persistState])
 
   const onWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault()
