@@ -49,6 +49,7 @@ interface AvatarCropModalProps {
   onStateChange?: (state: CropState) => void
   onConfirm: (croppedBlob: Blob) => void
   onCancel: () => void
+  onReset?: () => void
 }
 
 async function getCroppedBlob(
@@ -99,7 +100,7 @@ async function getCroppedBlob(
   })
 }
 
-export function AvatarCropModal({ imageSrc, storageKey, initialState, onStateChange, onConfirm, onCancel }: AvatarCropModalProps) {
+export function AvatarCropModal({ imageSrc, storageKey, initialState, onStateChange, onConfirm, onCancel, onReset }: AvatarCropModalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const naturalSize = useRef({ w: 0, h: 0 })
   const resolvedKey = storageKey ?? imageSrc
@@ -320,6 +321,21 @@ export function AvatarCropModal({ imageSrc, storageKey, initialState, onStateCha
     applyZoom(zoomRef.current + delta)
   }, [applyZoom])
 
+  const handleReset = useCallback(() => {
+    const z = minZoomRef.current
+    zoomRef.current = z
+    setZoom(z)
+    panRef.current = { x: 0, y: 0 }
+    setPanX(0)
+    setPanY(0)
+    cropRef.current = { x: 0, y: 0 }
+    setCropX(0)
+    setCropY(0)
+    const resetState: CropState = { zoom: z, panX: 0, panY: 0, cropX: 0, cropY: 0 }
+    persistState(resetState)
+    onReset?.()
+  }, [minZoomRef, persistState, onReset])
+
   const handleConfirm = async () => {
     const el = containerRef.current
     if (!el || !imageLoaded) return
@@ -469,6 +485,14 @@ export function AvatarCropModal({ imageSrc, storageKey, initialState, onStateCha
             className="flex-1 h-10 rounded-lg border border-white/10 text-white/60 hover:text-white hover:border-white/20 text-sm transition-colors"
           >
             Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleReset}
+            disabled={!imageLoaded || isProcessing}
+            className="h-10 px-4 rounded-lg border border-white/10 text-white/60 hover:text-white hover:border-white/20 text-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            Reset
           </button>
           <button
             type="button"

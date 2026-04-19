@@ -1049,6 +1049,7 @@ export default function ProfilePage() {
           onStateChange={(s) => { savedCropRef.current = s }}
           onConfirm={handleCropConfirm}
           onCancel={handleCropCancel}
+          onReset={() => { savedCropRef.current = undefined }}
         />
       )}
     </div>
