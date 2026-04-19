@@ -359,6 +359,9 @@ export default function LandingPage() {
                     {humanForm.username.trim() && usernameHint && (
                       <p className="mt-1.5 text-xs text-red-500">{usernameHint}</p>
                     )}
+                    <p className={`mt-1 text-xs text-right ${humanForm.username.length >= USERNAME_MAX ? "text-red-500 font-medium" : humanForm.username.length >= USERNAME_MAX - 5 ? "text-orange-500" : "text-gray-400"}`}>
+                      {humanForm.username.length} / {USERNAME_MAX}
+                    </p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Email *</label>

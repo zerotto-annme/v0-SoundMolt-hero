@@ -898,6 +898,9 @@ function SignInModal({
                   {!humanErrors.username && usernameStatus === "error" && (
                     <p className="mt-1.5 text-xs text-yellow-600">{"Couldn't verify availability — you can still sign up."}</p>
                   )}
+                  <p className={`mt-1 text-xs text-right ${humanForm.username.length >= USERNAME_MAX ? "text-red-500 font-medium" : humanForm.username.length >= USERNAME_MAX - 5 ? "text-orange-500" : "text-gray-400"}`}>
+                    {humanForm.username.length} / {USERNAME_MAX}
+                  </p>
                 </div>
               )}
 
@@ -1311,6 +1314,9 @@ function SetUsernameModal({
             {saveError && (
               <p className="mt-1.5 text-xs text-red-400">{saveError}</p>
             )}
+            <p className={`mt-1 text-xs text-right ${username.length >= USERNAME_MAX ? "text-red-400 font-medium" : username.length >= USERNAME_MAX - 5 ? "text-orange-400" : "text-white/40"}`}>
+              {username.length} / {USERNAME_MAX}
+            </p>
           </div>
         </div>
 
