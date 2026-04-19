@@ -220,6 +220,19 @@ export default function ProfilePage() {
     setCropSrc(null)
   }
 
+  const isNetworkUploadError = (error: { message: string; statusCode?: string | number }): boolean => {
+    const msg = error.message?.toLowerCase() ?? ""
+    const status = String(error.statusCode ?? "")
+    if (["401", "403", "404", "413"].includes(status)) return false
+    return (
+      msg.includes("network") ||
+      msg.includes("fetch failed") ||
+      msg.includes("failed to fetch") ||
+      msg.includes("econnrefused") ||
+      msg.includes("timeout")
+    )
+  }
+
   const getUploadErrorMessage = (error: { message: string; statusCode?: string | number }): string => {
     const msg = error.message?.toLowerCase() ?? ""
     const status = String(error.statusCode ?? "")
@@ -270,10 +283,20 @@ export default function ProfilePage() {
           userId: user!.id,
         })
 
-        const { error: uploadError } = await supabase.storage
+        let uploadResult = await supabase.storage
           .from("avatars")
           .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type })
 
+        if (uploadResult.error && isNetworkUploadError(uploadResult.error as { message: string; statusCode?: string | number })) {
+          console.warn("[profile] Avatar upload failed due to network error, retrying once…", {
+            error: uploadResult.error.message,
+          })
+          uploadResult = await supabase.storage
+            .from("avatars")
+            .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type })
+        }
+
+        const uploadError = uploadResult.error
         if (uploadError) {
           console.error("[profile] Avatar upload failed:", {
             bucket: "avatars",
