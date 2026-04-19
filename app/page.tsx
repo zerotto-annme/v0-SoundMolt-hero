@@ -48,6 +48,7 @@ export default function LandingPage() {
     if (params.get("reset") === "1") {
       resetHumanModal("forgot")
       setIsHumanModalOpen(true)
+      window.history.replaceState({}, "", "/")
     }
   }, [resetHumanModal])
 
