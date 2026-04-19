@@ -197,10 +197,12 @@ When two users race to register the same username and one confirms their email f
 
 Finds all profiles whose `username IS NULL` and `created_at` is older than a configurable threshold, then permanently deletes the corresponding auth users via the Supabase Admin SDK (which also cascades through the profile).
 
-**Authentication:** pass the Supabase service-role key as a Bearer token:
+**Authentication:** pass the dedicated admin API secret as a Bearer token:
 ```
-Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>
+Authorization: Bearer <ADMIN_API_SECRET>
 ```
+
+**Required environment variable:** `ADMIN_API_SECRET` must be set as a Replit Secret. Any caller (cron job, CI script, Edge Function) must send this value — not the Supabase service-role key.
 
 **Optional JSON body:**
 ```json
@@ -237,6 +239,17 @@ The cleanup runs automatically every night at **00:00 UTC** via two components:
 # Orphaned Avatar Cleanup
 
 Old or orphaned avatar files are cleaned up automatically on a recurring schedule.
+
+## Admin API endpoint: `POST /api/admin/cleanup-orphaned-avatars`
+
+Removes all files from the `avatars` Storage bucket that are no longer referenced by any active profile.
+
+**Authentication:** pass the dedicated admin API secret as a Bearer token:
+```
+Authorization: Bearer <ADMIN_API_SECRET>
+```
+
+**Required environment variable:** `ADMIN_API_SECRET` must be set as a Replit Secret. Any caller (cron job, CI script, Edge Function) must be updated to send this value — not the Supabase service-role key.
 
 ## Script: `scripts/cleanup-orphaned-avatars.js`
 

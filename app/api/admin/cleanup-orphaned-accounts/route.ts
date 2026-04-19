@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js"
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+const adminApiSecret = process.env.ADMIN_API_SECRET
 
 // Number of days a NULL-username profile must be stale before it is
 // considered orphaned and eligible for removal.
@@ -25,8 +26,8 @@ const DEFAULT_OLDER_THAN_DAYS = 7
  *   sync if the deletion logic or thresholds change.
  *
  * Authentication:
- *   The request MUST include the Supabase service-role key as a Bearer token:
- *     Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>
+ *   The request MUST include the admin API secret as a Bearer token:
+ *     Authorization: Bearer <ADMIN_API_SECRET>
  *
  * Body (JSON, optional):
  *   { "olderThanDays": number }   — defaults to 7
@@ -46,13 +47,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Server misconfiguration" }, { status: 500 })
   }
 
-  // Authenticate the caller using the service-role key as a shared secret.
+  if (!adminApiSecret) {
+    console.error("[cleanup-orphaned-accounts] ADMIN_API_SECRET is not set")
+    return NextResponse.json({ error: "Server misconfiguration" }, { status: 500 })
+  }
+
+  // Authenticate the caller using the dedicated admin API secret.
   // This endpoint must only be invoked from trusted server-side infrastructure
   // (e.g. a Supabase Edge Function, CI script, or internal cron job) — never
   // from client-side code or exposed in browser logs.
   const authHeader = request.headers.get("authorization") ?? ""
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : ""
-  if (token !== supabaseServiceKey) {
+  if (token !== adminApiSecret) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js"
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+const adminApiSecret = process.env.ADMIN_API_SECRET
 
 const BUCKET = "avatars"
 const FILE_LIST_PAGE_SIZE = 100
@@ -19,8 +20,8 @@ const DB_PAGE_SIZE = 1000
  *      corresponding profile row is fully cleared.
  *
  * Authentication:
- *   The request MUST include the Supabase service-role key as a Bearer token:
- *     Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>
+ *   The request MUST include the admin API secret as a Bearer token:
+ *     Authorization: Bearer <ADMIN_API_SECRET>
  *
  * Response:
  *   { "deleted": number, "errors": Array<{ path: string, error: string }> }
@@ -35,9 +36,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Server misconfiguration" }, { status: 500 })
   }
 
+  if (!adminApiSecret) {
+    console.error("[cleanup-orphaned-avatars] ADMIN_API_SECRET is not set")
+    return NextResponse.json({ error: "Server misconfiguration" }, { status: 500 })
+  }
+
   const authHeader = request.headers.get("authorization") ?? ""
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : ""
-  if (token !== supabaseServiceKey) {
+  if (token !== adminApiSecret) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
