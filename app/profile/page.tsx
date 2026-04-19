@@ -65,6 +65,7 @@ export default function ProfilePage() {
   const [editProfileForm, setEditProfileForm] = useState({ username: "", avatarUrl: "" })
   const [editProfileErrors, setEditProfileErrors] = useState<{ username?: string; avatarUrl?: string; general?: string }>({})
   const [editProfileLoading, setEditProfileLoading] = useState(false)
+  const [isRetryingUpload, setIsRetryingUpload] = useState(false)
   const [editProfileSuccess, setEditProfileSuccess] = useState(false)
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
@@ -295,9 +296,14 @@ export default function ProfilePage() {
           console.warn("[profile] Avatar upload failed due to network error, retrying once…", {
             error: uploadResult.error.message,
           })
-          uploadResult = await supabase.storage
-            .from("avatars")
-            .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type })
+          setIsRetryingUpload(true)
+          try {
+            uploadResult = await supabase.storage
+              .from("avatars")
+              .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type })
+          } finally {
+            setIsRetryingUpload(false)
+          }
         }
 
         const uploadError = uploadResult.error
@@ -889,6 +895,10 @@ export default function ProfilePage() {
                   <p className="mt-1.5 text-xs text-red-400">{editProfileErrors.username}</p>
                 )}
               </div>
+
+              {isRetryingUpload && (
+                <p className="text-xs text-yellow-400/80 text-center">Retrying upload…</p>
+              )}
 
               {editProfileErrors.general && (
                 <p className="text-xs text-red-400 text-center">{editProfileErrors.general}</p>
