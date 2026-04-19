@@ -267,6 +267,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  // BroadcastChannel for cross-tab profile sync.
+  // The channel is opened once the user is a logged-in human and closed on
+  // cleanup.  The real-time Supabase subscription (below) posts to it whenever
+  // it receives a profile update; every other tab receives the message and
+  // applies the same updates without a reload.
+  const broadcastChannelRef = useRef<BroadcastChannel | null>(null)
+
+  useEffect(() => {
+    const userId = state.user?.id
+    if (!userId || state.user?.role !== "human") return
+
+    const bc = typeof BroadcastChannel !== "undefined"
+      ? new BroadcastChannel(`profile-sync-${userId}`)
+      : null
+    broadcastChannelRef.current = bc
+
+    if (bc) {
+      bc.onmessage = (event: MessageEvent) => {
+        const raw = event.data
+        if (!raw || typeof raw !== "object") return
+        // Only apply the subset of fields that a profile sync message may carry.
+        const allowed: Array<keyof UserProfile> = ["username", "name", "avatar"]
+        const updates: Partial<UserProfile> = {}
+        for (const key of allowed) {
+          if (key in raw) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (updates as any)[key] = (raw as any)[key]
+          }
+        }
+        if (Object.keys(updates).length > 0) {
+          updateProfile(updates)
+        }
+      }
+    }
+
+    return () => {
+      bc?.close()
+      broadcastChannelRef.current = null
+    }
+  }, [state.user?.id, state.user?.role, updateProfile])
+
   // Real-time subscription to the logged-in user's profiles row so that
   // username / avatar changes made elsewhere in the same session are reflected
   // immediately without a page reload.
@@ -302,6 +343,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           if (Object.keys(updates).length > 0) {
             updateProfile(updates)
+            // Broadcast the same update to all other tabs so they stay in sync.
+            broadcastChannelRef.current?.postMessage(updates)
           }
         },
       )
