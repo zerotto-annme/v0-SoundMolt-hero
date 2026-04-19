@@ -17,6 +17,13 @@ const DEFAULT_OLDER_THAN_DAYS = 7
  * loser ends up with a NULL username and is immediately signed out on every
  * subsequent login attempt, making the account unrecoverable without cleanup.
  *
+ * Scheduled execution:
+ *   A pg_cron job (migrations/017_schedule_orphaned_account_cleanup.sql) calls
+ *   the Supabase Edge Function at supabase/functions/cleanup-orphaned-accounts/
+ *   index.ts on the same schedule.  The Edge Function mirrors this route's logic
+ *   so it can run without the Next.js app being available.  Keep both files in
+ *   sync if the deletion logic or thresholds change.
+ *
  * Authentication:
  *   The request MUST include the Supabase service-role key as a Bearer token:
  *     Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>

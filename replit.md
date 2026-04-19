@@ -41,6 +41,7 @@ SQL migrations live in the `migrations/` directory at the project root.
 | `migrations/005_auto_create_profile_trigger.sql` | Adds `handle_new_user()` trigger function and `on_auth_user_created` trigger on `auth.users`. Automatically inserts a minimal profile row into `public.profiles` on every new auth user INSERT (server-side safety net). Uses `SECURITY DEFINER`. Falls back to `NULL` username if a uniqueness collision occurs so user creation is never aborted. |
 | `migrations/009_backfill_missing_profiles.sql` | One-time backfill that inserts a minimal profile row (username from email prefix, role='human') for every `auth.users` record that has no matching row in `public.profiles`. Uses `ON CONFLICT (id) DO NOTHING` so it is safe to re-run. Covers accounts created before migration 005's trigger was in place. |
 | `migrations/013_get_orphaned_user_ids_fn.sql` | Creates `get_orphaned_user_ids(older_than_days integer DEFAULT 7)` — a `SECURITY DEFINER` read-only RPC that returns the IDs and creation timestamps of profiles whose `username` has been `NULL` for longer than the given number of days. Execute is granted only to `service_role`; anon and authenticated roles cannot call it. |
+| `migrations/017_schedule_orphaned_account_cleanup.sql` | Enables pg_cron and pg_net, then creates a named cron job (`cleanup-orphaned-accounts`) that fires daily at 00:00 UTC and POSTs to the `cleanup-orphaned-accounts` Edge Function. The Edge Function URL and service-role key are read from Postgres settings (`app.cleanup_fn_url`, `app.supabase_service_role_key`) that must be set via `ALTER DATABASE` before applying the migration. |
 
 **How to apply a migration:**
 1. Open the Supabase project dashboard.
@@ -86,6 +87,25 @@ Defaults to 7 days if omitted.
 ```
 
 This endpoint can be called manually (e.g. from a cron job, CI script, or Supabase Edge Function) to periodically prune orphaned accounts.
+
+## Scheduled cleanup
+
+The cleanup runs automatically every night at **00:00 UTC** via two components:
+
+1. **`supabase/functions/cleanup-orphaned-accounts/index.ts`** — Supabase Edge Function that contains the same deletion logic as the API route above. Deploy it once with:
+   ```
+   supabase functions deploy cleanup-orphaned-accounts
+   ```
+
+2. **`migrations/017_schedule_orphaned_account_cleanup.sql`** — pg_cron job that calls the Edge Function nightly. Before applying the migration, run the two `ALTER DATABASE` commands shown in the file to store the Edge Function URL and service-role key as Postgres settings (`app.cleanup_fn_url` and `app.supabase_service_role_key`).
+
+   Once the settings are stored, apply the migration in the Supabase SQL Editor to activate the schedule.
+
+   **Cron expression:** `0 0 * * *` (daily at midnight UTC)
+
+   To verify: `SELECT jobid, jobname, schedule, active FROM cron.job WHERE jobname = 'cleanup-orphaned-accounts';`
+
+   To disable: `SELECT cron.unschedule('cleanup-orphaned-accounts');`
 
 # Orphaned Avatar Cleanup
 
