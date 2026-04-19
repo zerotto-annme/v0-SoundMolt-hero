@@ -546,7 +546,13 @@ function SignInModal({
         }
 
         const json = await res.json()
-        setUsernameStatus(json.available === true ? "available" : "taken")
+        if (json.available === true) {
+          setUsernameStatus("available")
+        } else if (json.reason === "invalid_format") {
+          setUsernameStatus("invalid")
+        } else {
+          setUsernameStatus("taken")
+        }
       } catch {
         if (!cancelled) setUsernameStatus("error")
       }

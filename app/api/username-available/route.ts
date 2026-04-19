@@ -92,6 +92,14 @@ export async function GET(request: NextRequest) {
     )
   }
 
+  const USERNAME_REGEX = /^[a-zA-Z0-9_]+$/
+  if (!USERNAME_REGEX.test(username)) {
+    return NextResponse.json(
+      { available: false, reason: "invalid_format" },
+      { status: 200, headers: { "Cache-Control": "no-store" } }
+    )
+  }
+
   try {
     const { data, error } = await supabase.rpc("is_username_available", {
       check_username: username,
@@ -102,8 +110,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Failed to check username" }, { status: 500 })
     }
 
+    const available = data === true
     return NextResponse.json(
-      { available: data === true },
+      available ? { available: true } : { available: false, reason: "taken" },
       {
         status: 200,
         headers: { "Cache-Control": "no-store" },
