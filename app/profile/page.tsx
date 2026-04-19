@@ -17,6 +17,7 @@ import { usePlayer } from "@/components/player-context"
 import { supabase } from "@/lib/supabase"
 import { AvatarCropModal, type CropState } from "@/components/avatar-crop-modal"
 import { isNetworkUploadError, getUploadErrorMessage, uploadWithRetry } from "@/lib/upload-with-retry"
+import { ErrorBoundary } from "@/components/error-boundary"
 
 // Agent status types
 type AgentStatus = "online" | "generating" | "idle"
@@ -75,6 +76,9 @@ export default function ProfilePage() {
   const [cropSrc, setCropSrc] = useState<string | null>(null)
   const savedCropRef = useRef<CropState | undefined>(undefined)
   const pendingFileKeyRef = useRef<string | undefined>(undefined)
+
+  const [playsToday] = useState(() => Math.floor(Math.random() * 500 + 100))
+  const [likesToday] = useState(() => Math.floor(Math.random() * 100 + 20))
 
   useEffect(() => {
     setIsHydrated(true)
@@ -403,6 +407,11 @@ export default function ProfilePage() {
     }
   }
 
+  // Render trace — identify which section throws
+  console.log("[profile/render] user:", { id: user?.id, role: user?.role, name: user?.name, isAgent })
+  console.log("[profile/render] tracks:", tracks?.length, "liked:", likedTracks?.length, "recent:", recentlyPlayed?.length, "created:", createdTracks?.length)
+  console.log("[profile/render] agentStatus:", agentStatus, "connectionStatus:", connectionStatus)
+
   // Status indicator component
   const StatusIndicator = ({ status }: { status: AgentStatus }) => {
     const statusConfig = {
@@ -426,6 +435,23 @@ export default function ProfilePage() {
     <div className="min-h-screen bg-background">
       <Sidebar />
       
+      <ErrorBoundary
+        label="profile-page"
+        fallback={(error, reset) => (
+          <main className="lg:ml-64 min-h-screen flex items-center justify-center p-8">
+            <div className="max-w-md w-full text-center space-y-4">
+              <p className="text-red-400 font-semibold text-lg">Profile failed to load</p>
+              <p className="text-white/50 text-sm font-mono break-all">{error.message}</p>
+              <button
+                onClick={reset}
+                className="px-6 py-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-white/70 hover:text-white transition-colors text-sm"
+              >
+                Retry
+              </button>
+            </div>
+          </main>
+        )}
+      >
       <main className="lg:ml-64 min-h-screen pb-32">
         {/* Profile Header */}
         <div className="relative h-64 bg-gradient-to-b from-glow-primary/20 to-transparent">
@@ -693,7 +719,7 @@ export default function ProfilePage() {
                   </div>
                   <span className="text-sm text-white/50">Plays Today</span>
                 </div>
-                <p className="text-3xl font-bold text-white">{Math.floor(Math.random() * 500 + 100)}</p>
+                <p className="text-3xl font-bold text-white">{playsToday}</p>
               </div>
               
               {/* Likes Today */}
@@ -704,7 +730,7 @@ export default function ProfilePage() {
                   </div>
                   <span className="text-sm text-white/50">Likes Today</span>
                 </div>
-                <p className="text-3xl font-bold text-white">{Math.floor(Math.random() * 100 + 20)}</p>
+                <p className="text-3xl font-bold text-white">{likesToday}</p>
               </div>
             </div>
           </div>
@@ -714,86 +740,98 @@ export default function ProfilePage() {
         <div className="px-8 py-6 space-y-10">
           {/* My Tracks - Agent only */}
           {isAgent && (
+            <ErrorBoundary label="my-tracks">
+              <section>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <Music className="w-5 h-5 text-glow-primary" />
+                    My Tracks
+                  </h2>
+                  <Link href="/my-tracks" className="text-sm text-white/50 hover:text-white transition-colors">
+                    View all
+                  </Link>
+                </div>
+                {createdTracks.length > 0 ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {createdTracks.slice(0, 4).map((track) => (
+                      <ErrorBoundary key={track.id} label={`track-card-${track.id}`}>
+                        <BrowseTrackCard track={track} />
+                      </ErrorBoundary>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-8 border border-dashed border-border/50 rounded-xl text-center">
+                    <Music className="w-12 h-12 text-white/20 mx-auto mb-3" />
+                    <p className="text-white/40 text-sm">No tracks yet. Create your first AI track.</p>
+                    <Link 
+                      href="/my-tracks" 
+                      className="inline-block mt-4 px-6 py-2 bg-glow-primary/20 hover:bg-glow-primary/30 border border-glow-primary/40 rounded-lg text-sm text-glow-primary transition-colors"
+                    >
+                      Create Track
+                    </Link>
+                  </div>
+                )}
+              </section>
+            </ErrorBoundary>
+          )}
+
+          {/* Liked Tracks */}
+          <ErrorBoundary label="liked-tracks">
             <section>
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  <Music className="w-5 h-5 text-glow-primary" />
-                  My Tracks
+                  <Heart className="w-5 h-5 text-pink-400" />
+                  Liked Tracks
                 </h2>
-                <Link href="/my-tracks" className="text-sm text-white/50 hover:text-white transition-colors">
+                <Link href="/liked" className="text-sm text-white/50 hover:text-white transition-colors">
                   View all
                 </Link>
               </div>
-              {createdTracks.length > 0 ? (
+              {likedTracks.length > 0 ? (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {createdTracks.slice(0, 4).map((track) => (
-                    <BrowseTrackCard key={track.id} track={track} />
+                  {likedTracks.map((track) => (
+                    <ErrorBoundary key={track.id} label={`liked-card-${track.id}`}>
+                      <BrowseTrackCard track={track} />
+                    </ErrorBoundary>
                   ))}
                 </div>
               ) : (
                 <div className="p-8 border border-dashed border-border/50 rounded-xl text-center">
-                  <Music className="w-12 h-12 text-white/20 mx-auto mb-3" />
-                  <p className="text-white/40 text-sm">No tracks yet. Create your first AI track.</p>
-                  <Link 
-                    href="/my-tracks" 
-                    className="inline-block mt-4 px-6 py-2 bg-glow-primary/20 hover:bg-glow-primary/30 border border-glow-primary/40 rounded-lg text-sm text-glow-primary transition-colors"
-                  >
-                    Create Track
-                  </Link>
+                  <Heart className="w-12 h-12 text-white/20 mx-auto mb-3" />
+                  <p className="text-white/40 text-sm">No liked tracks yet. Start exploring!</p>
                 </div>
               )}
             </section>
-          )}
-
-          {/* Liked Tracks */}
-          <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                <Heart className="w-5 h-5 text-pink-400" />
-                Liked Tracks
-              </h2>
-              <Link href="/liked" className="text-sm text-white/50 hover:text-white transition-colors">
-                View all
-              </Link>
-            </div>
-            {likedTracks.length > 0 ? (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {likedTracks.map((track) => (
-                  <BrowseTrackCard key={track.id} track={track} />
-                ))}
-              </div>
-            ) : (
-              <div className="p-8 border border-dashed border-border/50 rounded-xl text-center">
-                <Heart className="w-12 h-12 text-white/20 mx-auto mb-3" />
-                <p className="text-white/40 text-sm">No liked tracks yet. Start exploring!</p>
-              </div>
-            )}
-          </section>
+          </ErrorBoundary>
 
           {/* Recently Played */}
-          <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                <Clock className="w-5 h-5 text-blue-400" />
-                Recently Played
-              </h2>
-              <Link href="/recently-played" className="text-sm text-white/50 hover:text-white transition-colors">
-                View all
-              </Link>
-            </div>
-            {recentlyPlayed.length > 0 ? (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {recentlyPlayed.map((track) => (
-                  <BrowseTrackCard key={track.id} track={track} />
-                ))}
+          <ErrorBoundary label="recently-played">
+            <section>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-blue-400" />
+                  Recently Played
+                </h2>
+                <Link href="/recently-played" className="text-sm text-white/50 hover:text-white transition-colors">
+                  View all
+                </Link>
               </div>
-            ) : (
-              <div className="p-8 border border-dashed border-border/50 rounded-xl text-center">
-                <Clock className="w-12 h-12 text-white/20 mx-auto mb-3" />
-                <p className="text-white/40 text-sm">No recently played tracks.</p>
-              </div>
-            )}
-          </section>
+              {recentlyPlayed.length > 0 ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {recentlyPlayed.map((track) => (
+                    <ErrorBoundary key={track.id} label={`recent-card-${track.id}`}>
+                      <BrowseTrackCard track={track} />
+                    </ErrorBoundary>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-8 border border-dashed border-border/50 rounded-xl text-center">
+                  <Clock className="w-12 h-12 text-white/20 mx-auto mb-3" />
+                  <p className="text-white/40 text-sm">No recently played tracks.</p>
+                </div>
+              )}
+            </section>
+          </ErrorBoundary>
         </div>
       </main>
 
@@ -1108,6 +1146,7 @@ export default function ProfilePage() {
           onReset={() => { savedCropRef.current = undefined }}
         />
       )}
+      </ErrorBoundary>
     </div>
   )
 }
