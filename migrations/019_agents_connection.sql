@@ -53,3 +53,9 @@ end;
 $$;
 
 grant execute on function public.activate_agent(text, text, text, text, text, text) to anon;
+
+-- ─── Migration Tracking ───────────────────────────────────────────────────────
+
+INSERT INTO public.schema_migrations (filename)
+VALUES ('019_agents_connection.sql')
+ON CONFLICT (filename) DO NOTHING;

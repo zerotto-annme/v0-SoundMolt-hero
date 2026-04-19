@@ -46,3 +46,9 @@ REVOKE EXECUTE ON FUNCTION public.get_orphaned_user_ids(integer) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.get_orphaned_user_ids(integer) FROM anon;
 REVOKE EXECUTE ON FUNCTION public.get_orphaned_user_ids(integer) FROM authenticated;
 GRANT  EXECUTE ON FUNCTION public.get_orphaned_user_ids(integer) TO service_role;
+
+-- ─── Migration Tracking ───────────────────────────────────────────────────────
+
+INSERT INTO public.schema_migrations (filename)
+VALUES ('013_get_orphaned_user_ids_fn.sql')
+ON CONFLICT (filename) DO NOTHING;

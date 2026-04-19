@@ -32,16 +32,143 @@ SoundMolt is a Next.js 16 app migrated from Vercel/v0 to Replit.
 
 SQL migrations live in the `migrations/` directory at the project root.
 
+## Migration Tracking
+
+Applied migrations are recorded in `public.schema_migrations`. Each migration file inserts a row into this table on successful application, giving you a live audit trail of the database schema state.
+
+**Check which migrations have been applied:**
+```sql
+SELECT filename, applied_at
+FROM public.schema_migrations
+ORDER BY applied_at;
+```
+
+**Check whether a specific migration has run:**
+```sql
+SELECT EXISTS (
+  SELECT 1 FROM public.schema_migrations
+  WHERE filename = '001_create_profiles_table.sql'
+);
+```
+
+**Check which migration files exist locally but have NOT been applied yet:**
+Run the above query for each file in `migrations/*.sql` and compare against the filenames returned. Any filename absent from the table has not been applied.
+
+> **Note:** `public.schema_migrations` is service-role only (RLS blocks all anon/authenticated access). Query it via the Supabase SQL Editor or a server-side admin client.
+
+## Apply Order
+
+Always apply migrations in this order:
+
+1. `000_create_schema_migrations_table.sql` — **must be run first** to enable tracking
+2. `001_create_profiles_table.sql`
+3. `002_create_tracks_table.sql`
+4. `003_add_avatar_url_to_profiles.sql`
+5. `004_profiles_username_unique.sql`
+6. `005_auto_create_profile_trigger.sql`
+7. `006_add_audio_pipeline_columns.sql`
+8. `007_create_avatars_bucket.sql`
+9. `008_username_availability_rpc.sql`
+10. `009_backfill_missing_profiles.sql`
+11. `010_handle_new_user_avatar_url.sql`
+12. `011_public_read_profiles_username.sql`
+13. `012_revoke_anon_rpc_execute.sql`
+14. `013_get_orphaned_user_ids_fn.sql`
+15. `014_backfill_avatar_url.sql`
+16. `015_agents_table.sql`
+17. `016_username_check_constraint.sql`
+18. `017_add_avatar_is_custom_to_profiles.sql`
+19. `017_cleanup_audit_log.sql`
+20. `017_rate_limit_table.sql`
+21. `017_schedule_orphaned_account_cleanup.sql`
+22. `017_sync_google_avatar_on_login.sql`
+23. `018_guard_avatar_url_on_login.sql`
+24. `019_agents_connection.sql`
+
+> Five files share the `017_` prefix because they were developed concurrently. Apply them in the lexicographic order listed above (017_add → 017_cleanup → 017_rate → 017_schedule → 017_sync).
+
+## Backfilling an existing live database
+
+If migrations were already applied to your Supabase project before `000_create_schema_migrations_table.sql` existed, the `schema_migrations` table will be empty even though the schema is up to date. Run this one-time backfill in the Supabase SQL Editor to record all previously applied migrations at once:
+
+```sql
+INSERT INTO public.schema_migrations (filename) VALUES
+  ('001_create_profiles_table.sql'),
+  ('002_create_tracks_table.sql'),
+  ('003_add_avatar_url_to_profiles.sql'),
+  ('004_profiles_username_unique.sql'),
+  ('005_auto_create_profile_trigger.sql'),
+  ('006_add_audio_pipeline_columns.sql'),
+  ('007_create_avatars_bucket.sql'),
+  ('008_username_availability_rpc.sql'),
+  ('009_backfill_missing_profiles.sql'),
+  ('010_handle_new_user_avatar_url.sql'),
+  ('011_public_read_profiles_username.sql'),
+  ('012_revoke_anon_rpc_execute.sql'),
+  ('013_get_orphaned_user_ids_fn.sql'),
+  ('014_backfill_avatar_url.sql'),
+  ('015_agents_table.sql'),
+  ('016_username_check_constraint.sql'),
+  ('017_add_avatar_is_custom_to_profiles.sql'),
+  ('017_cleanup_audit_log.sql'),
+  ('017_rate_limit_table.sql'),
+  ('017_schedule_orphaned_account_cleanup.sql'),
+  ('017_sync_google_avatar_on_login.sql'),
+  ('018_guard_avatar_url_on_login.sql'),
+  ('019_agents_connection.sql')
+ON CONFLICT (filename) DO NOTHING;
+```
+
+Only include filenames for migrations you have actually applied. `ON CONFLICT DO NOTHING` makes it safe to include extras.
+
+## Verifying a successful migration run
+
+After applying any migration, confirm it was recorded:
+
+```sql
+-- Should return true
+SELECT EXISTS (
+  SELECT 1 FROM public.schema_migrations
+  WHERE filename = '<migration_filename>.sql'
+);
+
+-- Full audit: all applied migrations in order
+SELECT filename, applied_at
+FROM public.schema_migrations
+ORDER BY applied_at;
+
+-- Expected count after all 24 migrations (including 000) are applied:
+SELECT COUNT(*) FROM public.schema_migrations;  -- should return 24
+```
+
+## Migration Files
+
 | File | Description |
 |------|-------------|
+| `migrations/000_create_schema_migrations_table.sql` | Creates `public.schema_migrations` to track which migrations have been applied. **Apply first.** |
 | `migrations/001_create_profiles_table.sql` | Creates `public.profiles`, enables RLS, and adds SELECT / INSERT / UPDATE policies so each user can only access their own row. |
 | `migrations/002_create_tracks_table.sql` | Creates `public.tracks` with columns: id, user_id, title, style, description, audio_url, cover_url, download_enabled, source_type, plays, likes, created_at. Enables RLS with policies for SELECT (public read), INSERT and DELETE (own rows only). |
 | `migrations/003_add_avatar_url_to_profiles.sql` | Adds `avatar_url text` column to `public.profiles` for custom profile pictures. |
 | `migrations/004_profiles_username_unique.sql` | Adds a `UNIQUE` constraint (`profiles_username_unique`) on `public.profiles.username` to prevent duplicate usernames. |
 | `migrations/005_auto_create_profile_trigger.sql` | Adds `handle_new_user()` trigger function and `on_auth_user_created` trigger on `auth.users`. Automatically inserts a minimal profile row into `public.profiles` on every new auth user INSERT (server-side safety net). Uses `SECURITY DEFINER`. Falls back to `NULL` username if a uniqueness collision occurs so user creation is never aborted. |
+| `migrations/006_add_audio_pipeline_columns.sql` | Adds audio pipeline columns to `public.tracks`: original_audio_url, stream_audio_url, original_filename, original_mime_type, original_file_size, duration_seconds, waveform_json. |
+| `migrations/007_create_avatars_bucket.sql` | Creates the Supabase Storage `avatars` bucket (public) and RLS policies for upload, update, and delete by the owning user. |
+| `migrations/008_username_availability_rpc.sql` | Creates `is_username_available(text)` SECURITY DEFINER RPC so unauthenticated callers can check username availability without direct table access. |
 | `migrations/009_backfill_missing_profiles.sql` | One-time backfill that inserts a minimal profile row (username from email prefix, role='human') for every `auth.users` record that has no matching row in `public.profiles`. Uses `ON CONFLICT (id) DO NOTHING` so it is safe to re-run. Covers accounts created before migration 005's trigger was in place. |
+| `migrations/010_handle_new_user_avatar_url.sql` | Updates `handle_new_user()` trigger to also copy `avatar_url` from OAuth metadata when a new user is created. |
+| `migrations/011_public_read_profiles_username.sql` | Adds a public SELECT policy on `public.profiles` so unauthenticated visitors can read usernames for the track feed. |
+| `migrations/012_revoke_anon_rpc_execute.sql` | Revokes direct anon access to `is_username_available` RPC and restricts anon column reads on profiles to `id` and `username` only. |
 | `migrations/013_get_orphaned_user_ids_fn.sql` | Creates `get_orphaned_user_ids(older_than_days integer DEFAULT 7)` — a `SECURITY DEFINER` read-only RPC that returns the IDs and creation timestamps of profiles whose `username` has been `NULL` for longer than the given number of days. Execute is granted only to `service_role`; anon and authenticated roles cannot call it. |
+| `migrations/014_backfill_avatar_url.sql` | One-time backfill that copies `avatar_url` from `auth.users.raw_user_meta_data` into `public.profiles` for OAuth users created before migration 010. |
+| `migrations/015_agents_table.sql` | Creates `public.agents` table with RLS, adds `agent_id` and `downloads` columns to `public.tracks`. |
+| `migrations/016_username_check_constraint.sql` | Adds a `CHECK` constraint (`profiles_username_format`) on `public.profiles.username` enforcing the `^[a-zA-Z0-9_]+$` pattern. Also updates `is_username_available` to reject invalid formats up-front. |
+| `migrations/017_add_avatar_is_custom_to_profiles.sql` | Adds `avatar_is_custom boolean DEFAULT false` to `public.profiles` to distinguish user-uploaded avatars from OAuth-sourced ones. |
+| `migrations/017_cleanup_audit_log.sql` | Creates `public.cleanup_audit_log` — an append-only audit table that records every orphaned-account cleanup run. Service-role only; triggers block UPDATE and DELETE. |
+| `migrations/017_rate_limit_table.sql` | Creates `rate_limit_requests` table and `check_rate_limit` / `cleanup_rate_limit_requests` SECURITY DEFINER functions for shared DB-backed rate limiting. |
 | `migrations/017_schedule_orphaned_account_cleanup.sql` | Enables pg_cron and pg_net, then creates a named cron job (`cleanup-orphaned-accounts`) that fires daily at 00:00 UTC and POSTs to the `cleanup-orphaned-accounts` Edge Function. The Edge Function URL and service-role key are read from Postgres settings (`app.cleanup_fn_url`, `app.supabase_service_role_key`) that must be set via `ALTER DATABASE` before applying the migration. |
+| `migrations/017_sync_google_avatar_on_login.sql` | Adds `sync_google_avatar_on_login()` trigger (AFTER UPDATE on `auth.users`) that refreshes `profiles.avatar_url` when the Google OAuth avatar changes, while preserving custom uploads. |
+| `migrations/018_guard_avatar_url_on_login.sql` | Updates `handle_new_user()` to respect the `avatar_is_custom` flag: OAuth avatar syncs are skipped when the user has a custom upload. |
+| `migrations/019_agents_connection.sql` | Adds `connection_code` and `connected_at` to `public.agents`, creates an index and public read policy for pending agents, and adds the `activate_agent()` SECURITY DEFINER function. |
 
 **How to apply a migration:**
 1. Open the Supabase project dashboard.

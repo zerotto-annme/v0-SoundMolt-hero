@@ -23,3 +23,9 @@ WHERE  p.id            = u.id
   AND  p.avatar_url   IS NULL
   AND  (u.raw_user_meta_data->>'avatar_url') IS NOT NULL
   AND  (u.raw_user_meta_data->>'avatar_url') <> '';
+
+-- ─── Migration Tracking ───────────────────────────────────────────────────────
+
+INSERT INTO public.schema_migrations (filename)
+VALUES ('014_backfill_avatar_url.sql')
+ON CONFLICT (filename) DO NOTHING;

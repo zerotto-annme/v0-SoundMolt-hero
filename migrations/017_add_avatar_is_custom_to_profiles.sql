@@ -16,3 +16,9 @@
 
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS avatar_is_custom boolean NOT NULL DEFAULT false;
+
+-- ─── Migration Tracking ───────────────────────────────────────────────────────
+
+INSERT INTO public.schema_migrations (filename)
+VALUES ('017_add_avatar_is_custom_to_profiles.sql')
+ON CONFLICT (filename) DO NOTHING;

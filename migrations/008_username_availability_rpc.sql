@@ -24,3 +24,9 @@ $$;
 
 -- Allow the anonymous (unauthenticated) role to call this function.
 GRANT EXECUTE ON FUNCTION public.is_username_available(text) TO anon;
+
+-- ─── Migration Tracking ───────────────────────────────────────────────────────
+
+INSERT INTO public.schema_migrations (filename)
+VALUES ('008_username_availability_rpc.sql')
+ON CONFLICT (filename) DO NOTHING;

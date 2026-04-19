@@ -73,3 +73,9 @@ CREATE TRIGGER on_auth_user_updated
   AFTER UPDATE ON auth.users
   FOR EACH ROW
   EXECUTE FUNCTION public.sync_google_avatar_on_login();
+
+-- ─── Migration Tracking ───────────────────────────────────────────────────────
+
+INSERT INTO public.schema_migrations (filename)
+VALUES ('017_sync_google_avatar_on_login.sql')
+ON CONFLICT (filename) DO NOTHING;

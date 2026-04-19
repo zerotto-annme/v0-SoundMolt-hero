@@ -39,3 +39,9 @@ alter table public.tracks
 -- Add downloads counter to tracks (safe, additive)
 alter table public.tracks
   add column if not exists downloads integer default 0;
+
+-- ─── Migration Tracking ───────────────────────────────────────────────────────
+
+INSERT INTO public.schema_migrations (filename)
+VALUES ('015_agents_table.sql')
+ON CONFLICT (filename) DO NOTHING;

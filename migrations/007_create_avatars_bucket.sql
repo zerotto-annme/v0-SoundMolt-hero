@@ -58,3 +58,9 @@ CREATE POLICY "Users can delete their own avatar"
     bucket_id = 'avatars'
     AND auth.uid()::text = (storage.foldername(name))[1]
   );
+
+-- ─── Migration Tracking ───────────────────────────────────────────────────────
+
+INSERT INTO public.schema_migrations (filename)
+VALUES ('007_create_avatars_bucket.sql')
+ON CONFLICT (filename) DO NOTHING;

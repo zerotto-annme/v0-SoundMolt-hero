@@ -12,3 +12,9 @@
 
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS avatar_url text;
+
+-- ─── Migration Tracking ───────────────────────────────────────────────────────
+
+INSERT INTO public.schema_migrations (filename)
+VALUES ('003_add_avatar_url_to_profiles.sql')
+ON CONFLICT (filename) DO NOTHING;

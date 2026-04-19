@@ -62,3 +62,9 @@ SELECT
   'human' AS role
 FROM ranked r
 ON CONFLICT (id) DO NOTHING;
+
+-- ─── Migration Tracking ───────────────────────────────────────────────────────
+
+INSERT INTO public.schema_migrations (filename)
+VALUES ('009_backfill_missing_profiles.sql')
+ON CONFLICT (filename) DO NOTHING;

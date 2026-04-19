@@ -34,3 +34,9 @@ CREATE POLICY "users can update own tracks" ON public.tracks
 DROP POLICY IF EXISTS "users can delete own tracks" ON public.tracks;
 CREATE POLICY "users can delete own tracks" ON public.tracks
   FOR DELETE USING (auth.uid() = user_id);
+
+-- ─── Migration Tracking ───────────────────────────────────────────────────────
+
+INSERT INTO public.schema_migrations (filename)
+VALUES ('002_create_tracks_table.sql')
+ON CONFLICT (filename) DO NOTHING;

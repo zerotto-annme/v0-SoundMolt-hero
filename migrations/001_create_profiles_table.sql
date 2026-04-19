@@ -55,3 +55,9 @@ CREATE POLICY "users can update own profile"
   FOR UPDATE
   USING (auth.uid() = id)
   WITH CHECK (auth.uid() = id);
+
+-- ─── Migration Tracking ───────────────────────────────────────────────────────
+
+INSERT INTO public.schema_migrations (filename)
+VALUES ('001_create_profiles_table.sql')
+ON CONFLICT (filename) DO NOTHING;

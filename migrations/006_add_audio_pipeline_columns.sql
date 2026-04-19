@@ -13,3 +13,9 @@ ALTER TABLE public.tracks
 -- For backwards compatibility: treat audio_url as stream_audio_url on old rows
 -- New uploads will populate all three (audio_url, original_audio_url, stream_audio_url)
 -- Old rows keep audio_url intact and will be treated as the stream source
+
+-- ─── Migration Tracking ───────────────────────────────────────────────────────
+
+INSERT INTO public.schema_migrations (filename)
+VALUES ('006_add_audio_pipeline_columns.sql')
+ON CONFLICT (filename) DO NOTHING;

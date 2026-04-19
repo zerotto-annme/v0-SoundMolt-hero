@@ -74,3 +74,9 @@ $$;
 -- is needed here — the anon role remains blocked from calling this function
 -- directly, and access continues to flow exclusively through the server-side
 -- API route and its rate limiter.
+
+-- ─── Migration Tracking ───────────────────────────────────────────────────────
+
+INSERT INTO public.schema_migrations (filename)
+VALUES ('016_username_check_constraint.sql')
+ON CONFLICT (filename) DO NOTHING;

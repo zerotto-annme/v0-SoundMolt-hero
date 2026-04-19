@@ -13,3 +13,9 @@ CREATE POLICY "public can read profile usernames"
   ON public.profiles
   FOR SELECT
   USING (true);
+
+-- ─── Migration Tracking ───────────────────────────────────────────────────────
+
+INSERT INTO public.schema_migrations (filename)
+VALUES ('011_public_read_profiles_username.sql')
+ON CONFLICT (filename) DO NOTHING;

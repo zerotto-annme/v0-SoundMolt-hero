@@ -26,3 +26,9 @@ REVOKE EXECUTE ON FUNCTION public.is_username_available(text) FROM anon;
 -- but we limit the exposed columns at the privilege level.
 REVOKE SELECT ON public.profiles FROM anon;
 GRANT SELECT (id, username) ON public.profiles TO anon;
+
+-- ─── Migration Tracking ───────────────────────────────────────────────────────
+
+INSERT INTO public.schema_migrations (filename)
+VALUES ('012_revoke_anon_rpc_execute.sql')
+ON CONFLICT (filename) DO NOTHING;

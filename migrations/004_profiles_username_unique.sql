@@ -25,3 +25,9 @@ BEGIN
   END IF;
 END;
 $$;
+
+-- ─── Migration Tracking ───────────────────────────────────────────────────────
+
+INSERT INTO public.schema_migrations (filename)
+VALUES ('004_profiles_username_unique.sql')
+ON CONFLICT (filename) DO NOTHING;

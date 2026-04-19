@@ -63,3 +63,9 @@ $$;
 
 REVOKE ALL ON FUNCTION cleanup_rate_limit_requests() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION cleanup_rate_limit_requests() TO service_role;
+
+-- ─── Migration Tracking ───────────────────────────────────────────────────────
+
+INSERT INTO public.schema_migrations (filename)
+VALUES ('017_rate_limit_table.sql')
+ON CONFLICT (filename) DO NOTHING;

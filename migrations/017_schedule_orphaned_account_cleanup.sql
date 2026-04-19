@@ -124,3 +124,9 @@ SELECT cron.schedule(
 --   FROM   cron.job
 --   WHERE  jobname = 'cleanup-orphaned-accounts';
 -- ---------------------------------------------------------------------------
+
+-- ─── Migration Tracking ───────────────────────────────────────────────────────
+
+INSERT INTO public.schema_migrations (filename)
+VALUES ('017_schedule_orphaned_account_cleanup.sql')
+ON CONFLICT (filename) DO NOTHING;

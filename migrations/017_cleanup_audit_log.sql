@@ -78,3 +78,9 @@ CREATE TRIGGER cleanup_audit_log_no_update
 CREATE TRIGGER cleanup_audit_log_no_delete
   BEFORE DELETE ON public.cleanup_audit_log
   FOR EACH ROW EXECUTE FUNCTION public.cleanup_audit_log_deny_mutation();
+
+-- ─── Migration Tracking ───────────────────────────────────────────────────────
+
+INSERT INTO public.schema_migrations (filename)
+VALUES ('017_cleanup_audit_log.sql')
+ON CONFLICT (filename) DO NOTHING;

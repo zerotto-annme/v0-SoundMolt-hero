@@ -47,3 +47,9 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
+-- ─── Migration Tracking ───────────────────────────────────────────────────────
+
+INSERT INTO public.schema_migrations (filename)
+VALUES ('010_handle_new_user_avatar_url.sql')
+ON CONFLICT (filename) DO NOTHING;
