@@ -321,14 +321,14 @@ export default function ProfilePage() {
         console.log("[profile] Avatar uploaded successfully:", trimmedAvatarUrl)
       }
 
-      // Save username (and avatar_url when changed) to profile.
-      // When a file was uploaded, also set avatar_is_custom = true so that
-      // any future OAuth sync will not overwrite the user's chosen photo.
+      // Save username to profile. avatar_url is persisted via updateProfile
+      // (with persist: true) below, so it is not included here to avoid a
+      // duplicate write. When a file was uploaded, also set avatar_is_custom = true
+      // so that any future OAuth sync will not overwrite the user's chosen photo.
       const profilePayload: Record<string, unknown> = {
         id: user!.id,
         role: "human",
         username: trimmedUsername,
-        avatar_url: trimmedAvatarUrl || null,
       }
       if (avatarFile) {
         profilePayload.avatar_is_custom = true
