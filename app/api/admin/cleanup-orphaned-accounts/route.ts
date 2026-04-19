@@ -24,8 +24,14 @@ const DEFAULT_OLDER_THAN_DAYS = 7
  * Body (JSON, optional):
  *   { "olderThanDays": number }   — defaults to 7
  *
+ * Headers (optional):
+ *   X-Triggered-By: <label>   — stored in the audit log (defaults to "admin-api")
+ *
  * Response:
  *   { "deleted": number, "errors": Array<{ id: string, error: string }> }
+ *
+ * Every successful run writes a row to public.cleanup_audit_log so that
+ * historical cleanup activity can be reviewed over time.
  */
 export async function POST(request: NextRequest) {
   if (!supabaseServiceKey) {
@@ -42,6 +48,12 @@ export async function POST(request: NextRequest) {
   if (token !== supabaseServiceKey) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+
+  // Optional label stored in the audit log so callers can identify themselves.
+  // Sanitised to printable ASCII and capped at 100 chars to keep audit rows
+  // predictable regardless of what a caller sends.
+  const rawTriggeredBy = request.headers.get("x-triggered-by") ?? "admin-api"
+  const triggeredBy = rawTriggeredBy.replace(/[^\x20-\x7E]/g, "").slice(0, 100) || "admin-api"
 
   let olderThanDays = DEFAULT_OLDER_THAN_DAYS
   try {
@@ -70,10 +82,6 @@ export async function POST(request: NextRequest) {
 
   const rows = (orphans ?? []) as Array<{ user_id: string; profile_created_at: string }>
 
-  if (rows.length === 0) {
-    return NextResponse.json({ deleted: 0, errors: [] })
-  }
-
   let deleted = 0
   const errors: Array<{ id: string; error: string }> = []
 
@@ -95,6 +103,25 @@ export async function POST(request: NextRequest) {
     console.warn(
       `[cleanup-orphaned-accounts] ${errors.length} deletion(s) failed — these accounts were not removed and will be retried on the next run. IDs:`,
       errors.map((e) => e.id),
+    )
+  }
+
+  // Persist an audit record for this run so historical cleanup activity can
+  // be reviewed.  Runs are logged even when deleted=0 so you can tell the
+  // difference between "nothing to clean up" and "the job never ran".
+  // A failure here is non-fatal — we still return the run results to the caller.
+  const { error: auditError } = await admin
+    .from("cleanup_audit_log")
+    .insert({
+      accounts_deleted: deleted,
+      error_count: errors.length,
+      triggered_by: triggeredBy,
+    })
+
+  if (auditError) {
+    console.error(
+      "[cleanup-orphaned-accounts] Failed to write audit log row:",
+      auditError,
     )
   }
 
