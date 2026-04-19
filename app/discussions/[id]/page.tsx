@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useParams, useSearchParams, useRouter } from "next/navigation"
@@ -8,7 +8,7 @@ import { ArrowLeft, Bot, Send, Music, Heart, Share2, Flag, MoreHorizontal, Clock
 import { Button } from "@/components/ui/button"
 import { Sidebar } from "@/components/sidebar"
 import { useDiscussions, CATEGORIES } from "@/components/discussions-context"
-import { useAuth } from "@/components/auth-context"
+import { useAuth, generateAvatar } from "@/components/auth-context"
 
 export default function TopicPage() {
   const params = useParams()
@@ -17,9 +17,17 @@ export default function TopicPage() {
   const topicSlug = params.id as string
   const [replyText, setReplyText] = useState("")
   const [isLiked, setIsLiked] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState("")
+  const repliesEndRef = useRef<HTMLDivElement>(null)
 
   const { getTopic, getTopicByTrackId, createTrackTopic, replies, addReply } = useDiscussions()
-  const { requireAuth } = useAuth()
+  const { requireAuth, user } = useAuth()
+
+  // Resolved author identity for the current user
+  const currentUserName = user?.name || user?.username || "Anonymous"
+  const currentUserAvatar = user?.avatar || generateAvatar(currentUserName, user?.role ?? "human")
+  const currentUserType: "human" | "agent" = (user?.role === "agent") ? "agent" : "human"
 
   // Check if this is a track-generated topic from URL params
   const trackId = searchParams.get("track")
@@ -28,11 +36,10 @@ export default function TopicPage() {
 
   // Try to find existing topic or create track topic
   let topic = getTopic(topicSlug)
-  
+
   // If no topic found and we have track params, create a track topic
   if (!topic && trackId && trackTitle && trackAgent) {
     topic = createTrackTopic(trackId, trackTitle, trackAgent)
-    // Redirect to the proper topic URL
     if (topic) {
       router.replace(`/discussions/${topic.slug}`)
     }
@@ -69,21 +76,41 @@ export default function TopicPage() {
   }
 
   const handleSubmitReply = () => {
-    if (!replyText.trim()) return
+    if (!replyText.trim() || isSubmitting) return
 
     requireAuth(() => {
-      addReply(topic.id, {
-        topicId: topic.id,
-        author: { 
-          name: "You", 
-          avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=you", 
-          type: "human" 
-        },
-        text: replyText,
-      })
+      setIsSubmitting(true)
+      setSubmitError("")
 
-      setReplyText("")
+      try {
+        addReply(topic.id, {
+          topicId: topic.id,
+          author: {
+            name: currentUserName,
+            avatar: currentUserAvatar,
+            type: currentUserType,
+          },
+          text: replyText.trim(),
+        })
+
+        setReplyText("")
+        // Scroll to the newly added reply
+        setTimeout(() => {
+          repliesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+        }, 50)
+      } catch {
+        setSubmitError("Failed to post reply. Please try again.")
+      } finally {
+        setIsSubmitting(false)
+      }
     })
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault()
+      handleSubmitReply()
+    }
   }
 
   return (
@@ -93,7 +120,7 @@ export default function TopicPage() {
       <main className="lg:ml-64 min-h-screen pb-32">
         <div className="max-w-4xl mx-auto px-4 py-6">
           {/* Back navigation */}
-          <Link 
+          <Link
             href="/discussions"
             className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-6"
           >
@@ -272,28 +299,51 @@ export default function TopicPage() {
                     </div>
                   </div>
                 ))}
+                {/* Scroll anchor for new replies */}
+                <div ref={repliesEndRef} />
               </div>
             )}
           </div>
 
-          {/* Reply input */}
-          <div className="bg-card/50 rounded-xl border border-border/50 p-4 sticky bottom-24">
+          {/* Reply composer — regular flow, not sticky */}
+          <div className="bg-card/50 rounded-xl border border-border/50 p-4">
             <div className="flex items-start gap-3">
-              <Image
-                src="https://api.dicebear.com/7.x/avataaars/svg?seed=you"
-                alt="You"
-                width={40}
-                height={40}
-                className="rounded-full bg-card flex-shrink-0"
-              />
-              <div className="flex-1">
+              {/* Current user avatar */}
+              <div className="relative flex-shrink-0">
+                <Image
+                  src={currentUserAvatar}
+                  alt={currentUserName}
+                  width={40}
+                  height={40}
+                  className="rounded-full bg-card"
+                />
+                {currentUserType === "agent" && (
+                  <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-glow-secondary flex items-center justify-center">
+                    <Bot className="w-3 h-3 text-white" />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex-1 min-w-0">
+                {/* Author label */}
+                <p className="text-xs text-muted-foreground mb-1.5 font-medium">
+                  Replying as <span className="text-foreground">{currentUserName}</span>
+                </p>
+
                 <textarea
                   value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  placeholder="Write a reply..."
+                  onChange={(e) => { setReplyText(e.target.value); setSubmitError("") }}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Write a reply… (Ctrl+Enter to send)"
                   className="w-full bg-background/50 border border-border/50 rounded-lg px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-glow-primary/50 resize-none"
                   rows={3}
+                  disabled={isSubmitting}
                 />
+
+                {submitError && (
+                  <p className="text-xs text-red-400 mt-1">{submitError}</p>
+                )}
+
                 <div className="flex items-center justify-between mt-3">
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Music className="w-4 h-4" />
@@ -301,11 +351,20 @@ export default function TopicPage() {
                   </div>
                   <Button
                     onClick={handleSubmitReply}
-                    disabled={!replyText.trim()}
+                    disabled={!replyText.trim() || isSubmitting}
                     className="bg-glow-primary hover:bg-glow-primary/90 disabled:opacity-50"
                   >
-                    <Send className="w-4 h-4 mr-2" />
-                    Reply
+                    {isSubmitting ? (
+                      <>
+                        <div className="w-4 h-4 mr-2 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                        Posting…
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4 mr-2" />
+                        Reply
+                      </>
+                    )}
                   </Button>
                 </div>
               </div>
