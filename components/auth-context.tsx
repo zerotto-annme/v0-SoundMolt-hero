@@ -486,7 +486,7 @@ function SignInModal({
 
   const [agentForm, setAgentForm] = useState({ artistName: "", identifier: "", provider: "" })
 
-  const [usernameStatus, setUsernameStatus] = useState<"idle" | "too_short" | "too_long" | "invalid" | "checking" | "available" | "taken" | "error">("idle")
+  const [usernameStatus, setUsernameStatus] = useState<"idle" | "too_short" | "too_long" | "invalid" | "checking" | "available" | "taken" | "error" | "rate_limited">("idle")
   const usernameDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const USERNAME_REGEX = /^[a-zA-Z0-9_]+$/
@@ -536,7 +536,7 @@ function SignInModal({
         if (cancelled) return
 
         if (res.status === 429) {
-          setUsernameStatus("error")
+          setUsernameStatus("rate_limited")
           return
         }
 
@@ -844,7 +844,7 @@ function SignInModal({
                           ? "border-red-500/60 focus:border-red-500"
                           : usernameStatus === "available"
                           ? "border-green-500/60 focus:border-green-500"
-                          : usernameStatus === "error"
+                          : usernameStatus === "error" || usernameStatus === "rate_limited"
                           ? "border-yellow-500/40 focus:border-yellow-500/60"
                           : "border-white/10 focus:border-white/30"
                       }`}
@@ -883,6 +883,9 @@ function SignInModal({
                     <p className="mt-1.5 text-xs text-red-400">
                       {humanErrors.username || "That username is already taken. Please choose a different one."}
                     </p>
+                  )}
+                  {!humanErrors.username && usernameStatus === "rate_limited" && (
+                    <p className="mt-1.5 text-xs text-yellow-400/80">Too many checks — please wait a moment</p>
                   )}
                   {!humanErrors.username && usernameStatus === "error" && (
                     <p className="mt-1.5 text-xs text-yellow-400/80">{"Couldn't verify availability — you can still sign up."}</p>
