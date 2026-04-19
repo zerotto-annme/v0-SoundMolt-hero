@@ -84,9 +84,12 @@ async function fetchProfileData(
   try {
     const { data, error } = await supabase
       .from("profiles")
-      .select("username, avatar_url, avatar_is_custom")
+      .select("*")
       .eq("id", userId)
       .maybeSingle()
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[auth] fetchProfileData result for", userId, { data, error })
+    }
     if (error) {
       if (process.env.NODE_ENV !== "production") {
         console.warn("[auth] fetchProfileData failed for user", userId, error)
@@ -96,7 +99,7 @@ async function fetchProfileData(
         username: data.username || fallbackUsername,
         avatar: data.avatar_url || fallbackAvatar,
         profileUsernameIsNull: data.username === null,
-        avatarIsCustom: data.avatar_is_custom === true,
+        avatarIsCustom: (data as Record<string, unknown>).avatar_is_custom === true,
       }
     }
   } catch (err) {
