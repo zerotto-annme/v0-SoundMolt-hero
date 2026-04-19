@@ -486,16 +486,30 @@ function SignInModal({
 
   const [agentForm, setAgentForm] = useState({ artistName: "", identifier: "", provider: "" })
 
-  const [usernameStatus, setUsernameStatus] = useState<"idle" | "invalid" | "checking" | "available" | "taken" | "error">("idle")
+  const [usernameStatus, setUsernameStatus] = useState<"idle" | "too_short" | "too_long" | "invalid" | "checking" | "available" | "taken" | "error">("idle")
   const usernameDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const USERNAME_REGEX = /^[a-zA-Z0-9_]+$/
+  const USERNAME_MIN = 3
+  const USERNAME_MAX = 30
 
   useEffect(() => {
     const username = humanForm.username.trim()
 
     if (humanSubMode !== "signup" || !username) {
       setUsernameStatus("idle")
+      return
+    }
+
+    if (username.length < USERNAME_MIN) {
+      setUsernameStatus("too_short")
+      if (usernameDebounceRef.current) clearTimeout(usernameDebounceRef.current)
+      return
+    }
+
+    if (username.length > USERNAME_MAX) {
+      setUsernameStatus("too_long")
+      if (usernameDebounceRef.current) clearTimeout(usernameDebounceRef.current)
       return
     }
 
@@ -551,6 +565,10 @@ function SignInModal({
 
     if (humanSubMode === "signup" && !humanForm.username.trim()) {
       errors.username = "Username is required"
+    } else if (humanSubMode === "signup" && usernameStatus === "too_short") {
+      errors.username = `Username must be at least ${USERNAME_MIN} characters`
+    } else if (humanSubMode === "signup" && usernameStatus === "too_long") {
+      errors.username = `Username must be at most ${USERNAME_MAX} characters`
     } else if (humanSubMode === "signup" && usernameStatus === "invalid") {
       errors.username = "Only letters, numbers, and underscores allowed"
     } else if (humanSubMode === "signup" && usernameStatus === "taken") {
@@ -585,6 +603,8 @@ function SignInModal({
     const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(humanForm.email)
     if (humanSubMode === "signup") {
       const usernameOk = humanForm.username.trim() !== "" &&
+        usernameStatus !== "too_short" &&
+        usernameStatus !== "too_long" &&
         usernameStatus !== "invalid" &&
         usernameStatus !== "taken" &&
         usernameStatus !== "checking"
@@ -820,7 +840,7 @@ function SignInModal({
                       }}
                       placeholder="your_username"
                       className={`w-full h-12 px-4 pr-10 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${
-                        humanErrors.username || usernameStatus === "taken" || usernameStatus === "invalid"
+                        humanErrors.username || usernameStatus === "taken" || usernameStatus === "invalid" || usernameStatus === "too_short" || usernameStatus === "too_long"
                           ? "border-red-500/60 focus:border-red-500"
                           : usernameStatus === "available"
                           ? "border-green-500/60 focus:border-green-500"
@@ -839,7 +859,7 @@ function SignInModal({
                             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                           </svg>
                         )}
-                        {(usernameStatus === "taken" || usernameStatus === "invalid") && (
+                        {(usernameStatus === "taken" || usernameStatus === "invalid" || usernameStatus === "too_short" || usernameStatus === "too_long") && (
                           <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                           </svg>
@@ -847,6 +867,12 @@ function SignInModal({
                       </div>
                     )}
                   </div>
+                  {!humanErrors.username && usernameStatus === "too_short" && (
+                    <p className="mt-1.5 text-xs text-red-400">{`Username must be at least ${USERNAME_MIN} characters`}</p>
+                  )}
+                  {!humanErrors.username && usernameStatus === "too_long" && (
+                    <p className="mt-1.5 text-xs text-red-400">{`Username must be at most ${USERNAME_MAX} characters`}</p>
+                  )}
                   {!humanErrors.username && usernameStatus === "invalid" && (
                     <p className="mt-1.5 text-xs text-red-400">Only letters, numbers, and underscores allowed</p>
                   )}
@@ -1102,17 +1128,31 @@ function SetUsernameModal({
   onSaved: (username: string) => void
 }) {
   const [username, setUsername] = useState("")
-  const [status, setStatus] = useState<"idle" | "invalid" | "checking" | "available" | "taken" | "error">("idle")
+  const [status, setStatus] = useState<"idle" | "too_short" | "too_long" | "invalid" | "checking" | "available" | "taken" | "error">("idle")
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState("")
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const USERNAME_REGEX = /^[a-zA-Z0-9_]+$/
+  const USERNAME_MIN = 3
+  const USERNAME_MAX = 30
 
   useEffect(() => {
     const trimmed = username.trim()
     if (!trimmed) {
       setStatus("idle")
+      return
+    }
+
+    if (trimmed.length < USERNAME_MIN) {
+      setStatus("too_short")
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      return
+    }
+
+    if (trimmed.length > USERNAME_MAX) {
+      setStatus("too_long")
+      if (debounceRef.current) clearTimeout(debounceRef.current)
       return
     }
 
@@ -1145,7 +1185,12 @@ function SetUsernameModal({
     }
   }, [username])
 
-  const isValid = (status === "available" || status === "error") && username.trim() !== "" && USERNAME_REGEX.test(username.trim())
+  const trimmedUsername = username.trim()
+  const isValid = (status === "available" || status === "error") &&
+    trimmedUsername !== "" &&
+    trimmedUsername.length >= USERNAME_MIN &&
+    trimmedUsername.length <= USERNAME_MAX &&
+    USERNAME_REGEX.test(trimmedUsername)
 
   const handleSave = async () => {
     if (!isValid) return
@@ -1201,7 +1246,7 @@ function SetUsernameModal({
                 }}
                 placeholder="your_username"
                 className={`w-full h-12 px-4 pr-10 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${
-                  status === "taken" || status === "invalid"
+                  status === "taken" || status === "invalid" || status === "too_short" || status === "too_long"
                     ? "border-red-500/60 focus:border-red-500"
                     : status === "available"
                     ? "border-green-500/60 focus:border-green-500"
@@ -1220,7 +1265,7 @@ function SetUsernameModal({
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
                   )}
-                  {(status === "taken" || status === "invalid") && (
+                  {(status === "taken" || status === "invalid" || status === "too_short" || status === "too_long") && (
                     <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                     </svg>
@@ -1228,6 +1273,12 @@ function SetUsernameModal({
                 </div>
               )}
             </div>
+            {status === "too_short" && (
+              <p className="mt-1.5 text-xs text-red-400">{`Username must be at least ${USERNAME_MIN} characters`}</p>
+            )}
+            {status === "too_long" && (
+              <p className="mt-1.5 text-xs text-red-400">{`Username must be at most ${USERNAME_MAX} characters`}</p>
+            )}
             {status === "invalid" && (
               <p className="mt-1.5 text-xs text-red-400">Only letters, numbers, and underscores allowed</p>
             )}

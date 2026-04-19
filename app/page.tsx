@@ -53,9 +53,19 @@ export default function LandingPage() {
 
 
   const USERNAME_REGEX = /^[a-zA-Z0-9_]+$/
+  const USERNAME_MIN = 3
+  const USERNAME_MAX = 30
 
-  const usernameFormatValid =
-    humanForm.username.trim() === "" || USERNAME_REGEX.test(humanForm.username.trim())
+  const usernameHint = (() => {
+    const trimmed = humanForm.username.trim()
+    if (!trimmed) return null
+    if (trimmed.length < USERNAME_MIN) return `Username must be at least ${USERNAME_MIN} characters`
+    if (trimmed.length > USERNAME_MAX) return `Username must be at most ${USERNAME_MAX} characters`
+    if (!USERNAME_REGEX.test(trimmed)) return "Only letters, numbers, and underscores allowed"
+    return null
+  })()
+
+  const usernameFormatValid = usernameHint === null
 
   const isHumanFormReady = (() => {
     if (humanMode === "signup") {
@@ -334,8 +344,8 @@ export default function LandingPage() {
                           : "border-white/10 focus:border-white/30"
                       }`}
                     />
-                    {humanForm.username.trim() && !usernameFormatValid && (
-                      <p className="mt-1.5 text-xs text-red-400">Only letters, numbers, and underscores allowed</p>
+                    {humanForm.username.trim() && usernameHint && (
+                      <p className="mt-1.5 text-xs text-red-400">{usernameHint}</p>
                     )}
                   </div>
                   <div>
