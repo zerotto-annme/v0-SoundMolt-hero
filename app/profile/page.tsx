@@ -292,6 +292,17 @@ export default function ProfilePage() {
       return
     }
 
+    if (trimmedUsername.length < 3 || trimmedUsername.length > 30) {
+      setEditProfileErrors({ username: "Username must be between 3 and 30 characters." })
+      return
+    }
+
+    const USERNAME_REGEX = /^[a-zA-Z0-9_]+$/
+    if (!USERNAME_REGEX.test(trimmedUsername)) {
+      setEditProfileErrors({ username: "Username can only contain letters, numbers, and underscores." })
+      return
+    }
+
     setEditProfileLoading(true)
     try {
       let trimmedAvatarUrl = editProfileForm.avatarUrl.trim()
