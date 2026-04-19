@@ -1,0 +1,166 @@
+Add a new sidebar section called "Studio Agents" to SoundMolt and implement a first working agent studio flow.
+
+IMPORTANT:
+- do NOT redesign the overall visual style
+- do NOT change the existing SoundMolt premium dark aesthetic
+- keep current layout and sidebar style
+- ONLY add the new Studio Agents feature and related screens/components
+- do NOT break auth, upload, profile, comments, or Supabase integration
+
+GOAL:
+Under the Home button in the left sidebar, add a new button:
+Studio Agents
+
+When user clicks Studio Agents:
+- open a clean right-side main panel/page area
+- show a button: + Add Agent
+- after creating agents, show one button/card per created agent under + Add Agent
+- clicking an agent opens that agent’s profile/studio page
+
+PRODUCT LOGIC:
+The signed-in user is the owner of a studio.
+Inside the studio, the user can create and manage multiple AI agents.
+Each agent has its own identity and its own music catalog/statistics.
+
+REQUIRED SIDEBAR CHANGE:
+1. Add "Studio Agents" directly under "Home"
+2. Keep sidebar style consistent with existing navigation
+3. Make it a real working navigation item
+
+STUDIO AGENTS MAIN PAGE:
+When opening Studio Agents:
+- show title: Studio Agents
+- show subtitle explaining that user can create and manage music agents
+- show a primary button: + Add Agent
+- below it, show created agents as clickable buttons/cards
+- if no agents exist yet, show a clean empty state
+
+ADD AGENT FORM:
+When user clicks + Add Agent:
+Open a modal or panel form with fields:
+- Agent Name (required)
+- Avatar URL (optional)
+- Cover URL (optional)
+- Description (optional)
+- Genre / Style (optional)
+- Status (default active)
+- Provider (optional, for future API connections)
+- API Endpoint (optional)
+- Model Name (optional)
+
+Behavior:
+- on save, create the agent
+- close form after success
+- refresh Studio Agents list
+- new agent must appear immediately below + Add Agent
+
+AGENT LIST BEHAVIOR:
+After agent creation:
+- display a clickable button/card with the assigned agent name
+- clicking that card opens that specific agent profile/studio page
+
+AGENT PROFILE PAGE:
+When user clicks an agent:
+Show that agent profile with:
+1. Agent avatar
+2. Agent name
+3. Description / genre
+4. Status badge
+5. Tabs or sections:
+   - Overview
+   - Tracks
+   - Analytics
+
+OVERVIEW SECTION:
+Show:
+- avatar
+- cover if available
+- name
+- description
+- genre/style
+- created date
+- total tracks count
+- total plays
+- total downloads
+
+TRACKS SECTION:
+Show all tracks belonging to that specific agent.
+For each track show:
+- cover
+- title
+- created date
+- number of downloads
+- number of plays
+- top ranking position if available
+
+If agent has no tracks:
+- show a clean empty state
+
+ANALYTICS SECTION:
+Show summary metrics for that agent:
+- total plays
+- total downloads
+- number of tracks
+- top track
+- top ranking position among the agent's tracks
+- simple cards/list is enough, no redesign required
+
+DATABASE / SUPABASE:
+Use Supabase and persist this properly.
+
+Create a new table if needed:
+public.agents
+
+Required columns:
+- id uuid primary key default gen_random_uuid()
+- user_id uuid references auth.users(id) on delete cascade not null
+- name text not null
+- avatar_url text
+- cover_url text
+- description text
+- genre text
+- status text default 'active'
+- provider text
+- api_endpoint text
+- model_name text
+- created_at timestamptz default now()
+
+Track ownership:
+- extend public.tracks safely with:
+  - agent_id uuid references public.agents(id) on delete set null
+
+Do not destroy existing track data.
+
+RLS / SECURITY:
+- user must only see and manage their own agents
+- use auth.uid() = user_id policies
+- keep changes additive and safe
+
+TRACK STATISTICS:
+Use existing track fields where possible:
+- plays
+- likes
+- download_enabled
+If download count field does not exist, add safely:
+- downloads integer default 0
+
+TOP POSITION:
+If there is no real chart system yet:
+- derive ranking within the agent’s own tracks by sorting plays descending
+- show rank position like #1, #2, #3 inside that agent’s catalog
+
+UI REQUIREMENTS:
+- keep SoundMolt look and feel
+- sidebar item must match existing sidebar buttons
+- Studio Agents page should feel native to current app
+- agent cards/buttons should be clean and clickable
+- no random redesign
+
+SUCCESS RESULT:
+- new sidebar button "Studio Agents" appears under Home
+- clicking it opens a clean Studio Agents page
+- + Add Agent works
+- created agents appear below the button
+- clicking an agent opens its own profile/studio page
+- agent page shows profile, tracks, plays, downloads, and top ranking
+- all data persists in Supabase

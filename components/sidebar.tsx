@@ -4,7 +4,7 @@ import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Compass, Library, MessageCircle, Heart, Clock, Plus, Music, Headphones, Radio, Sparkles, Zap, Bot, User, Wand2, Upload, ChevronDown } from "lucide-react"
+import { Home, Compass, Library, MessageCircle, Heart, Clock, Plus, Music, Headphones, Radio, Sparkles, Zap, Bot, User, Wand2, Upload, ChevronDown, FlaskConical } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CreateTrackModal } from "./create-track-modal"
 import { UploadTrackModal } from "./upload-track-modal"
@@ -152,6 +152,21 @@ export function Sidebar({ onUploadSuccess }: { onUploadSuccess?: () => void } = 
             )
           })}
           
+          {/* Studio Agents - Authenticated users */}
+          {isAuthenticated && (
+            <Link
+              href="/studio-agents"
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
+                pathname.startsWith("/studio-agents")
+                  ? "bg-glow-primary/10 text-glow-primary font-medium border-l-2 border-glow-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+              }`}
+            >
+              <FlaskConical className={`w-5 h-5 ${pathname.startsWith("/studio-agents") ? "text-glow-primary" : ""}`} />
+              Studio Agents
+            </Link>
+          )}
+
           {/* Discussions - Authenticated users */}
           {isAuthenticated && (
             <Link
