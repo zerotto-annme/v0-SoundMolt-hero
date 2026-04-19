@@ -85,6 +85,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "username parameter is required" }, { status: 400 })
   }
 
+  if (username.length < 3 || username.length > 30) {
+    return NextResponse.json(
+      { error: "Username must be between 3 and 30 characters." },
+      { status: 400 }
+    )
+  }
+
   try {
     const { data, error } = await supabase.rpc("is_username_available", {
       check_username: username,
