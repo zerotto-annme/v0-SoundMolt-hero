@@ -298,30 +298,26 @@ export default function LandingPage() {
 
       {/* Human Modal — backdrop clicks do NOT close the modal */}
       {isHumanModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-        >
-          <div
-            className="relative w-full max-w-md mx-4 bg-[#111113] border border-white/10 rounded-2xl p-8 max-h-[95vh] overflow-y-auto"
-          >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="relative w-full max-w-md mx-4 bg-white border border-gray-200 rounded-2xl p-8 max-h-[95vh] overflow-y-auto shadow-2xl">
             <button
               onClick={() => setIsHumanModalOpen(false)}
-              className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors"
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
 
             {/* Header */}
             <div className="text-center mb-6">
-              <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center mx-auto mb-4">
-                <User className="w-6 h-6 text-white" />
+              <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
+                <User className="w-6 h-6 text-gray-700" />
               </div>
-              <h2 className="text-2xl font-bold text-white mb-1">
+              <h2 className="text-2xl font-bold text-gray-900 mb-1">
                 {humanMode === "signup" && "Create Account"}
                 {humanMode === "signin" && "Welcome back"}
                 {humanMode === "forgot" && "Reset Password"}
               </h2>
-              <p className="text-white/50 text-sm">
+              <p className="text-gray-500 text-sm">
                 {humanMode === "signup" && "Join SoundMolt to discover AI-generated music"}
                 {humanMode === "signin" && "Sign in to continue to SoundMolt"}
                 {humanMode === "forgot" && "Enter your email to receive a reset link"}
@@ -333,62 +329,62 @@ export default function LandingPage() {
               <>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm text-white/60 mb-2">Username *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Username *</label>
                     <input
                       type="text"
                       value={humanForm.username}
                       onChange={(e) => { setHumanForm(prev => ({ ...prev, username: e.target.value })); setHumanFormError("") }}
                       placeholder="your_username"
                       maxLength={30}
-                      className={`w-full h-12 px-4 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${
+                      className={`w-full h-12 px-4 bg-gray-50 border rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none transition-colors ${
                         humanForm.username.trim() && !usernameFormatValid
-                          ? "border-red-500/60 focus:border-red-500"
-                          : "border-white/10 focus:border-white/30"
+                          ? "border-red-400 focus:border-red-500"
+                          : "border-gray-200 focus:border-gray-400"
                       }`}
                     />
                     {humanForm.username.trim() && usernameHint && (
-                      <p className="mt-1.5 text-xs text-red-400">{usernameHint}</p>
+                      <p className="mt-1.5 text-xs text-red-500">{usernameHint}</p>
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm text-white/60 mb-2">Email *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Email *</label>
                     <input
                       type="email"
                       value={humanForm.email}
                       onChange={(e) => { setHumanForm(prev => ({ ...prev, email: e.target.value })); setHumanFormError("") }}
                       placeholder="you@example.com"
-                      className="w-full h-12 px-4 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                      className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-gray-400 transition-colors"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-white/60 mb-2">Password *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Password *</label>
                     <input
                       type="password"
                       value={humanForm.password}
                       onChange={(e) => { setHumanForm(prev => ({ ...prev, password: e.target.value })); setHumanFormError("") }}
                       placeholder="At least 6 characters"
-                      className="w-full h-12 px-4 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                      className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-gray-400 transition-colors"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-white/60 mb-2">Confirm Password *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Confirm Password *</label>
                     <input
                       type="password"
                       value={humanForm.confirmPassword}
                       onChange={(e) => { setHumanForm(prev => ({ ...prev, confirmPassword: e.target.value })); setHumanFormError("") }}
                       placeholder="Repeat your password"
-                      className={`w-full h-12 px-4 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${humanFormError ? "border-red-500/60" : "border-white/10 focus:border-white/30"}`}
+                      className={`w-full h-12 px-4 bg-gray-50 border rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none transition-colors ${humanFormError ? "border-red-400" : "border-gray-200 focus:border-gray-400"}`}
                     />
                   </div>
                 </div>
 
-                {humanFormError && <p className="mt-3 text-xs text-red-400 text-center">{humanFormError}</p>}
-                {humanMessage && <p className="mt-3 text-xs text-green-400 text-center">{humanMessage}</p>}
+                {humanFormError && <p className="mt-3 text-xs text-red-500 text-center">{humanFormError}</p>}
+                {humanMessage && <p className="mt-3 text-xs text-green-600 text-center">{humanMessage}</p>}
 
                 <Button
                   onClick={handleHumanSubmit}
                   disabled={!isHumanFormReady || humanLoading}
-                  className="w-full h-12 mt-5 bg-white text-black hover:bg-white/90 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full h-12 mt-5 bg-gray-900 text-white hover:bg-gray-800 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {humanLoading ? "Creating account…" : "Create Account"}
                 </Button>
@@ -396,7 +392,7 @@ export default function LandingPage() {
                 {/* Google */}
                 <button
                   onClick={handleGoogleSignIn}
-                  className="w-full h-12 mt-3 flex items-center justify-center gap-3 border border-white/15 rounded-lg text-white/80 hover:bg-white/5 hover:border-white/30 transition-colors text-sm font-medium"
+                  className="w-full h-12 mt-3 flex items-center justify-center gap-3 border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors text-sm font-medium"
                 >
                   <svg className="w-5 h-5" viewBox="0 0 24 24">
                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -409,14 +405,14 @@ export default function LandingPage() {
 
                 {/* OR / ENTER divider */}
                 <div className="flex items-center gap-3 my-4">
-                  <div className="flex-1 h-px bg-white/10" />
-                  <span className="text-white/30 text-xs">or</span>
-                  <div className="flex-1 h-px bg-white/10" />
+                  <div className="flex-1 h-px bg-gray-200" />
+                  <span className="text-gray-400 text-xs">or</span>
+                  <div className="flex-1 h-px bg-gray-200" />
                 </div>
 
                 <button
                   onClick={() => resetHumanModal("signin")}
-                  className="w-full h-12 border border-white/20 rounded-lg text-white/70 hover:text-white hover:border-white/40 transition-colors font-semibold tracking-widest text-sm"
+                  className="w-full h-12 border border-gray-300 rounded-lg text-gray-700 hover:text-gray-900 hover:border-gray-400 hover:bg-gray-50 transition-colors font-semibold tracking-widest text-sm"
                 >
                   ENTER
                 </button>
@@ -428,46 +424,46 @@ export default function LandingPage() {
               <>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm text-white/60 mb-2">Email *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Email *</label>
                     <input
                       type="email"
                       value={humanForm.email}
                       onChange={(e) => { setHumanForm(prev => ({ ...prev, email: e.target.value })); setHumanFormError("") }}
                       placeholder="you@example.com"
-                      className="w-full h-12 px-4 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                      className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-gray-400 transition-colors"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-white/60 mb-2">Password *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Password *</label>
                     <input
                       type="password"
                       value={humanForm.password}
                       onChange={(e) => { setHumanForm(prev => ({ ...prev, password: e.target.value })); setHumanFormError("") }}
                       placeholder="Your password"
-                      className={`w-full h-12 px-4 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${humanFormError ? "border-red-500/60" : "border-white/10 focus:border-white/30"}`}
+                      className={`w-full h-12 px-4 bg-gray-50 border rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none transition-colors ${humanFormError ? "border-red-400" : "border-gray-200 focus:border-gray-400"}`}
                     />
                     <button
                       onClick={() => resetHumanModal("forgot")}
-                      className="mt-1.5 text-xs text-white/40 hover:text-white/70 transition-colors"
+                      className="mt-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors"
                     >
                       Forgot password?
                     </button>
                   </div>
                 </div>
 
-                {humanFormError && <p className="mt-3 text-xs text-red-400 text-center">{humanFormError}</p>}
+                {humanFormError && <p className="mt-3 text-xs text-red-500 text-center">{humanFormError}</p>}
 
                 <Button
                   onClick={handleHumanSubmit}
                   disabled={!isHumanFormReady || humanLoading}
-                  className="w-full h-12 mt-5 bg-white text-black hover:bg-white/90 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full h-12 mt-5 bg-gray-900 text-white hover:bg-gray-800 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {humanLoading ? "Signing in…" : "Sign In"}
                 </Button>
 
                 <button
                   onClick={handleGoogleSignIn}
-                  className="w-full h-12 mt-3 flex items-center justify-center gap-3 border border-white/15 rounded-lg text-white/80 hover:bg-white/5 hover:border-white/30 transition-colors text-sm font-medium"
+                  className="w-full h-12 mt-3 flex items-center justify-center gap-3 border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors text-sm font-medium"
                 >
                   <svg className="w-5 h-5" viewBox="0 0 24 24">
                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -478,9 +474,9 @@ export default function LandingPage() {
                   Continue with Google
                 </button>
 
-                <p className="mt-4 text-center text-sm text-white/40">
+                <p className="mt-4 text-center text-sm text-gray-500">
                   Don&apos;t have an account?{" "}
-                  <button onClick={() => resetHumanModal("signup")} className="text-white/70 hover:text-white underline underline-offset-2 transition-colors">
+                  <button onClick={() => resetHumanModal("signup")} className="text-gray-700 hover:text-gray-900 underline underline-offset-2 transition-colors font-medium">
                     Sign up
                   </button>
                 </p>
@@ -492,25 +488,25 @@ export default function LandingPage() {
               <>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm text-white/60 mb-2">Email *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Email *</label>
                     <input
                       type="email"
                       value={humanForm.email}
                       onChange={(e) => { setHumanForm(prev => ({ ...prev, email: e.target.value })); setHumanFormError("") }}
                       placeholder="you@example.com"
-                      className="w-full h-12 px-4 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                      className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-gray-400 transition-colors"
                     />
                   </div>
                 </div>
 
-                {humanFormError && <p className="mt-3 text-xs text-red-400 text-center">{humanFormError}</p>}
-                {humanMessage && <p className="mt-3 text-xs text-green-400 text-center">{humanMessage}</p>}
+                {humanFormError && <p className="mt-3 text-xs text-red-500 text-center">{humanFormError}</p>}
+                {humanMessage && <p className="mt-3 text-xs text-green-600 text-center">{humanMessage}</p>}
 
                 {!humanMessage && (
                   <Button
                     onClick={handleHumanSubmit}
                     disabled={!isHumanFormReady || humanLoading}
-                    className="w-full h-12 mt-5 bg-white text-black hover:bg-white/90 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full h-12 mt-5 bg-gray-900 text-white hover:bg-gray-800 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {humanLoading ? "Sending…" : "Send Reset Link"}
                   </Button>
@@ -518,7 +514,7 @@ export default function LandingPage() {
 
                 <button
                   onClick={() => resetHumanModal("signin")}
-                  className="w-full mt-3 text-sm text-white/40 hover:text-white transition-colors"
+                  className="w-full mt-3 text-sm text-gray-400 hover:text-gray-700 transition-colors"
                 >
                   ← Back to Sign in
                 </button>

@@ -775,15 +775,11 @@ function SignInModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
-    >
-      <div
-        className="relative w-full max-w-md mx-4 bg-[#111113] border border-white/10 rounded-2xl p-8"
-      >
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+      <div className="relative w-full max-w-md mx-4 bg-white border border-gray-200 rounded-2xl p-8 shadow-2xl">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors"
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
         >
           <X className="w-5 h-5" />
         </button>
@@ -791,17 +787,17 @@ function SignInModal({
         {mode === "choose" && (
           <>
             <div className="text-center mb-8">
-              <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center mx-auto mb-4">
-                <Lock className="w-6 h-6 text-white" />
+              <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
+                <Lock className="w-6 h-6 text-gray-700" />
               </div>
-              <h2 className="text-2xl font-bold text-white mb-2">Sign in to continue</h2>
-              <p className="text-white/50 text-sm">Choose how you want to join SoundMolt</p>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Sign in to continue</h2>
+              <p className="text-gray-500 text-sm">Choose how you want to join SoundMolt</p>
             </div>
 
             <div className="space-y-3">
               <Button
                 onClick={() => setMode("human")}
-                className="w-full h-14 bg-white text-black hover:bg-white/90 rounded-xl font-semibold gap-3"
+                className="w-full h-14 bg-gray-900 text-white hover:bg-gray-800 rounded-xl font-semibold gap-3"
               >
                 <User className="w-5 h-5" />
                 I&apos;m a Human
@@ -809,7 +805,7 @@ function SignInModal({
               <Button
                 onClick={() => setMode("agent")}
                 variant="outline"
-                className="w-full h-14 border-red-500/50 text-white hover:bg-red-500/10 hover:border-red-500 rounded-xl font-semibold gap-3"
+                className="w-full h-14 border-red-500 text-red-600 hover:bg-red-50 hover:border-red-600 rounded-xl font-semibold gap-3"
               >
                 <Bot className="w-5 h-5" />
                 I&apos;m an Agent
@@ -821,11 +817,11 @@ function SignInModal({
         {mode === "human" && (
           <>
             <div className="text-center mb-8">
-              <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center mx-auto mb-4">
-                <User className="w-6 h-6 text-white" />
+              <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
+                <User className="w-6 h-6 text-gray-700" />
               </div>
-              <h2 className="text-2xl font-bold text-white mb-2">Welcome, Human</h2>
-              <p className="text-white/50 text-sm">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome, Human</h2>
+              <p className="text-gray-500 text-sm">
                 {humanSubMode === "signup"
                   ? "Create an account to discover and enjoy AI-generated music"
                   : "Sign in to discover and enjoy AI-generated music"}
@@ -835,7 +831,7 @@ function SignInModal({
             <div className="space-y-4">
               {humanSubMode === "signup" && (
                 <div>
-                  <label className="block text-sm text-white/60 mb-2">Username *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Username *</label>
                   <div className="relative">
                     <input
                       type="text"
@@ -846,28 +842,28 @@ function SignInModal({
                       }}
                       placeholder="your_username"
                       maxLength={30}
-                      className={`w-full h-12 px-4 pr-10 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${
+                      className={`w-full h-12 px-4 pr-10 bg-gray-50 border rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none transition-colors ${
                         humanErrors.username || usernameStatus === "taken" || usernameStatus === "invalid" || usernameStatus === "too_short" || usernameStatus === "too_long"
-                          ? "border-red-500/60 focus:border-red-500"
+                          ? "border-red-400 focus:border-red-500"
                           : usernameStatus === "available"
-                          ? "border-green-500/60 focus:border-green-500"
+                          ? "border-green-400 focus:border-green-500"
                           : usernameStatus === "error" || usernameStatus === "rate_limited"
-                          ? "border-yellow-500/40 focus:border-yellow-500/60"
-                          : "border-white/10 focus:border-white/30"
+                          ? "border-yellow-400 focus:border-yellow-500"
+                          : "border-gray-200 focus:border-gray-400"
                       }`}
                     />
                     {humanForm.username.trim() && (
                       <div className="absolute right-3 top-1/2 -translate-y-1/2">
                         {usernameStatus === "checking" && (
-                          <div className="w-4 h-4 border-2 border-white/30 border-t-white/70 rounded-full animate-spin" />
+                          <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
                         )}
                         {usernameStatus === "available" && (
-                          <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                           </svg>
                         )}
                         {(usernameStatus === "taken" || usernameStatus === "invalid" || usernameStatus === "too_short" || usernameStatus === "too_long") && (
-                          <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <svg className="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                           </svg>
                         )}
@@ -875,33 +871,33 @@ function SignInModal({
                     )}
                   </div>
                   {!humanErrors.username && usernameStatus === "too_short" && (
-                    <p className="mt-1.5 text-xs text-red-400">{`Username must be at least ${USERNAME_MIN} characters`}</p>
+                    <p className="mt-1.5 text-xs text-red-500">{`Username must be at least ${USERNAME_MIN} characters`}</p>
                   )}
                   {!humanErrors.username && usernameStatus === "too_long" && (
-                    <p className="mt-1.5 text-xs text-red-400">{`Username must be at most ${USERNAME_MAX} characters`}</p>
+                    <p className="mt-1.5 text-xs text-red-500">{`Username must be at most ${USERNAME_MAX} characters`}</p>
                   )}
                   {!humanErrors.username && usernameStatus === "invalid" && (
-                    <p className="mt-1.5 text-xs text-red-400">Only letters, numbers, and underscores allowed</p>
+                    <p className="mt-1.5 text-xs text-red-500">Only letters, numbers, and underscores allowed</p>
                   )}
                   {!humanErrors.username && usernameStatus === "available" && (
-                    <p className="mt-1.5 text-xs text-green-400">Username is available</p>
+                    <p className="mt-1.5 text-xs text-green-600">Username is available</p>
                   )}
                   {(humanErrors.username || usernameStatus === "taken") && (
-                    <p className="mt-1.5 text-xs text-red-400">
+                    <p className="mt-1.5 text-xs text-red-500">
                       {humanErrors.username || "That username is already taken. Please choose a different one."}
                     </p>
                   )}
                   {!humanErrors.username && usernameStatus === "rate_limited" && (
-                    <p className="mt-1.5 text-xs text-yellow-400/80">Too many checks — please wait a moment</p>
+                    <p className="mt-1.5 text-xs text-yellow-600">Too many checks — please wait a moment</p>
                   )}
                   {!humanErrors.username && usernameStatus === "error" && (
-                    <p className="mt-1.5 text-xs text-yellow-400/80">{"Couldn't verify availability — you can still sign up."}</p>
+                    <p className="mt-1.5 text-xs text-yellow-600">{"Couldn't verify availability — you can still sign up."}</p>
                   )}
                 </div>
               )}
 
               <div>
-                <label className="block text-sm text-white/60 mb-2">Email *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Email *</label>
                 <input
                   type="email"
                   value={humanForm.email}
@@ -910,15 +906,15 @@ function SignInModal({
                     if (humanErrors.email) setHumanErrors(prev => ({ ...prev, email: undefined }))
                   }}
                   placeholder="you@example.com"
-                  className={`w-full h-12 px-4 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${humanErrors.email ? "border-red-500/60 focus:border-red-500" : "border-white/10 focus:border-white/30"}`}
+                  className={`w-full h-12 px-4 bg-gray-50 border rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none transition-colors ${humanErrors.email ? "border-red-400 focus:border-red-500" : "border-gray-200 focus:border-gray-400"}`}
                 />
                 {humanErrors.email && (
-                  <p className="mt-1.5 text-xs text-red-400">{humanErrors.email}</p>
+                  <p className="mt-1.5 text-xs text-red-500">{humanErrors.email}</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm text-white/60 mb-2">Password *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Password *</label>
                 <input
                   type="password"
                   value={humanForm.password}
@@ -927,10 +923,10 @@ function SignInModal({
                     if (humanErrors.password) setHumanErrors(prev => ({ ...prev, password: undefined }))
                   }}
                   placeholder="Enter your password"
-                  className={`w-full h-12 px-4 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${humanErrors.password ? "border-red-500/60 focus:border-red-500" : "border-white/10 focus:border-white/30"}`}
+                  className={`w-full h-12 px-4 bg-gray-50 border rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none transition-colors ${humanErrors.password ? "border-red-400 focus:border-red-500" : "border-gray-200 focus:border-gray-400"}`}
                 />
                 {humanErrors.password && (
-                  <p className="mt-1.5 text-xs text-red-400">{humanErrors.password}</p>
+                  <p className="mt-1.5 text-xs text-red-500">{humanErrors.password}</p>
                 )}
                 {humanSubMode === "signin" && (
                   <div className="mt-2 text-right">
@@ -942,7 +938,7 @@ function SignInModal({
                         setForgotPasswordStatus("idle")
                         setForgotPasswordError("")
                       }}
-                      className="text-xs text-white/40 hover:text-white/70 transition-colors underline underline-offset-2"
+                      className="text-xs text-gray-400 hover:text-gray-600 transition-colors underline underline-offset-2"
                     >
                       Forgot password?
                     </button>
@@ -951,10 +947,10 @@ function SignInModal({
               </div>
 
               {humanSubMode === "signin" && forgotPasswordMode && (
-                <div className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-3">
-                  <p className="text-sm text-white/70 font-medium">Reset your password</p>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+                  <p className="text-sm text-gray-700 font-medium">Reset your password</p>
                   {forgotPasswordStatus === "success" ? (
-                    <p className="text-sm text-green-400">Check your email — we&apos;ve sent a password reset link.</p>
+                    <p className="text-sm text-green-600">Check your email — we&apos;ve sent a password reset link.</p>
                   ) : (
                     <>
                       <input
@@ -965,16 +961,16 @@ function SignInModal({
                           if (forgotPasswordError) setForgotPasswordError("")
                         }}
                         placeholder="you@example.com"
-                        className="w-full h-10 px-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-white/30 transition-colors text-sm"
+                        className="w-full h-10 px-3 bg-white border border-gray-200 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-gray-400 transition-colors text-sm"
                       />
                       {forgotPasswordError && (
-                        <p className="text-xs text-red-400">{forgotPasswordError}</p>
+                        <p className="text-xs text-red-500">{forgotPasswordError}</p>
                       )}
                       <div className="flex gap-2">
                         <Button
                           onClick={handleForgotPassword}
                           disabled={forgotPasswordLoading}
-                          className="flex-1 h-9 bg-white text-black hover:bg-white/90 rounded-lg text-sm font-semibold disabled:opacity-50"
+                          className="flex-1 h-9 bg-gray-900 text-white hover:bg-gray-800 rounded-lg text-sm font-semibold disabled:opacity-50"
                         >
                           {forgotPasswordLoading ? "Sending…" : "Send reset link"}
                         </Button>
@@ -986,7 +982,7 @@ function SignInModal({
                             setForgotPasswordStatus("idle")
                             setForgotPasswordError("")
                           }}
-                          className="px-3 h-9 text-sm text-white/40 hover:text-white transition-colors"
+                          className="px-3 h-9 text-sm text-gray-400 hover:text-gray-700 transition-colors"
                         >
                           Cancel
                         </button>
@@ -998,7 +994,7 @@ function SignInModal({
 
               {humanSubMode === "signup" && (
                 <div>
-                  <label className="block text-sm text-white/60 mb-2">Confirm Password *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Confirm Password *</label>
                   <input
                     type="password"
                     value={humanForm.confirmPassword}
@@ -1007,23 +1003,23 @@ function SignInModal({
                       if (humanErrors.confirmPassword) setHumanErrors(prev => ({ ...prev, confirmPassword: undefined }))
                     }}
                     placeholder="Repeat your password"
-                    className={`w-full h-12 px-4 bg-white/5 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${humanErrors.confirmPassword ? "border-red-500/60 focus:border-red-500" : "border-white/10 focus:border-white/30"}`}
+                    className={`w-full h-12 px-4 bg-gray-50 border rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none transition-colors ${humanErrors.confirmPassword ? "border-red-400 focus:border-red-500" : "border-gray-200 focus:border-gray-400"}`}
                   />
                   {humanErrors.confirmPassword && (
-                    <p className="mt-1.5 text-xs text-red-400">{humanErrors.confirmPassword}</p>
+                    <p className="mt-1.5 text-xs text-red-500">{humanErrors.confirmPassword}</p>
                   )}
                 </div>
               )}
 
               {humanErrors.general && (
-                <p className="text-xs text-red-400 text-center">{humanErrors.general}</p>
+                <p className="text-xs text-red-500 text-center">{humanErrors.general}</p>
               )}
             </div>
 
             <Button
               onClick={handleHumanSubmit}
               disabled={!isHumanFormValid() || humanLoading}
-              className="w-full h-12 mt-6 bg-white text-black hover:bg-white/90 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full h-12 mt-6 bg-gray-900 text-white hover:bg-gray-800 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {humanLoading
                 ? "Please wait…"
@@ -1034,21 +1030,21 @@ function SignInModal({
 
             <div className="mt-4 text-center">
               {humanSubMode === "signin" ? (
-                <p className="text-sm text-white/40">
+                <p className="text-sm text-gray-500">
                   Don&apos;t have an account?{" "}
                   <button
                     onClick={() => switchHumanSubMode("signup")}
-                    className="text-white/70 hover:text-white underline underline-offset-2 transition-colors"
+                    className="text-gray-700 hover:text-gray-900 underline underline-offset-2 transition-colors font-medium"
                   >
                     Sign up
                   </button>
                 </p>
               ) : (
-                <p className="text-sm text-white/40">
+                <p className="text-sm text-gray-500">
                   Already have an account?{" "}
                   <button
                     onClick={() => switchHumanSubMode("signin")}
-                    className="text-white/70 hover:text-white underline underline-offset-2 transition-colors"
+                    className="text-gray-700 hover:text-gray-900 underline underline-offset-2 transition-colors font-medium"
                   >
                     Sign in
                   </button>
@@ -1058,7 +1054,7 @@ function SignInModal({
 
             <button
               onClick={() => setMode("choose")}
-              className="w-full mt-3 text-sm text-white/40 hover:text-white"
+              className="w-full mt-3 text-sm text-gray-400 hover:text-gray-700 transition-colors"
             >
               Back to options
             </button>
@@ -1068,42 +1064,42 @@ function SignInModal({
         {mode === "agent" && (
           <>
             <div className="text-center mb-8">
-              <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
-                <Bot className="w-6 h-6 text-red-400" />
+              <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
+                <Bot className="w-6 h-6 text-red-500" />
               </div>
-              <h2 className="text-2xl font-bold text-white mb-2">Agent Access</h2>
-              <p className="text-white/50 text-sm">Register your AI agent to create and publish</p>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Agent Access</h2>
+              <p className="text-gray-500 text-sm">Register your AI agent to create and publish</p>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-white/60 mb-2">Artist Name *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Artist Name *</label>
                 <input
                   type="text"
                   value={agentForm.artistName}
                   onChange={(e) => setAgentForm(prev => ({ ...prev, artistName: e.target.value }))}
                   placeholder="SynthWave_AI"
-                  className="w-full h-12 px-4 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                  className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-gray-400 transition-colors"
                 />
               </div>
               <div>
-                <label className="block text-sm text-white/60 mb-2">Agent Identifier</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Agent Identifier</label>
                 <input
                   type="text"
                   value={agentForm.identifier}
                   onChange={(e) => setAgentForm(prev => ({ ...prev, identifier: e.target.value }))}
                   placeholder="agent-001-suno-v4"
-                  className="w-full h-12 px-4 bg-white/5 border border-white/10 rounded-lg text-white font-mono placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                  className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 font-mono placeholder:text-gray-400 focus:outline-none focus:border-gray-400 transition-colors"
                 />
               </div>
               <div>
-                <label className="block text-sm text-white/60 mb-2">Model Provider</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Model Provider</label>
                 <input
                   type="text"
                   value={agentForm.provider}
                   onChange={(e) => setAgentForm(prev => ({ ...prev, provider: e.target.value }))}
                   placeholder="suno / udio / musicgen"
-                  className="w-full h-12 px-4 bg-white/5 border border-white/10 rounded-lg text-white font-mono placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                  className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 font-mono placeholder:text-gray-400 focus:outline-none focus:border-gray-400 transition-colors"
                 />
               </div>
             </div>
@@ -1118,7 +1114,7 @@ function SignInModal({
 
             <button
               onClick={() => setMode("choose")}
-              className="w-full mt-4 text-sm text-white/40 hover:text-white"
+              className="w-full mt-4 text-sm text-gray-400 hover:text-gray-700 transition-colors"
             >
               Back to options
             </button>
