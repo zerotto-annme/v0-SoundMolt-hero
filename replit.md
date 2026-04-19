@@ -89,7 +89,7 @@ This endpoint can be called manually (e.g. from a cron job, CI script, or Supaba
 
 # Orphaned Avatar Cleanup
 
-Old avatar files (uploaded before the delete-on-upload fix) are cleaned up with a one-time Node.js script.
+Old or orphaned avatar files are cleaned up automatically on a recurring schedule.
 
 ## Script: `scripts/cleanup-orphaned-avatars.js`
 
@@ -99,7 +99,7 @@ Scans every user folder in the Supabase Storage `avatars` bucket, compares each 
 - `NEXT_PUBLIC_SUPABASE_URL` — Supabase project URL
 - `SUPABASE_SERVICE_ROLE_KEY` — service-role key (NOT the anon key)
 
-**Run:**
+**Run manually:**
 ```
 node scripts/cleanup-orphaned-avatars.js
 ```
@@ -110,6 +110,20 @@ DRY_RUN=1 node scripts/cleanup-orphaned-avatars.js
 ```
 
 The script is idempotent: it can be run multiple times safely. It never deletes the file that matches the user's current `avatar_url`. Users whose `avatar_url` points to an external URL (e.g. Google OAuth) are handled correctly — their entire storage folder is cleared since no local file is active.
+
+## Scheduled cleanup: `Avatar Cleanup Cron` workflow
+
+A Replit console workflow named **"Avatar Cleanup Cron"** runs `scripts/run-avatar-cleanup-cron.sh`, which calls the cleanup script once on startup and then every **24 hours** thereafter.
+
+**Schedule:** every 24 hours (configurable via `AVATAR_CLEANUP_INTERVAL_HOURS` env var).
+
+**Auto-start:** The workflow is included in the `Project` run group, so it starts automatically alongside the dev server whenever "Run" is clicked in Replit. It can also be started individually from the Workflows panel.
+
+**Logs:** each run is prefixed with `[avatar-cleanup-cron]` and a UTC timestamp in the workflow's console output.
+
+**Failure handling:** if a cleanup run exits with an error, the script logs the error and continues to the next scheduled cycle — no manual restart is needed.
+
+> **Note:** cleanup only runs while the workflow is active. If the Replit workspace is stopped or the workflow is paused, no cleanup occurs until the workflow is restarted. For 24/7 guarantees, the cleanup logic can be moved to an external always-on scheduler (e.g. a Supabase Edge Function with pg_cron) in the future.
 
 # Track Upload (Supabase-backed)
 
