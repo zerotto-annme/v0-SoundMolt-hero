@@ -294,18 +294,22 @@ export default function ProfilePage() {
         console.log("[profile] Avatar uploaded successfully:", trimmedAvatarUrl)
       }
 
-      // Save username (and avatar_url when changed via URL paste) to profile.
+      // Save username (and avatar_url when changed) to profile.
+      // When a file was uploaded, also set avatar_is_custom = true so that
+      // any future OAuth sync will not overwrite the user's chosen photo.
+      const profilePayload: Record<string, unknown> = {
+        id: user!.id,
+        role: "human",
+        username: trimmedUsername,
+        avatar_url: trimmedAvatarUrl || null,
+      }
+      if (avatarFile) {
+        profilePayload.avatar_is_custom = true
+      }
+
       const { error: profileError } = await supabase
         .from("profiles")
-        .upsert(
-          {
-            id: user!.id,
-            role: "human",
-            username: trimmedUsername,
-            avatar_url: trimmedAvatarUrl || null,
-          },
-          { onConflict: "id" }
-        )
+        .upsert(profilePayload, { onConflict: "id" })
 
       if (profileError) {
         console.error("[profile] Profile upsert error:", profileError.message)
