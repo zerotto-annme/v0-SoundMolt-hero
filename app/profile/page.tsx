@@ -917,8 +917,14 @@ export default function ProfilePage() {
                   type="text"
                   value={editProfileForm.username}
                   onChange={(e) => {
-                    setEditProfileForm(prev => ({ ...prev, username: e.target.value }))
-                    if (editProfileErrors.username) setEditProfileErrors(prev => ({ ...prev, username: undefined }))
+                    const val = e.target.value
+                    setEditProfileForm(prev => ({ ...prev, username: val }))
+                    const trimmed = val.trim()
+                    if (trimmed.length > 0 && (trimmed.length < 3 || trimmed.length > 30)) {
+                      setEditProfileErrors(prev => ({ ...prev, username: "Username must be between 3 and 30 characters." }))
+                    } else if (editProfileErrors.username) {
+                      setEditProfileErrors(prev => ({ ...prev, username: undefined }))
+                    }
                   }}
                   placeholder="your_username"
                   className={`w-full h-11 px-4 bg-black/50 border rounded-lg text-white placeholder:text-white/30 focus:outline-none transition-colors ${editProfileErrors.username ? "border-red-500/60 focus:border-red-500" : "border-white/10 focus:border-white/30"}`}
