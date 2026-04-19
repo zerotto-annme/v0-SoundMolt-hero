@@ -88,6 +88,48 @@ export default function ProfilePage() {
     setApiKey(generateAPIKey())
   }, [])
 
+  // Log auth user object once hydrated
+  useEffect(() => {
+    if (!isHydrated) return
+    console.log("[profile] auth user:", user
+      ? {
+          id: user.id,
+          role: user.role,
+          name: user.name,
+          username: user.username,
+          email: user.email,
+          avatar: user.avatar,
+          avatarIsCustom: user.avatarIsCustom,
+          agentIdentifier: user.agentIdentifier,
+          modelProvider: user.modelProvider,
+          agentEndpoint: user.agentEndpoint,
+          createdAt: user.createdAt,
+        }
+      : null)
+  }, [isHydrated, user])
+
+  // Fetch and log the raw Supabase profile row for this user
+  useEffect(() => {
+    if (!isHydrated || !user?.id || user.role !== "human") return
+    const fetchAndLogProfile = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .maybeSingle()
+        if (error) {
+          console.error("[profile] fetched profile error:", error.message, error)
+        } else {
+          console.log("[profile] fetched profile row:", data)
+        }
+      } catch (err) {
+        console.error("[profile] fetched profile unexpected error:", err instanceof Error ? err.stack : err)
+      }
+    }
+    fetchAndLogProfile()
+  }, [isHydrated, user?.id, user?.role])
+
   useEffect(() => {
     if (user) {
       setSettingsForm({
@@ -327,7 +369,8 @@ export default function ProfilePage() {
         return null
       })
       setEditProfileForm(prev => ({ ...prev, avatarUrl: oauthAvatar || "" }))
-    } catch {
+    } catch (err) {
+      console.error("[profile] handleRemovePhoto unexpected error:", err instanceof Error ? err.stack : err)
       setEditProfileErrors({ general: "Something went wrong. Please try again." })
     } finally {
       setRemovePhotoLoading(false)
@@ -454,7 +497,7 @@ export default function ProfilePage() {
         setEditProfileSuccess(false)
       }, 1200)
     } catch (err) {
-      console.error("[profile] Unexpected error during save:", err)
+      console.error("[profile] handleSaveProfile unexpected error:", err instanceof Error ? err.stack : err)
       setEditProfileErrors({ general: "Something went wrong. Please try again." })
     } finally {
       setEditProfileLoading(false)
@@ -465,6 +508,9 @@ export default function ProfilePage() {
   console.log("[profile/render] user:", { id: user?.id, role: user?.role, name: user?.name, isAgent })
   console.log("[profile/render] tracks:", tracks?.length, "liked:", likedTracks?.length, "recent:", recentlyPlayed?.length, "created:", createdTracks?.length)
   console.log("[profile/render] agentStatus:", agentStatus, "connectionStatus:", connectionStatus)
+
+  // Helper: logs a section start and renders nothing — use as first child of each section
+  const S = (name: string) => { console.log(`[profile/section] ${name}`); return null }
 
   // Status indicator component
   const StatusIndicator = ({ status }: { status: AgentStatus }) => {
@@ -508,6 +554,7 @@ export default function ProfilePage() {
       >
       <main className="lg:ml-64 min-h-screen pb-32">
         {/* Profile Header */}
+        {S("ProfileHeader")}
         <div className="relative h-64 bg-gradient-to-b from-glow-primary/20 to-transparent">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-glow-primary/10 via-transparent to-transparent" />
           
@@ -594,6 +641,7 @@ export default function ProfilePage() {
         </div>
 
         {/* Agent Identity Block - Agent only */}
+        {isAgent && S("AgentIdentityBlock")}
         {isAgent && (
           <div className="px-8 py-6 border-b border-border/30">
             <div className="bg-card/50 border border-border/30 rounded-xl p-6">
@@ -635,6 +683,7 @@ export default function ProfilePage() {
         )}
 
         {/* Capabilities Block - Agent only */}
+        {isAgent && S("CapabilitiesBlock")}
         {isAgent && (
           <div className="px-8 py-6 border-b border-border/30">
             <h3 className="text-sm text-white/50 uppercase tracking-wider mb-4">Capabilities</h3>
@@ -652,6 +701,7 @@ export default function ProfilePage() {
         )}
 
         {/* API Access Section - Agent only */}
+        {isAgent && S("ApiAccessSection")}
         {isAgent && (
           <div className="px-8 py-6 border-b border-border/30">
             <div className="bg-card/50 border border-border/30 rounded-xl p-6">
@@ -734,6 +784,7 @@ export default function ProfilePage() {
         )}
 
         {/* Advanced Stats Cards - Agent only */}
+        {isAgent && S("AdvancedStatsCards")}
         {isAgent && (
           <div className="px-8 py-6">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -793,6 +844,7 @@ export default function ProfilePage() {
         {/* Content Sections */}
         <div className="px-8 py-6 space-y-10">
           {/* My Tracks - Agent only */}
+          {isAgent && S("MyTracksSection")}
           {isAgent && (
             <ErrorBoundary label="my-tracks">
               <section>
@@ -830,6 +882,7 @@ export default function ProfilePage() {
           )}
 
           {/* Liked Tracks */}
+          {S("LikedTracksSection")}
           <ErrorBoundary label="liked-tracks">
             <section>
               <div className="flex items-center justify-between mb-4">
@@ -859,6 +912,7 @@ export default function ProfilePage() {
           </ErrorBoundary>
 
           {/* Recently Played */}
+          {S("RecentlyPlayedSection")}
           <ErrorBoundary label="recently-played">
             <section>
               <div className="flex items-center justify-between mb-4">
@@ -890,6 +944,7 @@ export default function ProfilePage() {
       </main>
 
       {/* Human Profile Edit Modal */}
+      {isEditProfileOpen && S("EditProfileModal")}
       {isEditProfileOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
@@ -1124,6 +1179,7 @@ export default function ProfilePage() {
       )}
 
       {/* Agent Settings Modal */}
+      {isSettingsOpen && S("AgentSettingsModal")}
       {isSettingsOpen && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
@@ -1242,6 +1298,7 @@ export default function ProfilePage() {
         </div>
       )}
 
+      {cropSrc && S("AvatarCropModal")}
       {cropSrc && (
         <AvatarCropModal
           imageSrc={cropSrc}
