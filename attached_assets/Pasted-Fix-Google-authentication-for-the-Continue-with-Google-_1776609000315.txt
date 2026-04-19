@@ -1,0 +1,71 @@
+Fix Google authentication for the “Continue with Google” button in the Enter Dashboard auth modal.
+
+Current issue:
+Clicking “Continue with Google” opens a page with:
+{"code":400,"error_code":"validation_failed","msg":"Unsupported provider: provider is not enabled"}
+
+Goal:
+Make real Google sign-in work through Supabase Auth.
+
+Tasks:
+
+1. Verify frontend auth flow
+- Find the handler for the “Continue with Google” button in the Enter Dashboard auth modal.
+- It must use Supabase OAuth sign-in, not a fake link or custom route.
+- Use:
+  supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: `${window.location.origin}/auth/callback`
+    }
+  })
+
+2. Add or fix auth callback route
+- Make sure the app has a callback page/route for Supabase OAuth, for example:
+  /auth/callback
+- On callback, exchange the auth code/session if needed and redirect the user into the dashboard.
+- After successful login, send the user to the proper authenticated area.
+
+3. Check environment variables
+Make sure the app uses the correct:
+- SUPABASE_URL
+- SUPABASE_ANON_KEY
+
+4. Important: Supabase dashboard setup required
+Document clearly that Google provider must be enabled in Supabase:
+
+Supabase steps:
+- Go to Authentication → Providers → Google
+- Enable Google provider
+- Add Google OAuth Client ID
+- Add Google OAuth Client Secret
+
+5. Redirect URLs
+Make sure the following URLs are configured consistently:
+- In Supabase Auth URL settings:
+  - Site URL = app base URL
+  - Additional redirect URLs include:
+    - http://localhost:5000/auth/callback
+    - https://YOUR-PRODUCTION-DOMAIN/auth/callback
+    - Replit preview/dev URL callback if used
+- In Google Cloud Console OAuth credentials:
+  Authorized redirect URI must include the Supabase callback URL, usually:
+  https://YOUR_SUPABASE_PROJECT_REF.supabase.co/auth/v1/callback
+
+6. UI behavior
+- Keep the Continue with Google button
+- On click, start real OAuth flow
+- Handle loading state
+- Show a friendly error message if auth fails
+
+7. Do not mock anything
+- No fake success
+- No placeholder redirect
+- Real Supabase Google auth only
+
+8. After implementation
+Verify:
+- clicking Continue with Google opens Google consent screen
+- after Google login, user returns to app
+- authenticated session is created
+- dashboard opens correctly
