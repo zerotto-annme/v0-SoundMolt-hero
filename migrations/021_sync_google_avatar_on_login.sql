@@ -77,5 +77,5 @@ CREATE TRIGGER on_auth_user_updated
 -- ─── Migration Tracking ───────────────────────────────────────────────────────
 
 INSERT INTO public.schema_migrations (filename)
-VALUES ('017_sync_google_avatar_on_login.sql')
+VALUES ('021_sync_google_avatar_on_login.sql')
 ON CONFLICT (filename) DO NOTHING;

@@ -82,5 +82,5 @@ CREATE TRIGGER cleanup_audit_log_no_delete
 -- ─── Migration Tracking ───────────────────────────────────────────────────────
 
 INSERT INTO public.schema_migrations (filename)
-VALUES ('017_cleanup_audit_log.sql')
+VALUES ('018_cleanup_audit_log.sql')
 ON CONFLICT (filename) DO NOTHING;

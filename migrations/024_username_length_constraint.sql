@@ -83,5 +83,5 @@ $$;
 -- ─── Migration Tracking ───────────────────────────────────────────────────────
 
 INSERT INTO public.schema_migrations (filename)
-VALUES ('020_username_length_constraint.sql')
+VALUES ('024_username_length_constraint.sql')
 ON CONFLICT (filename) DO NOTHING;

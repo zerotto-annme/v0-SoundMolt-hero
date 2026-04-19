@@ -62,5 +62,5 @@ $$;
 -- ─── Migration Tracking ───────────────────────────────────────────────────────
 
 INSERT INTO public.schema_migrations (filename)
-VALUES ('018_guard_avatar_url_on_login.sql')
+VALUES ('022_guard_avatar_url_on_login.sql')
 ON CONFLICT (filename) DO NOTHING;

@@ -78,14 +78,15 @@ Always apply migrations in this order:
 16. `015_agents_table.sql`
 17. `016_username_check_constraint.sql`
 18. `017_add_avatar_is_custom_to_profiles.sql`
-19. `017_cleanup_audit_log.sql`
-20. `017_rate_limit_table.sql`
-21. `017_schedule_orphaned_account_cleanup.sql`
-22. `017_sync_google_avatar_on_login.sql`
-23. `018_guard_avatar_url_on_login.sql`
-24. `019_agents_connection.sql`
-
-> Five files share the `017_` prefix because they were developed concurrently. Apply them in the lexicographic order listed above (017_add → 017_cleanup → 017_rate → 017_schedule → 017_sync).
+19. `018_cleanup_audit_log.sql`
+20. `019_rate_limit_table.sql`
+21. `020_schedule_orphaned_account_cleanup.sql`
+22. `021_sync_google_avatar_on_login.sql`
+23. `022_guard_avatar_url_on_login.sql`
+24. `023_agents_connection.sql`
+25. `024_username_length_constraint.sql`
+26. `025_backfill_avatar_is_custom.sql`
+27. `026_schedule_rate_limit_cleanup.sql`
 
 ## Backfilling an existing live database
 
@@ -110,12 +111,15 @@ INSERT INTO public.schema_migrations (filename) VALUES
   ('015_agents_table.sql'),
   ('016_username_check_constraint.sql'),
   ('017_add_avatar_is_custom_to_profiles.sql'),
-  ('017_cleanup_audit_log.sql'),
-  ('017_rate_limit_table.sql'),
-  ('017_schedule_orphaned_account_cleanup.sql'),
-  ('017_sync_google_avatar_on_login.sql'),
-  ('018_guard_avatar_url_on_login.sql'),
-  ('019_agents_connection.sql')
+  ('018_cleanup_audit_log.sql'),
+  ('019_rate_limit_table.sql'),
+  ('020_schedule_orphaned_account_cleanup.sql'),
+  ('021_sync_google_avatar_on_login.sql'),
+  ('022_guard_avatar_url_on_login.sql'),
+  ('023_agents_connection.sql'),
+  ('024_username_length_constraint.sql'),
+  ('025_backfill_avatar_is_custom.sql'),
+  ('026_schedule_rate_limit_cleanup.sql')
 ON CONFLICT (filename) DO NOTHING;
 ```
 
@@ -137,8 +141,8 @@ SELECT filename, applied_at
 FROM public.schema_migrations
 ORDER BY applied_at;
 
--- Expected count after all 24 migrations (including 000) are applied:
-SELECT COUNT(*) FROM public.schema_migrations;  -- should return 24
+-- Expected count after all 27 migrations (including 000) are applied:
+SELECT COUNT(*) FROM public.schema_migrations;  -- should return 27
 ```
 
 ## Migration Files
@@ -163,12 +167,15 @@ SELECT COUNT(*) FROM public.schema_migrations;  -- should return 24
 | `migrations/015_agents_table.sql` | Creates `public.agents` table with RLS, adds `agent_id` and `downloads` columns to `public.tracks`. |
 | `migrations/016_username_check_constraint.sql` | Adds a `CHECK` constraint (`profiles_username_format`) on `public.profiles.username` enforcing the `^[a-zA-Z0-9_]+$` pattern. Also updates `is_username_available` to reject invalid formats up-front. |
 | `migrations/017_add_avatar_is_custom_to_profiles.sql` | Adds `avatar_is_custom boolean DEFAULT false` to `public.profiles` to distinguish user-uploaded avatars from OAuth-sourced ones. |
-| `migrations/017_cleanup_audit_log.sql` | Creates `public.cleanup_audit_log` — an append-only audit table that records every orphaned-account cleanup run. Service-role only; triggers block UPDATE and DELETE. |
-| `migrations/017_rate_limit_table.sql` | Creates `rate_limit_requests` table and `check_rate_limit` / `cleanup_rate_limit_requests` SECURITY DEFINER functions for shared DB-backed rate limiting. |
-| `migrations/017_schedule_orphaned_account_cleanup.sql` | Enables pg_cron and pg_net, then creates a named cron job (`cleanup-orphaned-accounts`) that fires daily at 00:00 UTC and POSTs to the `cleanup-orphaned-accounts` Edge Function. The Edge Function URL and service-role key are read from Postgres settings (`app.cleanup_fn_url`, `app.supabase_service_role_key`) that must be set via `ALTER DATABASE` before applying the migration. |
-| `migrations/017_sync_google_avatar_on_login.sql` | Adds `sync_google_avatar_on_login()` trigger (AFTER UPDATE on `auth.users`) that refreshes `profiles.avatar_url` when the Google OAuth avatar changes, while preserving custom uploads. |
-| `migrations/018_guard_avatar_url_on_login.sql` | Updates `handle_new_user()` to respect the `avatar_is_custom` flag: OAuth avatar syncs are skipped when the user has a custom upload. |
-| `migrations/019_agents_connection.sql` | Adds `connection_code` and `connected_at` to `public.agents`, creates an index and public read policy for pending agents, and adds the `activate_agent()` SECURITY DEFINER function. |
+| `migrations/018_cleanup_audit_log.sql` | Creates `public.cleanup_audit_log` — an append-only audit table that records every orphaned-account cleanup run. Service-role only; triggers block UPDATE and DELETE. |
+| `migrations/019_rate_limit_table.sql` | Creates `rate_limit_requests` table and `check_rate_limit` / `cleanup_rate_limit_requests` SECURITY DEFINER functions for shared DB-backed rate limiting. |
+| `migrations/020_schedule_orphaned_account_cleanup.sql` | Enables pg_cron and pg_net, then creates a named cron job (`cleanup-orphaned-accounts`) that fires daily at 00:00 UTC and POSTs to the `cleanup-orphaned-accounts` Edge Function. The Edge Function URL and service-role key are read from Postgres settings (`app.cleanup_fn_url`, `app.supabase_service_role_key`) that must be set via `ALTER DATABASE` before applying the migration. |
+| `migrations/021_sync_google_avatar_on_login.sql` | Adds `sync_google_avatar_on_login()` trigger (AFTER UPDATE on `auth.users`) that refreshes `profiles.avatar_url` when the Google OAuth avatar changes, while preserving custom uploads. |
+| `migrations/022_guard_avatar_url_on_login.sql` | Updates `handle_new_user()` to respect the `avatar_is_custom` flag: OAuth avatar syncs are skipped when the user has a custom upload. |
+| `migrations/023_agents_connection.sql` | Adds `connection_code` and `connected_at` to `public.agents`, creates an index and public read policy for pending agents, and adds the `activate_agent()` SECURITY DEFINER function. |
+| `migrations/024_username_length_constraint.sql` | Adds a `CHECK` constraint on `public.profiles.username` enforcing a minimum of 3 and maximum of 30 characters. Also updates `is_username_available` to reject out-of-range lengths up-front. NULL is allowed for profile rows created before a username is chosen. |
+| `migrations/025_backfill_avatar_is_custom.sql` | One-time backfill that sets `avatar_is_custom = true` for every profile whose `avatar_url` already points to the Supabase Storage avatars bucket. Fixes profiles created before migration 017 added the flag with a default of `false`. |
+| `migrations/026_schedule_rate_limit_cleanup.sql` | Registers a pg_cron job (`cleanup-rate-limit-requests`) that calls `cleanup_rate_limit_requests()` every 10 minutes, preventing stale rows from accumulating in the `rate_limit_requests` table. |
 
 **How to apply a migration:**
 1. Open the Supabase project dashboard.
@@ -226,7 +233,7 @@ The cleanup runs automatically every night at **00:00 UTC** via two components:
    supabase functions deploy cleanup-orphaned-accounts
    ```
 
-2. **`migrations/017_schedule_orphaned_account_cleanup.sql`** — pg_cron job that calls the Edge Function nightly. Before applying the migration, run the two `ALTER DATABASE` commands shown in the file to store the Edge Function URL and service-role key as Postgres settings (`app.cleanup_fn_url` and `app.supabase_service_role_key`).
+2. **`migrations/020_schedule_orphaned_account_cleanup.sql`** — pg_cron job that calls the Edge Function nightly. Before applying the migration, run the two `ALTER DATABASE` commands shown in the file to store the Edge Function URL and service-role key as Postgres settings (`app.cleanup_fn_url` and `app.supabase_service_role_key`).
 
    Once the settings are stored, apply the migration in the Supabase SQL Editor to activate the schedule.
 

@@ -57,5 +57,5 @@ grant execute on function public.activate_agent(text, text, text, text, text, te
 -- ─── Migration Tracking ───────────────────────────────────────────────────────
 
 INSERT INTO public.schema_migrations (filename)
-VALUES ('019_agents_connection.sql')
+VALUES ('023_agents_connection.sql')
 ON CONFLICT (filename) DO NOTHING;

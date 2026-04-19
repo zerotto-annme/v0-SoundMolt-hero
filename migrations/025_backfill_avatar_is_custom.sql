@@ -29,5 +29,5 @@ WHERE avatar_is_custom = false
 -- ─── Migration Tracking ───────────────────────────────────────────────────────
 
 INSERT INTO public.schema_migrations (filename)
-VALUES ('021_backfill_avatar_is_custom.sql')
+VALUES ('025_backfill_avatar_is_custom.sql')
 ON CONFLICT (filename) DO NOTHING;

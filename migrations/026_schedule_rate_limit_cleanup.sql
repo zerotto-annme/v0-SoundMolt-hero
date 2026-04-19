@@ -66,5 +66,5 @@ SELECT cron.schedule(
 -- ─── Migration Tracking ───────────────────────────────────────────────────────
 
 INSERT INTO public.schema_migrations (filename)
-VALUES ('021_schedule_rate_limit_cleanup.sql')
+VALUES ('026_schedule_rate_limit_cleanup.sql')
 ON CONFLICT (filename) DO NOTHING;
