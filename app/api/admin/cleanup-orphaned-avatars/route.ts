@@ -23,8 +23,11 @@ const DB_PAGE_SIZE = 1000
  *   The request MUST include the admin API secret as a Bearer token:
  *     Authorization: Bearer <ADMIN_API_SECRET>
  *
+ * Body (optional):
+ *   { "dryRun": true }  — when set, counts files that would be deleted without removing them.
+ *
  * Response:
- *   { "deleted": number, "errors": Array<{ path: string, error: string }> }
+ *   { "deleted": number, "errors": Array<{ path: string, error: string }>, "dryRun": boolean }
  */
 export async function POST(request: NextRequest) {
   if (!supabaseUrl) {
@@ -45,6 +48,24 @@ export async function POST(request: NextRequest) {
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : ""
   if (token !== adminApiSecret) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  let dryRun = false
+  const rawBody = await request.text()
+  if (rawBody.trim().length > 0) {
+    let body: unknown
+    try {
+      body = JSON.parse(rawBody)
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+    }
+    if (body && typeof body === "object" && (body as Record<string, unknown>).dryRun === true) {
+      dryRun = true
+    }
+  }
+
+  if (dryRun) {
+    console.log("[cleanup-orphaned-avatars] DRY RUN — no files will be deleted")
   }
 
   const admin = createClient(supabaseUrl, supabaseServiceKey, {
@@ -160,6 +181,15 @@ export async function POST(request: NextRequest) {
 
     if (toDelete.length === 0) continue
 
+    if (dryRun) {
+      console.log(
+        `[cleanup-orphaned-avatars] DRY RUN: would delete ${toDelete.length} file(s) in "${folderName}":`,
+        toDelete,
+      )
+      deleted += toDelete.length
+      continue
+    }
+
     const { error: deleteError } = await admin.storage.from(BUCKET).remove(toDelete)
 
     if (deleteError) {
@@ -176,10 +206,10 @@ export async function POST(request: NextRequest) {
   }
 
   console.log(
-    `[cleanup-orphaned-avatars] Cleanup complete: deleted=${deleted}, errors=${errors.length}`,
+    `[cleanup-orphaned-avatars] ${dryRun ? "Dry-run" : "Cleanup"} complete: deleted=${deleted}, errors=${errors.length}`,
   )
 
-  return NextResponse.json({ deleted, errors })
+  return NextResponse.json({ deleted, errors, dryRun })
 }
 
 // ---------------------------------------------------------------------------
