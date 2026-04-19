@@ -122,6 +122,7 @@ export function AvatarCropModal({ imageSrc, storageKey, initialState, onStateCha
   const [isProcessing, setIsProcessing] = useState(false)
   const [exportError, setExportError] = useState(false)
   const [imageLoaded, setImageLoaded] = useState(false)
+  const [confirmingReset, setConfirmingReset] = useState(false)
 
   const isDragging = useRef(false)
   const isCropDragging = useRef(false)
@@ -328,7 +329,18 @@ export function AvatarCropModal({ imageSrc, storageKey, initialState, onStateCha
     applyZoom(zoomRef.current + delta)
   }, [applyZoom])
 
-  const handleReset = useCallback(() => {
+  const isAtDefault = useCallback(() => {
+    return (
+      Math.abs(zoomRef.current - minZoomRef.current) < 0.001 &&
+      Math.abs(panRef.current.x) < 0.5 &&
+      Math.abs(panRef.current.y) < 0.5 &&
+      Math.abs(cropRef.current.x) < 0.5 &&
+      Math.abs(cropRef.current.y) < 0.5
+    )
+  }, [])
+
+  const applyReset = useCallback(() => {
+    setConfirmingReset(false)
     const z = minZoomRef.current
     zoomRef.current = z
     setZoom(z)
@@ -342,6 +354,23 @@ export function AvatarCropModal({ imageSrc, storageKey, initialState, onStateCha
     persistState(resetState)
     onReset?.()
   }, [minZoomRef, persistState, onReset])
+
+  const handleReset = useCallback(() => {
+    if (isAtDefault()) {
+      applyReset()
+    } else {
+      setConfirmingReset(true)
+    }
+  }, [isAtDefault, applyReset])
+
+  const handleResetConfirm = useCallback(() => {
+    setConfirmingReset(false)
+    applyReset()
+  }, [applyReset])
+
+  const handleResetCancel = useCallback(() => {
+    setConfirmingReset(false)
+  }, [])
 
   const handleConfirm = async () => {
     const el = containerRef.current
@@ -484,6 +513,26 @@ export function AvatarCropModal({ imageSrc, storageKey, initialState, onStateCha
           <p className="text-xs text-red-400 text-center">
             Could not process the image. Please try a different file.
           </p>
+        )}
+
+        {confirmingReset && (
+          <div className="flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2.5">
+            <span className="flex-1 text-sm text-amber-200">Reset to center?</span>
+            <button
+              type="button"
+              onClick={handleResetCancel}
+              className="h-7 px-3 rounded-md border border-white/10 text-white/60 hover:text-white text-xs transition-colors"
+            >
+              Keep
+            </button>
+            <button
+              type="button"
+              onClick={handleResetConfirm}
+              className="h-7 px-3 rounded-md bg-amber-500 text-black font-medium text-xs hover:bg-amber-400 transition-colors"
+            >
+              Reset
+            </button>
+          </div>
         )}
 
         <div className="flex gap-3">
