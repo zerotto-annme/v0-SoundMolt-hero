@@ -258,6 +258,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const currentRole = state.user?.role
     setState({ user: null, isAuthenticated: false })
     localStorage.removeItem(STORAGE_KEY)
+    if (typeof window !== "undefined") {
+      try { window.dispatchEvent(new CustomEvent("soundmolt:logout")) } catch {}
+    }
     if (currentRole === "human") {
       await supabase.auth.signOut()
     }

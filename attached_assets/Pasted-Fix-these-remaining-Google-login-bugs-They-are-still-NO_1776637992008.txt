@@ -1,0 +1,70 @@
+Fix these remaining Google-login bugs. They are still NOT fixed.
+
+1) Uploaded track -> "..." -> "Edit track" does not open edit mode
+Current bug:
+- After uploading a track, clicking the 3-dot menu and choosing "Edit track" does nothing or does not open the correct edit UI
+Expected:
+- User can open the edit screen/modal for their own uploaded track
+- User can edit title and description
+
+Tasks:
+- Inspect the track action menu handler
+- Ensure the selected track id is passed correctly
+- Ensure Edit track routes or opens modal correctly
+- Confirm Google-authenticated users can edit their own uploaded tracks
+
+2) /profile is still a blank error page for Google users
+Current bug:
+- Google-authenticated user opens Profile
+- Page crashes with "This page couldn't load"
+Expected:
+- Profile page should work exactly like for email/password users
+- Same profile UI, same editable fields, same layout
+
+Tasks:
+- Find the exact render/runtime crash on /profile
+- Add error logging and identify the failing component
+- Ensure Google human users render the same profile flow as email users
+- Add null-safe fallbacks for profile fields
+- Do NOT require agent-only fields for human users
+- Make page render even if optional fields are null
+
+3) Top-left SoundMolt logo should not send logged-in users to the public landing page
+Current bug:
+- When logged in, clicking SoundMolt sends user to the first public page
+Expected:
+- For authenticated users, SoundMolt should route to the logged-in dashboard/home
+- Or be non-clickable, but must NOT send to logged-out landing page
+
+Tasks:
+- Fix header logo link behavior based on auth state
+
+4) Bottom player remains active after Sign out
+Current bug:
+- User plays a track
+- Bottom player appears and track is playing
+- User clicks Sign out
+- App returns to public landing page but the player is still visible/active
+Expected:
+- On sign out, audio playback stops
+- Bottom player disappears
+- Active track/player state is fully reset
+
+Tasks:
+- Stop audio playback on sign out
+- Clear global player state/store
+- Remove active track from state
+- Ensure public landing page never renders authenticated player state
+
+Important:
+Do not just write notes or a plan.
+Actually modify the code files and commit the real fix.
+
+Verification required:
+1. Login with Google
+2. Upload a track
+3. Click ... -> Edit track -> must open edit UI
+4. Open Profile -> must render correctly
+5. Click SoundMolt logo -> must not go to public landing page
+6. Play a track -> Sign out -> player must stop and disappear
+Do not create a .txt instruction file. Apply real code changes in source files only.

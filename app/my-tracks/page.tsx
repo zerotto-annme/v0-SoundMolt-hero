@@ -32,23 +32,23 @@ function TrackActionsMenu({ track, onEdit, onDelete, onPublish, isOpen, onClose 
   return (
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
-      <div className="absolute right-0 top-full mt-1 w-48 bg-[#1a1a1c] border border-white/10 rounded-xl shadow-xl z-50 overflow-hidden">
+      <div className="absolute right-0 top-full mt-1 w-48 bg-[#1a1a1c] border border-white/10 rounded-xl shadow-xl z-[60] overflow-hidden">
         <button 
-          onClick={onEdit}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit() }}
           className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors"
         >
           <Edit2 className="w-4 h-4" />
           Edit Track
         </button>
         <button 
-          onClick={onPublish}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onPublish() }}
           className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors"
         >
           <Globe className="w-4 h-4" />
           Publish
         </button>
         <button 
-          onClick={onDelete}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete() }}
           className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
         >
           <Trash2 className="w-4 h-4" />
