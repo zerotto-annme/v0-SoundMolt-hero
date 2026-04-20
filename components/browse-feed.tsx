@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { Search, ChevronRight, TrendingUp, Zap, Sparkles, Bot, Music, Headphones, Radio, Activity, Plus, User, Loader2, Crown, Flame, Play, Heart, ListMusic } from "lucide-react"
+import { Search, ChevronLeft, ChevronRight, TrendingUp, Zap, Sparkles, Bot, Music, Headphones, Radio, Activity, Plus, User, Loader2, Crown, Flame, Play, Heart, ListMusic } from "lucide-react"
 import { AGENTS } from "@/lib/agents"
 import { BrowseTrackCard } from "./browse-track-card"
 import { ChartTrackCard } from "./chart-track-card"
@@ -570,6 +570,25 @@ function TopArtistsRow() {
   const scrollerRef = useRef<HTMLDivElement>(null)
   const [showLeftFade, setShowLeftFade] = useState(false)
   const [showRightFade, setShowRightFade] = useState(true)
+  const [isTouchDevice, setIsTouchDevice] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const mq = window.matchMedia("(hover: none), (pointer: coarse)")
+    const update = () => setIsTouchDevice(mq.matches)
+    update()
+    mq.addEventListener?.("change", update)
+    return () => mq.removeEventListener?.("change", update)
+  }, [])
+
+  const scrollByCard = useCallback((direction: 1 | -1) => {
+    const el = scrollerRef.current
+    if (!el) return
+    const firstCard = el.querySelector<HTMLElement>("[data-artist-card]")
+    const gap = 16 // matches gap-4
+    const cardWidth = firstCard ? firstCard.offsetWidth + gap : Math.round(el.clientWidth * 0.8)
+    el.scrollBy({ left: direction * cardWidth, behavior: "smooth" })
+  }, [])
 
   const updateFades = useCallback(() => {
     const el = scrollerRef.current
@@ -636,6 +655,7 @@ function TopArtistsRow() {
             return (
               <div
                 key={artist.id}
+                data-artist-card
                 className="group relative shrink-0 w-[200px] bg-card/40 hover:bg-card/60 border border-border/30 hover:border-glow-primary/40 rounded-2xl p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_8px_30px_-8px_rgba(236,72,153,0.35)]"
               >
                 <Link
@@ -729,6 +749,36 @@ function TopArtistsRow() {
             showRightFade ? "opacity-100" : "opacity-0"
           }`}
         />
+
+        {/* Scroll chevron buttons — hover-only on devices with a pointer */}
+        {!isTouchDevice && (
+          <>
+            <button
+              type="button"
+              aria-label="Scroll artists left"
+              onClick={() => scrollByCard(-1)}
+              className={`hidden md:flex items-center justify-center absolute left-2 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-background/80 backdrop-blur border border-border/50 text-foreground shadow-lg transition-all duration-200 hover:bg-background hover:scale-105 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-glow-primary/50 ${
+                showLeftFade
+                  ? "opacity-0 group-hover/scroller:opacity-100 pointer-events-none group-hover/scroller:pointer-events-auto"
+                  : "opacity-0 pointer-events-none"
+              }`}
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <button
+              type="button"
+              aria-label="Scroll artists right"
+              onClick={() => scrollByCard(1)}
+              className={`hidden md:flex items-center justify-center absolute right-2 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-background/80 backdrop-blur border border-border/50 text-foreground shadow-lg transition-all duration-200 hover:bg-background hover:scale-105 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-glow-primary/50 ${
+                showRightFade
+                  ? "opacity-0 group-hover/scroller:opacity-100 pointer-events-none group-hover/scroller:pointer-events-auto"
+                  : "opacity-0 pointer-events-none"
+              }`}
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </>
+        )}
       </div>
     </section>
   )
