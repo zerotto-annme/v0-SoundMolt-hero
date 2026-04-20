@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
-import { Bot, Plus, Loader2, FlaskConical, Music, Activity, Clock, Trash2, Power } from "lucide-react"
+import { Bot, Plus, Loader2, FlaskConical, Music, Activity, Clock, Trash2, Power, Play } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/components/auth-context"
@@ -27,6 +27,7 @@ export default function StudioAgentsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<Agent | null>(null)
   const [pendingActionId, setPendingActionId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   useEffect(() => { setIsHydrated(true) }, [])
 
@@ -67,6 +68,7 @@ export default function StudioAgentsPage() {
   const handleStop = useCallback(async (agent: Agent) => {
     if (!user?.id || pendingActionId) return
     setPendingActionId(agent.id)
+    setActionError(null)
     const previous = agents
     setAgents((prev) => prev.map((a) => (a.id === agent.id ? { ...a, status: "inactive" } : a)))
     const { error } = await supabase
@@ -77,6 +79,26 @@ export default function StudioAgentsPage() {
     if (error) {
       console.error("[studio-agents] stop error:", error.message)
       setAgents(previous)
+      setActionError(`Failed to stop agent: ${error.message}`)
+    }
+    setPendingActionId(null)
+  }, [user?.id, agents, pendingActionId])
+
+  const handleActivate = useCallback(async (agent: Agent) => {
+    if (!user?.id || pendingActionId) return
+    setPendingActionId(agent.id)
+    setActionError(null)
+    const previous = agents
+    setAgents((prev) => prev.map((a) => (a.id === agent.id ? { ...a, status: "active" } : a)))
+    const { error } = await supabase
+      .from("agents")
+      .update({ status: "active" })
+      .eq("id", agent.id)
+      .eq("user_id", user.id)
+    if (error) {
+      console.error("[studio-agents] activate error:", error.message)
+      setAgents(previous)
+      setActionError(`Failed to activate agent: ${error.message}`)
     }
     setPendingActionId(null)
   }, [user?.id, agents, pendingActionId])
@@ -84,21 +106,41 @@ export default function StudioAgentsPage() {
   const handleDeleteConfirmed = useCallback(async () => {
     if (!confirmDelete || !user?.id) return
     const target = confirmDelete
-    setPendingActionId(target.id)
-    const previous = agents
-    setAgents((prev) => prev.filter((a) => a.id !== target.id))
     setConfirmDelete(null)
-    const { error } = await supabase
+    setPendingActionId(target.id)
+    setActionError(null)
+
+    // Perform the real DB delete first; only update UI after we confirm success.
+    // We request `count` so we can detect cases where RLS or the WHERE clause
+    // matched zero rows (delete would otherwise "succeed" silently).
+    const { error, count } = await supabase
       .from("agents")
-      .delete()
+      .delete({ count: "exact" })
       .eq("id", target.id)
       .eq("user_id", user.id)
+
     if (error) {
       console.error("[studio-agents] delete error:", error.message)
-      setAgents(previous)
+      setActionError(`Failed to delete agent: ${error.message}`)
+      setPendingActionId(null)
+      return
     }
+
+    if (!count || count === 0) {
+      console.error("[studio-agents] delete affected 0 rows for agent", target.id)
+      setActionError(
+        "Could not delete agent — no rows were removed. " +
+        "This usually means a permission policy is blocking the delete."
+      )
+      // Force a refetch so the UI reflects true DB state.
+      await fetchAgents()
+      setPendingActionId(null)
+      return
+    }
+
+    setAgents((prev) => prev.filter((a) => a.id !== target.id))
     setPendingActionId(null)
-  }, [confirmDelete, user?.id, agents])
+  }, [confirmDelete, user?.id, fetchAgents])
 
   // Show loader only while hydration or auth state is still resolving.
   if (!isHydrated || !isAuthenticated) {
@@ -140,6 +182,19 @@ export default function StudioAgentsPage() {
             <Plus className="w-5 h-5 mr-2" />
             Add Agent
           </Button>
+
+          {actionError && (
+            <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300 flex items-start justify-between gap-3">
+              <span>{actionError}</span>
+              <button
+                type="button"
+                onClick={() => setActionError(null)}
+                className="text-red-300/70 hover:text-red-300 text-xs font-semibold"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
 
           {isFetching ? (
             <div className="flex items-center justify-center py-20">
@@ -228,6 +283,7 @@ export default function StudioAgentsPage() {
                         agent={agent}
                         isBusy={pendingActionId === agent.id}
                         onClick={() => router.push(`/studio-agents/${agent.id}`)}
+                        onActivate={() => handleActivate(agent)}
                         onDelete={() => setConfirmDelete(agent)}
                       />
                     ))}
@@ -323,12 +379,14 @@ function ActiveAgentCard({
   isBusy,
   onClick,
   onStop,
+  onActivate,
   onDelete,
 }: {
   agent: Agent
   isBusy: boolean
   onClick: () => void
   onStop?: () => void
+  onActivate?: () => void
   onDelete: () => void
 }) {
   const status = STATUS_CONFIG[agent.status] ?? STATUS_CONFIG.inactive
@@ -396,6 +454,17 @@ function ActiveAgentCard({
             >
               {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Power className="w-3 h-3" />}
               Stop
+            </button>
+          )}
+          {onActivate && (
+            <button
+              type="button"
+              onClick={(e) => stopAction(e, onActivate)}
+              disabled={isBusy}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors disabled:opacity-50"
+            >
+              {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+              Activate
             </button>
           )}
           <button

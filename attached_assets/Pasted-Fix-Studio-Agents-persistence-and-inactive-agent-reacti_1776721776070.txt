@@ -1,0 +1,136 @@
+Fix Studio Agents persistence and inactive-agent reactivation behavior.
+
+Problems to fix:
+1. Pending cards under "Waiting for agent to connect..." disappear after Delete,
+   but after page refresh they appear again.
+   This means Delete is currently UI-only or not fully persisted.
+2. Agents with status "Not Active" need a working button to activate them again.
+
+--------------------------------------------------
+1. FIX DELETE FOR PENDING CONNECTIONS
+--------------------------------------------------
+Current bug:
+- Clicking Delete removes the pending card from the UI
+- But after refresh, the card comes back
+
+Required fix:
+- Delete must remove the pending connection from the real backend/database
+- After refresh, deleted pending cards must NOT reappear
+
+Check and fix:
+- the pending connection delete handler
+- the DB delete/update query
+- the query that loads pending cards on page load
+
+Possible causes:
+- deleting only local state
+- soft-delete flag not respected in fetch query
+- wrong record/table being updated
+- stale pending records still included in SELECT
+
+Required result:
+- Delete removes the pending connection permanently
+- Refresh does not bring it back
+
+--------------------------------------------------
+2. ADD REACTIVATE BUTTON FOR NOT ACTIVE AGENTS
+--------------------------------------------------
+For every agent card with status:
+- "Not Active"
+
+Add a button:
+- "Activate"
+
+Language:
+- Button text must be in English:
+  "Activate"
+
+Behavior:
+- Clicking Activate should restore agent access
+- Agent status must change from:
+  "Not Active" (red)
+  to
+  "Active" (green)
+
+Persistence:
+- This must be a real backend action
+- After refresh, the agent must still remain Active
+
+--------------------------------------------------
+3. STATUS LOGIC
+--------------------------------------------------
+Required status behavior:
+
+Pending connection:
+- pending
+- can be deleted permanently
+
+Active agent:
+- Active (green)
+- can be stopped
+
+Stopped/inactive agent:
+- Not Active (red)
+- can be activated again
+
+--------------------------------------------------
+4. ACTIVE / INACTIVE CONTROLS
+--------------------------------------------------
+Update agent card actions:
+
+If agent is Active:
+- show Stop
+- show Delete
+
+If agent is Not Active:
+- show Activate
+- show Delete
+
+Do not show Stop for Not Active agents.
+Do not show Activate for Active agents.
+
+--------------------------------------------------
+5. DELETE CONFIRMATION MODAL
+--------------------------------------------------
+Keep delete confirmation modal working for:
+- pending connections
+- active agents
+- inactive agents
+
+Modal text:
+"Are you sure you want to delete this agent?"
+
+Buttons:
+- Yes (green)
+- No (red)
+
+Behavior:
+- Yes = real delete
+- No = cancel
+
+--------------------------------------------------
+6. DO NOT BREAK EXISTING UI
+--------------------------------------------------
+Do not break:
+- current Studio Agents layout
+- Add Agent flow
+- agent connect flow
+- existing status pills
+- active agent rendering
+
+--------------------------------------------------
+7. SUCCESS CRITERIA
+--------------------------------------------------
+Pending connections:
+- Delete removes them from backend
+- refresh does not bring them back
+
+Inactive agents:
+- show Activate button
+- clicking Activate changes status to Active
+- refresh keeps them Active
+
+Active agents:
+- still support Stop and Delete
+
+All actions must be real and persistent, not only visual.
