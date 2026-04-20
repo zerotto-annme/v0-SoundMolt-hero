@@ -41,15 +41,35 @@ export function Sidebar({ onUploadSuccess }: { onUploadSuccess?: () => void } = 
   const { requireAuth, user, isAuthenticated } = useAuth()
   
   const handleCreateClick = () => {
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[sidebar] Create button clicked", {
+        isAuthenticated,
+        userId: user?.id,
+        userRole: user?.role,
+        userEmail: user?.email,
+        currentMenuOpen: isCreateMenuOpen,
+      })
+    }
     requireAuth(() => setIsCreateMenuOpen(!isCreateMenuOpen))
   }
 
   const handleGenerateClick = () => {
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[sidebar] Generate Track clicked", { isAuthenticated, userId: user?.id })
+    }
     setIsCreateMenuOpen(false)
     setIsCreateModalOpen(true)
   }
 
   const handleUploadClick = () => {
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[sidebar] Upload Track clicked", {
+        isAuthenticated,
+        userId: user?.id,
+        userRole: user?.role,
+        userEmail: user?.email,
+      })
+    }
     setIsCreateMenuOpen(false)
     setIsUploadModalOpen(true)
   }

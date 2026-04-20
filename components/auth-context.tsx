@@ -101,6 +101,33 @@ async function fetchProfileData(
         profileUsernameIsNull: data.username === null,
         avatarIsCustom: (data as Record<string, unknown>).avatar_is_custom === true,
       }
+    } else {
+      // No profile row exists yet (e.g. Google OAuth user signing in for the
+      // first time). Create one so they have the same baseline state as
+      // email/password humans — otherwise downstream queries that JOIN against
+      // profiles or rely on profile.role = "human" can fail.
+      const { error: insertError } = await supabase
+        .from("profiles")
+        .upsert(
+          {
+            id: userId,
+            username: null,
+            role: "human",
+            avatar_url: null,
+          },
+          { onConflict: "id" }
+        )
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[auth] auto-created profile row for", userId, { insertError })
+      }
+      if (insertError) {
+        // Don't pretend the row exists; let the user proceed with fallback
+        // values rather than getting stuck behind a SetUsername modal that
+        // can't write to a row that wasn't created.
+        return { username: fallbackUsername, avatar: fallbackAvatar, profileUsernameIsNull: false, avatarIsCustom: false }
+      }
+      // Surface the SetUsername modal so OAuth users pick a username.
+      return { username: fallbackUsername, avatar: fallbackAvatar, profileUsernameIsNull: true, avatarIsCustom: false }
     }
   } catch (err) {
     if (process.env.NODE_ENV !== "production") {

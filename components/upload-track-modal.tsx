@@ -54,6 +54,12 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
   const coverInputRef = useRef<HTMLInputElement>(null)
   const { addCreatedTrack, playTrack } = usePlayer()
 
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[upload-track-modal] isOpen changed", { isOpen })
+    }
+  }, [isOpen])
+
   // Check if user has entered any data
   const hasUnsavedData = audioFile !== null || coverFile !== null || title.trim() !== "" || description.trim() !== "" || genre !== ""
 

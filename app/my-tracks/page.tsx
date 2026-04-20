@@ -402,7 +402,17 @@ export default function MyTracksPage() {
                 </button>
                 
                 <button
-                  onClick={() => setIsUploadModalOpen(true)}
+                  onClick={() => {
+                    if (process.env.NODE_ENV !== "production") {
+                      console.log("[my-tracks] Upload Track empty-state clicked", {
+                        isAuthenticated,
+                        userId: user?.id,
+                        userRole: user?.role,
+                        userEmail: user?.email,
+                      })
+                    }
+                    setIsUploadModalOpen(true)
+                  }}
                   className="w-full sm:w-auto flex items-center gap-3 px-6 py-4 rounded-xl bg-glow-secondary/10 border border-glow-secondary/30 hover:bg-glow-secondary/20 hover:border-glow-secondary/50 transition-all group"
                 >
                   <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-glow-secondary to-cyan-500 flex items-center justify-center group-hover:scale-110 transition-transform">
