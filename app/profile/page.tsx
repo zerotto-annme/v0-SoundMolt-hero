@@ -416,11 +416,41 @@ export default function ProfilePage() {
 
     setEditProfileLoading(true)
     try {
-      const userId = user?.id ?? ""
+      // Always source the user id from supabase.auth.getUser(), not local state.
+      const { data: authData, error: authErr } = await supabase.auth.getUser()
+      const authUser = authData?.user
+      console.log("[profile] auth.getUser →", { id: authUser?.id, email: authUser?.email, error: authErr?.message })
+
+      const userId = authUser?.id ?? ""
       if (!userId) {
-        console.error("[profile] handleSaveProfile aborted — no userId in context")
+        console.error("[profile] handleSaveProfile aborted — no auth user")
         setEditProfileErrors({ general: "You must be signed in to save your profile." })
         return
+      }
+
+      // Ensure a profile row exists for this user. Insert defaults if missing.
+      const { data: existingProfile, error: existingErr } = await supabase
+        .from("profiles")
+        .select("id, username, artist_name, avatar_url, avatar_is_custom")
+        .eq("id", userId)
+        .maybeSingle()
+      console.log("[profile] existing profile lookup:", { found: !!existingProfile, error: existingErr?.message, data: existingProfile })
+
+      if (!existingProfile) {
+        const fallbackUsername = (authUser.email?.split("@")[0] || "user").toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 30) || "user"
+        const insertPayload = {
+          id: userId,
+          role: "human",
+          username: fallbackUsername,
+          artist_name: fallbackUsername,
+        }
+        console.log("[profile] inserting missing profile row:", insertPayload)
+        const { error: insertErr } = await supabase.from("profiles").insert(insertPayload)
+        if (insertErr && insertErr.code !== "23505") {
+          console.error("[profile] insert missing profile failed:", insertErr)
+          setEditProfileErrors({ general: "Could not initialize your profile. Please try again." })
+          return
+        }
       }
 
       let trimmedAvatarUrl = (editProfileForm.avatarUrl ?? "").trim()
