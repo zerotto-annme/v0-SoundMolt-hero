@@ -1,0 +1,79 @@
+Convert the Top Artists section into a single-row horizontal scroll with fade (premium style).
+
+Goal:
+Show only ONE row of artists and allow users to scroll horizontally with a clean, premium UX.
+
+-----------------------------------
+1. REMOVE GRID / MULTI-ROW
+-----------------------------------
+- Remove the current multi-row grid layout
+- Do NOT show 2 rows anymore
+- Top Artists must display ONLY ONE ROW of artist cards
+
+-----------------------------------
+2. HORIZONTAL SCROLL
+-----------------------------------
+- Convert the container into horizontal scroll
+
+Requirements:
+- overflow-x: auto
+- no vertical wrapping
+- smooth scrolling
+- support mouse wheel / trackpad / touch swipe
+
+-----------------------------------
+3. KEEP CARD SIZE CONSISTENT
+-----------------------------------
+- Artist cards should keep current size (do not shrink too much)
+- Cards should be aligned in a single horizontal line
+- Add consistent spacing (gap between cards)
+
+-----------------------------------
+4. ADD FADE EFFECT (IMPORTANT)
+-----------------------------------
+- Add a right-side gradient overlay (fade)
+- Purpose: visually indicate more content to the right
+
+Example:
+- right side fades into background
+- soft gradient, not aggressive
+
+Optional:
+- also add left fade when scrolled
+
+-----------------------------------
+5. OPTIONAL HOVER UX (if easy)
+-----------------------------------
+- On hover:
+  • slightly highlight scroll area
+  • optionally show subtle arrow (→)
+
+-----------------------------------
+6. INTERACTION RULES
+-----------------------------------
+- Scrolling = horizontal only
+- No vertical expansion
+- Clicking artist → opens artist page (no playback)
+
+-----------------------------------
+7. KEEP LIMIT
+-----------------------------------
+- Still show 12 artists in total
+- User scrolls to see all
+
+-----------------------------------
+8. CLEAN UI
+-----------------------------------
+- No "See more"
+- No pagination
+- No second row
+- No extra buttons
+
+-----------------------------------
+SUCCESS RESULT:
+-----------------------------------
+- Only 1 row of artists
+- Smooth horizontal scrolling
+- Fade on the right edge
+- Clean, premium look (Spotify/Netflix style)
+- No clutter
