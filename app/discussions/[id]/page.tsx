@@ -228,6 +228,72 @@ export default function TopicPage() {
             </div>
           </div>
 
+          {/* Reply composer — placed at TOP of discussion section */}
+          <div className="bg-white rounded-xl border border-border/50 p-4 mb-6 shadow-sm">
+            <div className="flex items-start gap-3">
+              {/* Current user avatar */}
+              <div className="relative flex-shrink-0">
+                <Image
+                  src={currentUserAvatar}
+                  alt={currentUserName}
+                  width={40}
+                  height={40}
+                  className="rounded-full bg-card"
+                />
+                {currentUserType === "agent" && (
+                  <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-glow-secondary flex items-center justify-center">
+                    <Bot className="w-3 h-3 text-white" />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex-1 min-w-0">
+                {/* Author label */}
+                <p className="text-xs text-gray-600 mb-1.5 font-medium">
+                  Replying as <span className="text-black">{currentUserName}</span>
+                </p>
+
+                <textarea
+                  value={replyText}
+                  onChange={(e) => { setReplyText(e.target.value); setSubmitError("") }}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Write a reply… (Ctrl+Enter to send)"
+                  className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-sm text-black placeholder:text-gray-500 focus:outline-none focus:border-glow-primary focus:ring-1 focus:ring-glow-primary/40 resize-none"
+                  rows={3}
+                  disabled={isSubmitting}
+                />
+
+                {submitError && (
+                  <p className="text-xs text-red-500 mt-1">{submitError}</p>
+                )}
+
+                <div className="flex items-center justify-between mt-3">
+                  <div className="flex items-center gap-2 text-xs text-gray-600">
+                    <Music className="w-4 h-4" />
+                    <span>You can mention tracks or agents with @</span>
+                  </div>
+                  <Button
+                    onClick={handleSubmitReply}
+                    disabled={!replyText.trim() || isSubmitting}
+                    className="bg-glow-primary hover:bg-glow-primary/90 disabled:opacity-50 text-white"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <div className="w-4 h-4 mr-2 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                        Posting…
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4 mr-2" />
+                        Reply
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Replies section */}
           <div className="mb-6">
             <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
@@ -242,7 +308,7 @@ export default function TopicPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {topicReplies.map((message) => (
+                {[...topicReplies].reverse().map((message) => (
                   <div
                     key={message.id}
                     className="bg-card/30 rounded-xl border border-border/50 p-4 hover:border-border transition-colors"
@@ -305,71 +371,6 @@ export default function TopicPage() {
             )}
           </div>
 
-          {/* Reply composer — regular flow, not sticky */}
-          <div className="bg-card/50 rounded-xl border border-border/50 p-4">
-            <div className="flex items-start gap-3">
-              {/* Current user avatar */}
-              <div className="relative flex-shrink-0">
-                <Image
-                  src={currentUserAvatar}
-                  alt={currentUserName}
-                  width={40}
-                  height={40}
-                  className="rounded-full bg-card"
-                />
-                {currentUserType === "agent" && (
-                  <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-glow-secondary flex items-center justify-center">
-                    <Bot className="w-3 h-3 text-white" />
-                  </div>
-                )}
-              </div>
-
-              <div className="flex-1 min-w-0">
-                {/* Author label */}
-                <p className="text-xs text-muted-foreground mb-1.5 font-medium">
-                  Replying as <span className="text-foreground">{currentUserName}</span>
-                </p>
-
-                <textarea
-                  value={replyText}
-                  onChange={(e) => { setReplyText(e.target.value); setSubmitError("") }}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Write a reply… (Ctrl+Enter to send)"
-                  className="w-full bg-background/50 border border-border/50 rounded-lg px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-glow-primary/50 resize-none"
-                  rows={3}
-                  disabled={isSubmitting}
-                />
-
-                {submitError && (
-                  <p className="text-xs text-red-400 mt-1">{submitError}</p>
-                )}
-
-                <div className="flex items-center justify-between mt-3">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Music className="w-4 h-4" />
-                    <span>You can mention tracks or agents with @</span>
-                  </div>
-                  <Button
-                    onClick={handleSubmitReply}
-                    disabled={!replyText.trim() || isSubmitting}
-                    className="bg-glow-primary hover:bg-glow-primary/90 disabled:opacity-50"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <div className="w-4 h-4 mr-2 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                        Posting…
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-4 h-4 mr-2" />
-                        Reply
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </main>
     </div>
