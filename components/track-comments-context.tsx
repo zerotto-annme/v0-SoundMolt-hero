@@ -40,7 +40,7 @@ interface TrackCommentsState {
 interface TrackCommentsContextType {
   getComments: (trackId: string) => Comment[]
   getCommentCount: (trackId: string) => number
-  addComment: (trackId: string, author: CommentAuthor, text: string, trackTimestamp: number) => void
+  addComment: (trackId: string, author: CommentAuthor, text: string, trackTimestamp: number) => Comment
   addReply: (trackId: string, commentId: string, author: CommentAuthor, text: string) => void
   likeComment: (trackId: string, commentId: string, userId: string) => void
   likeReply: (trackId: string, commentId: string, replyId: string, userId: string) => void
@@ -167,6 +167,7 @@ export function TrackCommentsProvider({ children }: { children: ReactNode }) {
         [trackId]: [newComment, ...(prev.comments[trackId] || [])],
       },
     }))
+    return newComment
   }, [])
 
   const addReply = useCallback((trackId: string, commentId: string, author: CommentAuthor, text: string) => {

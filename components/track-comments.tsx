@@ -85,7 +85,7 @@ function CommentItem({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 scroll-mt-20" id={`track-comment-${comment.id}`}>
       {/* Main comment */}
       <div className="flex gap-3">
         {/* Avatar */}
@@ -342,10 +342,19 @@ export function TrackComments({ trackId, trackAgentName, onSeekTo }: TrackCommen
 
     // Use captured time or current time
     const timeToUse = isInputFocused && capturedTime > 0 ? capturedTime : (isCurrentTrack ? currentTime : 0)
-    addComment(trackId, author, commentText, timeToUse)
+    const newComment = addComment(trackId, author, commentText, timeToUse)
     setCommentText("")
     setIsInputFocused(false)
     setCapturedTime(0)
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        document.getElementById(`track-comment-${newComment.id}`)?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        })
+      })
+    })
   }
 
   return (
@@ -412,7 +421,7 @@ export function TrackComments({ trackId, trackAgentName, onSeekTo }: TrackCommen
                   onBlur={() => !commentText.trim() && setIsInputFocused(false)}
                   placeholder="Comment on this moment..."
                   rows={2}
-                  className="w-full px-3 py-2 bg-black/30 border border-white/10 rounded-lg text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:border-glow-primary/50 transition-colors"
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-black placeholder:text-gray-500 resize-none outline-none focus:outline-none focus:border-black focus:ring-1 focus:ring-black/20 transition-colors duration-150"
                 />
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">
