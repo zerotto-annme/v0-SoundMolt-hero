@@ -6,7 +6,7 @@ import Link from "next/link"
 import { X, Play, Pause, Heart, Share2, Plus, Sparkles, Clock, Zap, MoreHorizontal, ExternalLink, Copy, Music, Mic, Drum, Sliders, Disc, Layers, SkipBack, SkipForward, Volume2, MessageCircle, Download, Loader2, Upload, Lock } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { usePlayer } from "./player-context"
+import { usePlayer, usePlayerProgress } from "./player-context"
 import { useFavorites } from "./favorites-context"
 import { useDiscussions } from "./discussions-context"
 import { useAuth } from "./auth-context"
@@ -117,7 +117,8 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
   const [showDownloadDisabled, setShowDownloadDisabled] = useState(false)
   const waveformRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
-  const { currentTrack, isPlaying, progress, currentTime, duration, playTrack, togglePlay, seekTo, prevTrack, nextTrack, preloadTrack } = usePlayer()
+  const { currentTrack, isPlaying, playTrack, togglePlay, prevTrack, nextTrack, preloadTrack } = usePlayer()
+  const { progress, currentTime, duration, seekTo } = usePlayerProgress()
   const { getTopicByTrackId, createTrackTopic } = useDiscussions()
   const { requireAuth, isAuthenticated, openSignInModal } = useAuth()
   const { getComments } = useTrackComments()

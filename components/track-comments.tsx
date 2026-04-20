@@ -5,7 +5,7 @@ import Image from "next/image"
 import { Heart, MessageCircle, ChevronDown, Bot, User, Sparkles, Send, Clock } from "lucide-react"
 import { useTrackComments, type Comment, type Reply, type CommentAuthor } from "./track-comments-context"
 import { useAuth } from "./auth-context"
-import { usePlayer } from "./player-context"
+import { usePlayer, usePlayerProgress } from "./player-context"
 
 interface TrackCommentsProps {
   trackId: string
@@ -300,7 +300,8 @@ function formatTimeLabel(seconds: number): string {
 export function TrackComments({ trackId, trackAgentName, onSeekTo }: TrackCommentsProps) {
   const { getComments, getCommentCount, addComment, sortComments } = useTrackComments()
   const { user, isAuthenticated, openSignInModal } = useAuth()
-  const { currentTrack, currentTime, playTrack, seekTo: playerSeekTo, duration } = usePlayer()
+  const { currentTrack, playTrack } = usePlayer()
+  const { currentTime, duration, seekTo: playerSeekTo } = usePlayerProgress()
   const [sortBy, setSortBy] = useState<"newest" | "most_liked" | "by_time">("newest")
   const [commentText, setCommentText] = useState("")
   const [replyingTo, setReplyingTo] = useState<string | null>(null)

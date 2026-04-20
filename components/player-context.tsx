@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, useCallback, useRef, useEffect, type ReactNode } from "react"
+import { createContext, useContext, useState, useCallback, useMemo, useRef, useEffect, type ReactNode } from "react"
 import { supabase } from "@/lib/supabase"
 
 export interface Track {
@@ -49,9 +49,6 @@ function getAudioUrl(trackId: string): string {
 interface PlayerState {
   currentTrack: Track | null
   isPlaying: boolean
-  progress: number
-  currentTime: number
-  duration: number
   volume: number
   queue: Track[]
   queueIndex: number
@@ -59,12 +56,17 @@ interface PlayerState {
   createdTracks: Track[]
 }
 
+interface PlayerProgressState {
+  progress: number
+  currentTime: number
+  duration: number
+}
+
 interface PlayerContextType extends PlayerState {
   playTrack: (track: Track) => void
   togglePlay: () => void
   nextTrack: () => void
   prevTrack: () => void
-  seekTo: (percent: number) => void
   setVolume: (volume: number) => void
   addToQueue: (track: Track) => void
   addCreatedTrack: (track: Track) => void
@@ -73,12 +75,25 @@ interface PlayerContextType extends PlayerState {
   audioRef: React.RefObject<HTMLAudioElement | null>
 }
 
+interface PlayerProgressContextType extends PlayerProgressState {
+  seekTo: (percent: number) => void
+}
+
 const PlayerContext = createContext<PlayerContextType | null>(null)
+const PlayerProgressContext = createContext<PlayerProgressContextType | null>(null)
 
 export function usePlayer() {
   const context = useContext(PlayerContext)
   if (!context) {
     throw new Error("usePlayer must be used within a PlayerProvider")
+  }
+  return context
+}
+
+export function usePlayerProgress() {
+  const context = useContext(PlayerProgressContext)
+  if (!context) {
+    throw new Error("usePlayerProgress must be used within a PlayerProvider")
   }
   return context
 }
@@ -91,14 +106,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<PlayerState>({
     currentTrack: null,
     isPlaying: false,
-    progress: 0,
-    currentTime: 0,
-    duration: 0,
     volume: 80,
     queue: [],
     queueIndex: -1,
     isLoading: false,
     createdTracks: [],
+  })
+
+  const [progressState, setProgressState] = useState<PlayerProgressState>({
+    progress: 0,
+    currentTime: 0,
+    duration: 0,
   })
 
   // Initialize audio element
@@ -111,11 +129,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // Audio event listeners
       audioRef.current.addEventListener('loadedmetadata', () => {
         if (audioRef.current) {
-          setState(prev => ({ 
-            ...prev, 
-            duration: audioRef.current!.duration,
-            isLoading: false 
-          }))
+          const d = audioRef.current.duration
+          setProgressState(prev => ({ ...prev, duration: d }))
+          setState(prev => ({ ...prev, isLoading: false }))
         }
       })
 
@@ -123,11 +139,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (audioRef.current) {
           const currentTime = audioRef.current.currentTime
           const duration = audioRef.current.duration || 1
-          setState(prev => ({ 
-            ...prev, 
+          setProgressState({
             currentTime,
-            progress: (currentTime / duration) * 100 
-          }))
+            duration,
+            progress: (currentTime / duration) * 100,
+          })
         }
       })
 
@@ -141,16 +157,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
               audioRef.current.src = nextTrack.audioUrl || getAudioUrl(nextTrack.id)
               audioRef.current.play()
             }
+            setProgressState(p => ({ ...p, progress: 0, currentTime: 0 }))
             return {
               ...prev,
               currentTrack: nextTrack,
               queueIndex: newIndex,
-              progress: 0,
-              currentTime: 0,
               isPlaying: true,
             }
           }
-          return { ...prev, isPlaying: false, progress: 100 }
+          setProgressState(p => ({ ...p, progress: 100 }))
+          return { ...prev, isPlaying: false }
         })
       })
 
@@ -199,15 +215,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setState({
         currentTrack: null,
         isPlaying: false,
-        progress: 0,
-        currentTime: 0,
-        duration: 0,
         volume: 80,
         queue: [],
         queueIndex: -1,
         isLoading: false,
         createdTracks: [],
       })
+      setProgressState({ progress: 0, currentTime: 0, duration: 0 })
     }
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_OUT") resetPlayer()
@@ -248,8 +262,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           ...prev,
           currentTrack: { ...track, audioUrl },
           isPlaying: true,
-          progress: 0,
-          currentTime: 0,
           queueIndex: existingIndex,
           isLoading: true,
         }
@@ -260,13 +272,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         ...prev,
         currentTrack: { ...track, audioUrl },
         isPlaying: true,
-        progress: 0,
-        currentTime: 0,
         queue: newQueue,
         queueIndex: newQueue.length - 1,
         isLoading: true,
       }
     })
+    setProgressState({ progress: 0, currentTime: 0, duration: 0 })
 
     if (audioRef.current) {
       currentTrackIdRef.current = track.id
@@ -299,12 +310,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         audioRef.current.play().catch(console.error)
       }
       
+      setProgressState(p => ({ ...p, progress: 0, currentTime: 0 }))
       return {
         ...prev,
         currentTrack: nextTrackItem,
         queueIndex: newIndex,
-        progress: 0,
-        currentTime: 0,
         isPlaying: true,
         isLoading: true,
       }
@@ -316,14 +326,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // If more than 3 seconds into track, restart current track
       if (audioRef.current && audioRef.current.currentTime > 3) {
         audioRef.current.currentTime = 0
-        return { ...prev, progress: 0, currentTime: 0 }
+        setProgressState(p => ({ ...p, progress: 0, currentTime: 0 }))
+        return prev
       }
       
       if (prev.queue.length === 0 || prev.queueIndex <= 0) {
         if (audioRef.current) {
           audioRef.current.currentTime = 0
         }
-        return { ...prev, progress: 0, currentTime: 0 }
+        setProgressState(p => ({ ...p, progress: 0, currentTime: 0 }))
+        return prev
       }
       
       const newIndex = prev.queueIndex - 1
@@ -334,12 +346,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         audioRef.current.play().catch(console.error)
       }
       
+      setProgressState(p => ({ ...p, progress: 0, currentTime: 0 }))
       return {
         ...prev,
         currentTrack: prevTrackItem,
         queueIndex: newIndex,
-        progress: 0,
-        currentTime: 0,
         isPlaying: true,
         isLoading: true,
       }
@@ -350,10 +361,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (audioRef.current && audioRef.current.duration) {
       const newTime = (percent / 100) * audioRef.current.duration
       audioRef.current.currentTime = newTime
-      setState(prev => ({ 
-        ...prev, 
+      setProgressState(prev => ({
+        ...prev,
         progress: percent,
-        currentTime: newTime 
+        currentTime: newTime,
       }))
     }
   }, [])
@@ -412,24 +423,30 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const playerValue = useMemo<PlayerContextType>(() => ({
+    ...state,
+    playTrack,
+    togglePlay,
+    nextTrack,
+    prevTrack,
+    setVolume,
+    addToQueue,
+    addCreatedTrack,
+    removeCreatedTrack,
+    preloadTrack,
+    audioRef,
+  }), [state, playTrack, togglePlay, nextTrack, prevTrack, setVolume, addToQueue, addCreatedTrack, removeCreatedTrack, preloadTrack])
+
+  const progressValue = useMemo<PlayerProgressContextType>(() => ({
+    ...progressState,
+    seekTo,
+  }), [progressState, seekTo])
+
   return (
-    <PlayerContext.Provider
-      value={{
-        ...state,
-        playTrack,
-        togglePlay,
-        nextTrack,
-        prevTrack,
-        seekTo,
-        setVolume,
-        addToQueue,
-        addCreatedTrack,
-        removeCreatedTrack,
-        preloadTrack,
-        audioRef,
-      }}
-    >
-      {children}
+    <PlayerContext.Provider value={playerValue}>
+      <PlayerProgressContext.Provider value={progressValue}>
+        {children}
+      </PlayerProgressContext.Provider>
     </PlayerContext.Provider>
   )
 }

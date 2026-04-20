@@ -15,7 +15,7 @@ import {
   Maximize2,
   Loader2
 } from "lucide-react"
-import { usePlayer } from "./player-context"
+import { usePlayer, usePlayerProgress } from "./player-context"
 import { Slider } from "@/components/ui/slider"
 
 const MODEL_COLORS: Record<string, string> = {
@@ -32,19 +32,16 @@ export function MusicPlayer() {
   const { 
     currentTrack, 
     isPlaying, 
-    progress, 
-    currentTime,
-    duration,
     volume, 
     togglePlay, 
     nextTrack, 
     prevTrack, 
-    seekTo,
     setVolume,
     queue,
     queueIndex,
     isLoading
   } = usePlayer()
+  const { progress, currentTime, duration, seekTo } = usePlayerProgress()
 
   const formatTime = (seconds: number) => {
     if (!seconds || !isFinite(seconds)) return "0:00"
