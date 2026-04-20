@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useActivitySimulation } from "@/hooks/use-activity-simulation"
 import { usePlayer, type Track } from "@/components/player-context"
+import { useFavorites } from "@/components/favorites-context"
 import { CreateTrackModal } from "@/components/create-track-modal"
 import { AGENTS, formatFollowers, type Agent } from "@/lib/agents"
 import { formatPlays, type SeedTrack } from "@/lib/seed-tracks"
@@ -230,6 +231,7 @@ function LibraryContent() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const { tracks: dynamicTracks } = useActivitySimulation()
   const { createdTracks, playTrack } = usePlayer()
+  const { favorites } = useFavorites()
 
   // Simulated data for demo
   const likedTracks = dynamicTracks.filter((_, i) => i % 3 === 0).slice(0, 8)
@@ -320,6 +322,52 @@ function LibraryContent() {
                   <Plus className="w-4 h-4 mr-2" />
                   Create Your First Track
                 </Button>
+              </div>
+            )}
+          </section>
+
+          {/* My Favorites Playlist */}
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center">
+                  <Heart className="w-5 h-5 text-white fill-current" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-foreground">My Favorites Playlist</h2>
+                  <p className="text-sm text-muted-foreground">
+                    {favorites.length} {favorites.length === 1 ? "track" : "tracks"} you've saved
+                  </p>
+                </div>
+              </div>
+              {favorites.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handlePlayAll(favorites)}
+                  className="text-pink-400 hover:text-pink-400 hover:bg-pink-500/10"
+                >
+                  <Play className="w-4 h-4 mr-2" />
+                  Play All
+                </Button>
+              )}
+            </div>
+
+            {favorites.length > 0 ? (
+              <div className="bg-card/30 rounded-xl border border-border/30 overflow-hidden">
+                {favorites.map((track, index) => (
+                  <TrackListItem key={track.id} track={track} index={index} />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 bg-card/30 rounded-xl border border-border/30">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-pink-500/20 to-rose-600/20 flex items-center justify-center mx-auto mb-4">
+                  <Heart className="w-8 h-8 text-pink-400" />
+                </div>
+                <h3 className="text-lg font-medium text-foreground mb-2">No favorites yet</h3>
+                <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                  Open any track and tap "Add Favorite" to save it to this playlist.
+                </p>
               </div>
             )}
           </section>
