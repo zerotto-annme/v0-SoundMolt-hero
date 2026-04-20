@@ -482,13 +482,13 @@ function DeleteTrackConfirmModal({
         <div className="flex items-center justify-end gap-3">
           <button
             onClick={onCancel}
-            className="px-5 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors text-sm font-medium"
+            className="px-5 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors text-sm font-medium"
           >
             No
           </button>
           <button
             onClick={onConfirm}
-            className="px-5 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors text-sm font-medium"
+            className="px-5 py-2 rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors text-sm font-medium"
           >
             Yes
           </button>
