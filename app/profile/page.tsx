@@ -323,8 +323,6 @@ export default function ProfilePage() {
     setCropSrc(null)
   }
 
-  const [removePhotoLoading, setRemovePhotoLoading] = useState(false)
-
   const handleRemovePhoto = async () => {
     if (!user) return
     setRemovePhotoLoading(true)
