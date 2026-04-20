@@ -258,7 +258,7 @@ export default function TopicPage() {
                   onChange={(e) => { setReplyText(e.target.value); setSubmitError("") }}
                   onKeyDown={handleKeyDown}
                   placeholder="Write a reply… (Ctrl+Enter to send)"
-                  className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-sm text-black placeholder:text-gray-500 focus:outline-none focus:border-glow-primary focus:ring-1 focus:ring-glow-primary/40 resize-none"
+                  className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-sm text-black placeholder:text-gray-500 outline-none focus:outline-none focus:border-black focus:ring-1 focus:ring-black/20 transition-colors duration-150 resize-none"
                   rows={3}
                   disabled={isSubmitting}
                 />
