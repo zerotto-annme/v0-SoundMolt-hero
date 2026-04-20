@@ -7,6 +7,7 @@ import { X, Play, Pause, Heart, Share2, Plus, Sparkles, Clock, Zap, MoreHorizont
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { usePlayer } from "./player-context"
+import { useFavorites } from "./favorites-context"
 import { useDiscussions } from "./discussions-context"
 import { useAuth } from "./auth-context"
 import { TrackComments } from "./track-comments"
@@ -252,6 +253,12 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
 
   const handleLike = () => {
     requireAuth(() => setIsLiked(!isLiked))
+  }
+
+  const { isFavorite, toggleFavorite } = useFavorites()
+  const isTrackFavorite = isFavorite(track.id)
+  const handleToggleFavorite = () => {
+    requireAuth(() => toggleFavorite(track))
   }
 
   const handleCopyLink = () => {
@@ -602,9 +609,16 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
               <span className="text-xs font-medium">{Math.floor(Math.random() * 50000)}</span>
             </button>
 
-            <button className="h-10 px-3 rounded-full border border-border hover:border-foreground/30 flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors">
-              <Plus className="w-4 h-4" />
-              <span className="text-xs font-medium">Save</span>
+            <button
+              onClick={handleToggleFavorite}
+              className={`h-10 px-3 rounded-full border flex items-center gap-1.5 transition-all duration-300 ${
+                isTrackFavorite
+                  ? "bg-pink-500/20 border-pink-500 text-pink-400"
+                  : "border-border hover:border-foreground/30 text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Heart className={`w-4 h-4 ${isTrackFavorite ? "fill-current" : ""}`} />
+              <span className="text-xs font-medium">{isTrackFavorite ? "Favorited" : "Add Favorite"}</span>
             </button>
 
             <button 
