@@ -76,6 +76,39 @@ export function useAuth() {
 
 // Fetch username and avatar_url from public.profiles, falling back to user_metadata values.
 // profileUsernameIsNull is true when the row exists but username is explicitly NULL in the DB.
+// Sanitize a raw fallback (email prefix, full_name, etc.) into a value that
+// satisfies the username DB constraints: ^[a-zA-Z0-9_]{3,30}$.
+function sanitizeUsername(raw: string): string {
+  const cleaned = raw.toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "")
+  let candidate = cleaned.slice(0, 30)
+  if (candidate.length < 3) candidate = (candidate + "_user").slice(0, 30)
+  return candidate
+}
+
+// Try to claim a username, appending a numeric suffix if it collides.
+async function claimUsername(userId: string, base: string): Promise<string | null> {
+  const seed = sanitizeUsername(base)
+  const attempts = [seed, ...Array.from({ length: 5 }, (_, i) => {
+    const suffix = String(Math.floor(Math.random() * 9000) + 1000)
+    return (seed.slice(0, 30 - suffix.length) + suffix)
+  })]
+  for (const candidate of attempts) {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ username: candidate })
+      .eq("id", userId)
+    if (!error) return candidate
+    // Unique violation (23505) → try next candidate; any other error → bail.
+    if (!String(error.code || "").includes("23505") && !/duplicate key|unique/i.test(error.message || "")) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[auth] claimUsername non-collision error", { candidate, error })
+      }
+      return null
+    }
+  }
+  return null
+}
+
 async function fetchProfileData(
   userId: string,
   fallbackUsername: string,
@@ -95,39 +128,88 @@ async function fetchProfileData(
         console.warn("[auth] fetchProfileData failed for user", userId, error)
       }
     } else if (data) {
+      // Heal any NULL required fields on existing rows (legacy rows from before
+      // auto-defaulting, or rows created by other paths that didn't set
+      // artist_name). Track each write outcome so we know whether to keep
+      // surfacing the SetUsername modal.
+      let claimedUsername: string | null = null
+      if (data.username == null) {
+        claimedUsername = await claimUsername(userId, fallbackUsername)
+        if (process.env.NODE_ENV !== "production") {
+          console.log("[auth] heal username for", userId, { claimedUsername })
+        }
+      }
+      const effectiveUsername = data.username || claimedUsername || fallbackUsername
+      const otherPatch: Record<string, unknown> = {}
+      if ((data as Record<string, unknown>).artist_name == null) {
+        otherPatch.artist_name = effectiveUsername
+      }
+      if (data.avatar_url == null && fallbackAvatar) otherPatch.avatar_url = fallbackAvatar
+      if (Object.keys(otherPatch).length > 0) {
+        const { error: patchError } = await supabase
+          .from("profiles")
+          .update(otherPatch)
+          .eq("id", userId)
+        if (process.env.NODE_ENV !== "production") {
+          console.log("[auth] healed NULL profile fields for", userId, { otherPatch, patchError })
+        }
+      }
       return {
-        username: data.username || fallbackUsername,
-        avatar: data.avatar_url || fallbackAvatar,
-        profileUsernameIsNull: data.username === null,
+        username: data.username || claimedUsername || fallbackUsername,
+        avatar: data.avatar_url || (otherPatch.avatar_url as string | undefined) || fallbackAvatar,
+        // Only surface SetUsername if username was originally null AND we
+        // failed to claim a default — never lock out users whose default was
+        // already persisted.
+        profileUsernameIsNull: data.username === null && claimedUsername == null,
         avatarIsCustom: (data as Record<string, unknown>).avatar_is_custom === true,
       }
     } else {
       // No profile row exists yet (e.g. Google OAuth user signing in for the
-      // first time). Create one so they have the same baseline state as
-      // email/password humans — otherwise downstream queries that JOIN against
-      // profiles or rely on profile.role = "human" can fail.
-      const { error: insertError } = await supabase
+      // first time). Create one with sensible defaults so they have the same
+      // baseline state as email/password humans.
+      const sanitized = sanitizeUsername(fallbackUsername)
+      let savedUsername: string | null = sanitized
+      let { error: insertError } = await supabase
         .from("profiles")
-        .upsert(
-          {
+        .insert({
+          id: userId,
+          username: sanitized,
+          artist_name: sanitized,
+          role: "human",
+          avatar_url: fallbackAvatar || null,
+        })
+      if (insertError && (String(insertError.code || "").includes("23505") || /duplicate key|unique/i.test(insertError.message || ""))) {
+        // Username collision: insert with NULL username, then try to claim a suffixed one.
+        const { error: insertNullError } = await supabase
+          .from("profiles")
+          .insert({
             id: userId,
             username: null,
+            artist_name: sanitized,
             role: "human",
-            avatar_url: null,
-          },
-          { onConflict: "id" }
-        )
+            avatar_url: fallbackAvatar || null,
+          })
+        if (insertNullError) {
+          insertError = insertNullError
+          savedUsername = null
+        } else {
+          insertError = null
+          savedUsername = await claimUsername(userId, fallbackUsername)
+        }
+      }
       if (process.env.NODE_ENV !== "production") {
-        console.log("[auth] auto-created profile row for", userId, { insertError })
+        console.log("[auth] auto-created profile row for", userId, { insertError, savedUsername })
       }
       if (insertError) {
-        // Don't pretend the row exists; let the user proceed with fallback
-        // values rather than getting stuck behind a SetUsername modal that
-        // can't write to a row that wasn't created.
         return { username: fallbackUsername, avatar: fallbackAvatar, profileUsernameIsNull: false, avatarIsCustom: false }
       }
-      // Surface the SetUsername modal so OAuth users pick a username.
-      return { username: fallbackUsername, avatar: fallbackAvatar, profileUsernameIsNull: true, avatarIsCustom: false }
+      // Surface SetUsername modal only if no real username was saved.
+      return {
+        username: savedUsername || fallbackUsername,
+        avatar: fallbackAvatar,
+        profileUsernameIsNull: savedUsername == null,
+        avatarIsCustom: false,
+      }
     }
   } catch (err) {
     if (process.env.NODE_ENV !== "production") {
