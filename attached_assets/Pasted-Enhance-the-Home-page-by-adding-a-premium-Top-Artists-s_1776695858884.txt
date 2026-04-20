@@ -1,0 +1,124 @@
+Enhance the Home page by adding a premium "Top Artists" section below "Top Charts" with a modern Spotify-style card layout.
+
+GOAL:
+Create a high-end, visually rich artist ranking block that complements Top Charts and elevates the platform UX.
+
+-----------------------------------
+1. PLACEMENT
+-----------------------------------
+- Place "Top Artists" directly under "Top Charts"
+- Keep spacing consistent with existing sections
+
+-----------------------------------
+2. SECTION HEADER
+-----------------------------------
+- Title: "Top Artists"
+- Right side controls:
+  • "Play All" (plays top tracks from these artists)
+  • "Next" (skips to next artist/top track)
+
+-----------------------------------
+3. LAYOUT STYLE (IMPORTANT)
+-----------------------------------
+Use CARD-BASED layout instead of table/list:
+
+- Grid layout (responsive):
+  • Desktop: 4–6 cards per row
+  • Tablet: 2–3
+  • Mobile: 1–2
+
+Each artist = a premium card
+
+-----------------------------------
+4. ARTIST CARD DESIGN
+-----------------------------------
+Each card must include:
+
+- Large avatar (rounded or circle)
+- Rank badge (#1, #2, #3...) in top-left corner
+- Artist name (bold)
+- Subtitle (e.g. "AI Producer", "Beat Maker", etc.)
+
+- Metrics (same philosophy as Top Charts):
+  • Plays (e.g. 4.5M)
+  • Likes
+  • Track count OR popularity score
+
+- Optional:
+  • small AI badge if applicable
+  • trending indicator (↑ / 🔥)
+
+-----------------------------------
+5. INTERACTIONS
+-----------------------------------
+- Clicking a card → opens Artist Profile page
+- Hover state:
+  • slight scale (1.03)
+  • glow or soft highlight
+  • show subtle overlay
+
+- Optional hover overlay:
+  • Play button (centered)
+  • Clicking it starts top track of that artist
+
+-----------------------------------
+6. PLAYBACK BEHAVIOR
+-----------------------------------
+- "Play All":
+  • plays top tracks from listed artists (queue-based)
+
+- "Next":
+  • skips to next artist’s top track
+
+-----------------------------------
+7. VISUAL STYLE
+-----------------------------------
+- Keep dark premium theme (same as platform)
+- Use gradients subtly (like existing buttons)
+- Maintain spacing and typography consistency
+
+- Cards should feel:
+  • clean
+  • modern
+  • slightly "floating"
+
+-----------------------------------
+8. DATA LOGIC
+-----------------------------------
+- Use existing artist data if available
+- Otherwise create mock data structure:
+  {
+    id,
+    name,
+    avatar,
+    plays,
+    likes,
+    trackCount,
+    isAI
+  }
+
+-----------------------------------
+9. PERFORMANCE / UX
+-----------------------------------
+- Lazy load images if needed
+- Smooth hover transitions (200–300ms)
+- No layout jumps
+
+-----------------------------------
+10. DO NOT BREAK
+-----------------------------------
+- Do NOT modify Top Charts
+- Do NOT change existing Home layout structure
+- Only ADD Top Artists cleanly below
+
+-----------------------------------
+SUCCESS RESULT:
+-----------------------------------
+- Home shows:
+  Top Charts
+  ↓
+  Top Artists (premium card grid)
+
+- Artists are clickable
+- Looks like a real music platform (not a dev UI)
+- Feels like Spotify / Apple Music level UX

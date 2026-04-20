@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { Search, ChevronRight, TrendingUp, Zap, Sparkles, Bot, Music, Headphones, Radio, Activity, Plus, User, Loader2 } from "lucide-react"
+import { Search, ChevronRight, TrendingUp, Zap, Sparkles, Bot, Music, Headphones, Radio, Activity, Plus, User, Loader2, Crown, Flame, Play, SkipForward, Heart, ListMusic } from "lucide-react"
+import { AGENTS, getTopTracksByAgent } from "@/lib/agents"
 import { BrowseTrackCard } from "./browse-track-card"
 import { ChartTrackCard } from "./chart-track-card"
 import { Sidebar } from "./sidebar"
@@ -50,7 +51,7 @@ export function BrowseFeed() {
   // mounted prevents seed/demo track sections from rendering during SSR,
   // avoiding hydration mismatches caused by Math.random() in seed-tracks.ts
   const [mounted, setMounted] = useState(false)
-  const { createdTracks } = usePlayer()
+  const { createdTracks, playTrack, currentTrack } = usePlayer()
   const { user, isAuthenticated } = useAuth()
   
   // Dynamic activity simulation (seed/demo data for charts and trending)
@@ -436,6 +437,173 @@ export function BrowseFeed() {
                   </div>
                 </div>
               </section>
+
+              {/* Top Artists */}
+              {mounted && (() => {
+                const topArtists = AGENTS.slice(0, 12)
+
+                const playArtistTop = (artistName: string) => {
+                  const tracks = getTopTracksByAgent(artistName, 1)
+                  if (tracks.length > 0) playTrack(tracks[0] as unknown as Track)
+                }
+
+                const handlePlayAllArtists = () => {
+                  if (topArtists.length === 0) return
+                  playArtistTop(topArtists[0].name)
+                }
+
+                const handleNextArtist = () => {
+                  if (topArtists.length === 0) return
+                  const currentIdx = currentTrack
+                    ? topArtists.findIndex((a) => a.name === currentTrack.artist)
+                    : -1
+                  const nextIdx = currentIdx === -1 ? 0 : (currentIdx + 1) % topArtists.length
+                  playArtistTop(topArtists[nextIdx].name)
+                }
+
+                return (
+                  <section>
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+                      <div className="flex items-center gap-3">
+                        <Crown className="w-5 h-5 text-amber-400" />
+                        <h2 className="text-xl font-bold text-foreground">Top Artists</h2>
+                        <span className="px-2 py-0.5 text-xs font-mono rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                          {topArtists.length} ranked
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={handlePlayAllArtists}
+                          disabled={topArtists.length === 0}
+                          className="bg-glow-primary hover:bg-glow-primary/90 text-white rounded-full h-9 px-4 disabled:opacity-40"
+                        >
+                          <Play className="w-4 h-4 mr-1.5 fill-current" />
+                          Play All
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          onClick={handleNextArtist}
+                          disabled={topArtists.length === 0}
+                          className="rounded-full h-9 px-4 text-foreground hover:bg-white/5 border border-border/40 disabled:opacity-40"
+                        >
+                          <SkipForward className="w-4 h-4 mr-1.5" />
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+                      {topArtists.map((artist, idx) => {
+                        const rank = idx + 1
+                        const isTrending = rank <= 3
+                        const rankColor =
+                          rank === 1
+                            ? "from-amber-400 to-yellow-600 text-black"
+                            : rank === 2
+                            ? "from-slate-300 to-slate-500 text-black"
+                            : rank === 3
+                            ? "from-orange-400 to-amber-700 text-black"
+                            : "bg-black/60 text-white"
+
+                        return (
+                          <div
+                            key={artist.id}
+                            className="group relative bg-card/40 hover:bg-card/60 border border-border/30 hover:border-glow-primary/40 rounded-2xl p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_8px_30px_-8px_rgba(236,72,153,0.35)]"
+                          >
+                            <Link
+                              href={`/agent/${encodeURIComponent(artist.name)}`}
+                              className="block"
+                            >
+                              {/* Rank badge */}
+                              <div
+                                className={`absolute top-3 left-3 z-10 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shadow-lg ${
+                                  rank <= 3
+                                    ? `bg-gradient-to-br ${rankColor}`
+                                    : rankColor
+                                }`}
+                              >
+                                #{rank}
+                              </div>
+
+                              {/* Trending indicator */}
+                              {isTrending && (
+                                <div className="absolute top-3 right-3 z-10 px-1.5 h-5 rounded-full bg-red-500/15 border border-red-500/30 flex items-center gap-0.5">
+                                  <Flame className="w-3 h-3 text-red-400" />
+                                </div>
+                              )}
+
+                              {/* Avatar */}
+                              <div className="relative aspect-square w-full rounded-full overflow-hidden mb-3 mx-auto bg-gradient-to-br from-glow-primary/20 to-glow-secondary/20">
+                                <Image
+                                  src={artist.avatarUrl}
+                                  alt={artist.name}
+                                  fill
+                                  sizes="(max-width: 768px) 50vw, 200px"
+                                  className="object-cover transition-transform duration-300 group-hover:scale-105"
+                                />
+                                {/* Hover overlay with play button */}
+                                <button
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    playArtistTop(artist.name)
+                                  }}
+                                  className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-200"
+                                  aria-label={`Play top track by ${artist.name}`}
+                                >
+                                  <div className="w-12 h-12 rounded-full bg-glow-primary flex items-center justify-center shadow-2xl scale-90 group-hover:scale-100 transition-transform">
+                                    <Play className="w-5 h-5 text-white fill-current ml-0.5" />
+                                  </div>
+                                </button>
+                              </div>
+
+                              {/* Name + verified */}
+                              <div className="text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <h3 className="text-sm font-bold text-foreground truncate">
+                                    {artist.name}
+                                  </h3>
+                                  {artist.verified && (
+                                    <Sparkles className="w-3.5 h-3.5 text-glow-primary shrink-0" />
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground mb-3 truncate">
+                                  {artist.label}
+                                  <span className="ml-1.5 px-1.5 py-0.5 rounded bg-glow-primary/10 text-glow-primary text-[10px] font-mono">
+                                    AI
+                                  </span>
+                                </p>
+
+                                {/* Metrics */}
+                                <div className="flex items-center justify-around pt-3 border-t border-border/30 text-[11px]">
+                                  <div className="flex flex-col items-center gap-0.5">
+                                    <Play className="w-3 h-3 text-muted-foreground" />
+                                    <span className="font-semibold text-foreground">
+                                      {formatPlays(artist.totalPlays)}
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-col items-center gap-0.5">
+                                    <Heart className="w-3 h-3 text-pink-400" />
+                                    <span className="font-semibold text-foreground">
+                                      {formatPlays(artist.totalLikes)}
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-col items-center gap-0.5">
+                                    <ListMusic className="w-3 h-3 text-cyan-400" />
+                                    <span className="font-semibold text-foreground">
+                                      {artist.totalTracks}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </Link>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </section>
+                )
+              })()}
 
               {/* New Music Releases — driven by Supabase, newest first */}
               <section>
