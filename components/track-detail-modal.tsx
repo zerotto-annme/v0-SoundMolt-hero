@@ -121,9 +121,11 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
   const { getTopicByTrackId, createTrackTopic } = useDiscussions()
   const { requireAuth, isAuthenticated, openSignInModal } = useAuth()
   const { getComments } = useTrackComments()
-  
+  const { isFavorite, toggleFavorite } = useFavorites()
+
   // Get comments for this track
   const trackComments = getComments(track.id)
+  const isTrackFavorite = isFavorite(track.id)
 
   // Preload track audio when modal opens
   useEffect(() => {
@@ -255,8 +257,6 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
     requireAuth(() => setIsLiked(!isLiked))
   }
 
-  const { isFavorite, toggleFavorite } = useFavorites()
-  const isTrackFavorite = isFavorite(track.id)
   const handleToggleFavorite = () => {
     requireAuth(() => toggleFavorite(track))
   }
