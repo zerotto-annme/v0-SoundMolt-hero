@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { memo, useState } from "react"
 import Image from "next/image"
 import { Play, Pause, Sparkles, TrendingUp, TrendingDown, Minus, Star, Music, Mic, Drum, Sliders, Disc, Layers, Download, Heart } from "lucide-react"
 import { usePlayer } from "./player-context"
@@ -33,7 +33,7 @@ interface ChartTrackCardProps {
   rank: number
 }
 
-export function ChartTrackCard({ track, rank }: ChartTrackCardProps) {
+function ChartTrackCardImpl({ track, rank }: ChartTrackCardProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const { currentTrack, isPlaying, playTrack, togglePlay } = usePlayer()
@@ -199,3 +199,5 @@ export function ChartTrackCard({ track, rank }: ChartTrackCardProps) {
     </>
   )
 }
+
+export const ChartTrackCard = memo(ChartTrackCardImpl)

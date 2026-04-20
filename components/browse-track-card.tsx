@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { memo, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { Play, Pause, Sparkles, Info, Music, Mic, Drum, Sliders, Disc, Layers, Upload } from "lucide-react"
@@ -65,7 +65,7 @@ const MODEL_COLORS: Record<string, string> = {
   stability: "from-violet-500 to-violet-700",
 }
 
-export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrackCardProps) {
+function BrowseTrackCardImpl({ track, variant = "medium", rank }: BrowseTrackCardProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isButtonPressed, setIsButtonPressed] = useState(false)
@@ -360,3 +360,5 @@ export function BrowseTrackCard({ track, variant = "medium", rank }: BrowseTrack
     </>
   )
 }
+
+export const BrowseTrackCard = memo(BrowseTrackCardImpl)
