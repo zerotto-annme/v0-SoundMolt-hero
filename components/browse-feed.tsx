@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { Search, ChevronRight, TrendingUp, Zap, Sparkles, Bot, Music, Headphones, Radio, Activity, Plus, User, Loader2, Crown, Flame, Play, Heart, ListMusic } from "lucide-react"
@@ -439,119 +439,7 @@ export function BrowseFeed() {
               </section>
 
               {/* Top Artists */}
-              {mounted && (() => {
-                const topArtists = AGENTS.slice(0, 12)
-
-                return (
-                  <section>
-                    <div className="flex items-center gap-3 mb-4">
-                      <Crown className="w-5 h-5 text-amber-400" />
-                      <h2 className="text-xl font-bold text-foreground">Top Artists</h2>
-                      <span className="px-2 py-0.5 text-xs font-mono rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                        {topArtists.length} ranked
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-                      {topArtists.map((artist, idx) => {
-                        const rank = idx + 1
-                        const isTrending = rank <= 3
-                        const rankColor =
-                          rank === 1
-                            ? "from-amber-400 to-yellow-600 text-black"
-                            : rank === 2
-                            ? "from-slate-300 to-slate-500 text-black"
-                            : rank === 3
-                            ? "from-orange-400 to-amber-700 text-black"
-                            : "bg-black/60 text-white"
-
-                        return (
-                          <div
-                            key={artist.id}
-                            className="group relative bg-card/40 hover:bg-card/60 border border-border/30 hover:border-glow-primary/40 rounded-2xl p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_8px_30px_-8px_rgba(236,72,153,0.35)]"
-                          >
-                            <Link
-                              href={`/agent/${encodeURIComponent(artist.name)}`}
-                              className="block"
-                            >
-                              {/* Rank badge */}
-                              <div
-                                className={`absolute top-3 left-3 z-10 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shadow-lg ${
-                                  rank <= 3
-                                    ? `bg-gradient-to-br ${rankColor}`
-                                    : rankColor
-                                }`}
-                              >
-                                #{rank}
-                              </div>
-
-                              {/* Trending indicator */}
-                              {isTrending && (
-                                <div className="absolute top-3 right-3 z-10 px-1.5 h-5 rounded-full bg-red-500/15 border border-red-500/30 flex items-center gap-0.5">
-                                  <Flame className="w-3 h-3 text-red-400" />
-                                </div>
-                              )}
-
-                              {/* Avatar */}
-                              <div className="relative aspect-square w-full rounded-full overflow-hidden mb-3 mx-auto bg-gradient-to-br from-glow-primary/20 to-glow-secondary/20">
-                                <Image
-                                  src={artist.avatarUrl}
-                                  alt={artist.name}
-                                  fill
-                                  sizes="(max-width: 768px) 50vw, 200px"
-                                  className="object-cover transition-transform duration-300 group-hover:scale-105"
-                                />
-                                {/* Hover highlight overlay (no playback) */}
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-                              </div>
-
-                              {/* Name + verified */}
-                              <div className="text-center">
-                                <div className="flex items-center justify-center gap-1">
-                                  <h3 className="text-sm font-bold text-foreground truncate">
-                                    {artist.name}
-                                  </h3>
-                                  {artist.verified && (
-                                    <Sparkles className="w-3.5 h-3.5 text-glow-primary shrink-0" />
-                                  )}
-                                </div>
-                                <p className="text-xs text-muted-foreground mb-3 truncate">
-                                  {artist.label}
-                                  <span className="ml-1.5 px-1.5 py-0.5 rounded bg-glow-primary/10 text-glow-primary text-[10px] font-mono">
-                                    AI
-                                  </span>
-                                </p>
-
-                                {/* Metrics */}
-                                <div className="flex items-center justify-around pt-3 border-t border-border/30 text-[11px]">
-                                  <div className="flex flex-col items-center gap-0.5">
-                                    <Play className="w-3 h-3 text-muted-foreground" />
-                                    <span className="font-semibold text-foreground">
-                                      {formatPlays(artist.totalPlays)}
-                                    </span>
-                                  </div>
-                                  <div className="flex flex-col items-center gap-0.5">
-                                    <Heart className="w-3 h-3 text-pink-400" />
-                                    <span className="font-semibold text-foreground">
-                                      {formatPlays(artist.totalLikes)}
-                                    </span>
-                                  </div>
-                                  <div className="flex flex-col items-center gap-0.5">
-                                    <ListMusic className="w-3 h-3 text-cyan-400" />
-                                    <span className="font-semibold text-foreground">
-                                      {artist.totalTracks}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            </Link>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </section>
-                )
-              })()}
+              {mounted && <TopArtistsRow />}
 
               {/* New Music Releases — driven by Supabase, newest first */}
               <section>
@@ -674,5 +562,174 @@ export function BrowseFeed() {
         onSuccess={fetchSupabaseTracks}
       />
     </div>
+  )
+}
+
+function TopArtistsRow() {
+  const topArtists = AGENTS.slice(0, 12)
+  const scrollerRef = useRef<HTMLDivElement>(null)
+  const [showLeftFade, setShowLeftFade] = useState(false)
+  const [showRightFade, setShowRightFade] = useState(true)
+
+  const updateFades = useCallback(() => {
+    const el = scrollerRef.current
+    if (!el) return
+    const { scrollLeft, scrollWidth, clientWidth } = el
+    setShowLeftFade(scrollLeft > 4)
+    setShowRightFade(scrollLeft + clientWidth < scrollWidth - 4)
+  }, [])
+
+  useEffect(() => {
+    updateFades()
+    const el = scrollerRef.current
+    if (!el) return
+    const onScroll = () => updateFades()
+    // Translate vertical mouse wheel into horizontal scroll. Registered
+    // natively so we can call preventDefault (React's onWheel is passive).
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        const atStart = el.scrollLeft <= 0 && e.deltaY < 0
+        const atEnd =
+          el.scrollLeft + el.clientWidth >= el.scrollWidth - 1 && e.deltaY > 0
+        if (atStart || atEnd) return
+        e.preventDefault()
+        el.scrollLeft += e.deltaY
+      }
+    }
+    el.addEventListener("scroll", onScroll, { passive: true })
+    el.addEventListener("wheel", onWheel, { passive: false })
+    window.addEventListener("resize", updateFades)
+    return () => {
+      el.removeEventListener("scroll", onScroll)
+      el.removeEventListener("wheel", onWheel)
+      window.removeEventListener("resize", updateFades)
+    }
+  }, [updateFades])
+
+  return (
+    <section>
+      <div className="flex items-center gap-3 mb-4">
+        <Crown className="w-5 h-5 text-amber-400" />
+        <h2 className="text-xl font-bold text-foreground">Top Artists</h2>
+        <span className="px-2 py-0.5 text-xs font-mono rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+          {topArtists.length} ranked
+        </span>
+      </div>
+
+      <div className="relative group/scroller">
+        <div
+          ref={scrollerRef}
+          className="flex gap-4 overflow-x-auto overflow-y-hidden scroll-smooth scrollbar-hide -mx-4 px-4 pb-2"
+        >
+          {topArtists.map((artist, idx) => {
+            const rank = idx + 1
+            const isTrending = rank <= 3
+            const rankColor =
+              rank === 1
+                ? "from-amber-400 to-yellow-600 text-black"
+                : rank === 2
+                ? "from-slate-300 to-slate-500 text-black"
+                : rank === 3
+                ? "from-orange-400 to-amber-700 text-black"
+                : "bg-black/60 text-white"
+
+            return (
+              <div
+                key={artist.id}
+                className="group relative shrink-0 w-[200px] bg-card/40 hover:bg-card/60 border border-border/30 hover:border-glow-primary/40 rounded-2xl p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_8px_30px_-8px_rgba(236,72,153,0.35)]"
+              >
+                <Link
+                  href={`/agent/${encodeURIComponent(artist.name)}`}
+                  className="block"
+                >
+                  {/* Rank badge */}
+                  <div
+                    className={`absolute top-3 left-3 z-10 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shadow-lg ${
+                      rank <= 3 ? `bg-gradient-to-br ${rankColor}` : rankColor
+                    }`}
+                  >
+                    #{rank}
+                  </div>
+
+                  {/* Trending indicator */}
+                  {isTrending && (
+                    <div className="absolute top-3 right-3 z-10 px-1.5 h-5 rounded-full bg-red-500/15 border border-red-500/30 flex items-center gap-0.5">
+                      <Flame className="w-3 h-3 text-red-400" />
+                    </div>
+                  )}
+
+                  {/* Avatar */}
+                  <div className="relative aspect-square w-full rounded-full overflow-hidden mb-3 mx-auto bg-gradient-to-br from-glow-primary/20 to-glow-secondary/20">
+                    <Image
+                      src={artist.avatarUrl}
+                      alt={artist.name}
+                      fill
+                      sizes="200px"
+                      className="object-cover transition-transform duration-300 group-hover:scale-105"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                  </div>
+
+                  {/* Name + verified */}
+                  <div className="text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      <h3 className="text-sm font-bold text-foreground truncate">
+                        {artist.name}
+                      </h3>
+                      {artist.verified && (
+                        <Sparkles className="w-3.5 h-3.5 text-glow-primary shrink-0" />
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-3 truncate">
+                      {artist.label}
+                      <span className="ml-1.5 px-1.5 py-0.5 rounded bg-glow-primary/10 text-glow-primary text-[10px] font-mono">
+                        AI
+                      </span>
+                    </p>
+
+                    {/* Metrics */}
+                    <div className="flex items-center justify-around pt-3 border-t border-border/30 text-[11px]">
+                      <div className="flex flex-col items-center gap-0.5">
+                        <Play className="w-3 h-3 text-muted-foreground" />
+                        <span className="font-semibold text-foreground">
+                          {formatPlays(artist.totalPlays)}
+                        </span>
+                      </div>
+                      <div className="flex flex-col items-center gap-0.5">
+                        <Heart className="w-3 h-3 text-pink-400" />
+                        <span className="font-semibold text-foreground">
+                          {formatPlays(artist.totalLikes)}
+                        </span>
+                      </div>
+                      <div className="flex flex-col items-center gap-0.5">
+                        <ListMusic className="w-3 h-3 text-cyan-400" />
+                        <span className="font-semibold text-foreground">
+                          {artist.totalTracks}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Left fade */}
+        <div
+          aria-hidden
+          className={`pointer-events-none absolute left-0 top-0 bottom-2 w-12 bg-gradient-to-r from-background to-transparent transition-opacity duration-300 ${
+            showLeftFade ? "opacity-100" : "opacity-0"
+          }`}
+        />
+        {/* Right fade */}
+        <div
+          aria-hidden
+          className={`pointer-events-none absolute right-0 top-0 bottom-2 w-16 bg-gradient-to-l from-background to-transparent transition-opacity duration-300 ${
+            showRightFade ? "opacity-100" : "opacity-0"
+          }`}
+        />
+      </div>
+    </section>
   )
 }
