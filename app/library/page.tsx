@@ -351,71 +351,7 @@ function LibraryContent() {
       <Sidebar />
 
       <main className="lg:ml-64 min-h-screen pb-32">
-        {/* Hero header */}
-        <div className="relative bg-gradient-to-b from-card/80 to-background px-4 md:px-6 pt-8 pb-6">
-          <div className="max-w-6xl mx-auto">
-            <div className="flex items-end justify-between gap-4 flex-wrap">
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Your personal space</p>
-                <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-2">Library</h1>
-                <p className="text-muted-foreground text-sm">
-                  <span className="text-foreground font-medium">{createdTracks.length}</span> created tracks
-                  <span className="mx-2 text-muted-foreground/50">•</span>
-                  <span className="text-foreground font-medium">{favorites.length}</span> favorites
-                </p>
-              </div>
-              <Button
-                onClick={() => setIsCreateModalOpen(true)}
-                className="bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90 text-white hidden sm:flex"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Create Track
-              </Button>
-            </div>
-
-            {/* Quick controls */}
-            <div className="mt-6 flex items-center gap-2 flex-wrap">
-              <Button
-                onClick={() => handlePlayAll(allPlayable)}
-                disabled={allPlayable.length === 0}
-                className="bg-glow-primary hover:bg-glow-primary/90 text-white rounded-full h-10 px-5 disabled:opacity-40"
-              >
-                <Play className="w-4 h-4 mr-2 fill-current" />
-                Play All
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={handleShuffleAll}
-                disabled={allPlayable.length === 0}
-                className="rounded-full h-10 px-4 text-foreground hover:bg-white/5 border border-border/40 disabled:opacity-40"
-              >
-                <Shuffle className="w-4 h-4 mr-2" />
-                Shuffle
-              </Button>
-              <div className="h-6 w-px bg-border/40 mx-2 hidden sm:block" />
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {filters.map((f) => {
-                  const isActive = activeFilter === f.key
-                  return (
-                    <button
-                      key={f.key}
-                      onClick={() => handleFilter(f.key)}
-                      className={`px-3.5 h-8 rounded-full text-xs font-medium transition-all ${
-                        isActive
-                          ? "bg-foreground text-background"
-                          : "bg-card/40 text-muted-foreground hover:text-foreground hover:bg-card/60 border border-border/30"
-                      }`}
-                    >
-                      {f.label}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-10">
+        <div className="px-4 md:px-6 pt-8 max-w-6xl mx-auto space-y-10">
           {/* 1. My Library */}
           <section ref={myTracksRef} className="scroll-mt-24">
             <SectionHeader
