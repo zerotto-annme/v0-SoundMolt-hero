@@ -5,17 +5,14 @@ import Image from "next/image"
 import Link from "next/link"
 import {
   Heart,
-  Clock,
   Plus,
   Sparkles,
-  ListMusic,
   Users,
   Play,
   MoreHorizontal,
   ChevronRight,
   Pause,
   SkipForward,
-  FolderPlus,
   Music2,
   Mic,
   Drum,
@@ -26,7 +23,6 @@ import {
 } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
 import { Button } from "@/components/ui/button"
-import { useActivitySimulation } from "@/hooks/use-activity-simulation"
 import { usePlayer, type Track } from "@/components/player-context"
 import { useFavorites } from "@/components/favorites-context"
 import { CreateTrackModal } from "@/components/create-track-modal"
@@ -53,7 +49,7 @@ const AGENT_TYPE_COLORS: Record<AgentType, string> = {
   arranger: "from-indigo-500 to-blue-600",
 }
 
-type FilterKey = "all" | "my-tracks" | "favorites" | "recent" | "playlists"
+type FilterKey = "all" | "my-tracks" | "favorites"
 
 // Unified track row used across every track-list section
 function TrackListItem({
@@ -284,24 +280,17 @@ function PlaylistCard({
 function LibraryContent() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all")
-  const { tracks: dynamicTracks } = useActivitySimulation()
   const { createdTracks, playTrack, togglePlay, currentTrack, isPlaying } = usePlayer()
   const { favorites } = useFavorites()
 
-  const recentlyPlayed = useMemo(() => dynamicTracks.slice(0, 6), [dynamicTracks])
   const followedAgents = useMemo(() => AGENTS.slice(0, 6), [])
 
   const myTracksRef = useRef<HTMLDivElement>(null)
   const favoritesRef = useRef<HTMLDivElement>(null)
-  const recentRef = useRef<HTMLDivElement>(null)
-  const playlistsRef = useRef<HTMLDivElement>(null)
-  const agentsRef = useRef<HTMLDivElement>(null)
 
   const sectionRefs: Record<Exclude<FilterKey, "all">, React.RefObject<HTMLDivElement | null>> = {
     "my-tracks": myTracksRef,
     favorites: favoritesRef,
-    recent: recentRef,
-    playlists: playlistsRef,
   }
 
   const handleFilter = (key: FilterKey) => {
@@ -315,8 +304,8 @@ function LibraryContent() {
   }
 
   const allPlayable = useMemo<Track[]>(
-    () => [...createdTracks, ...favorites, ...(recentlyPlayed as Track[])],
-    [createdTracks, favorites, recentlyPlayed],
+    () => [...createdTracks, ...favorites],
+    [createdTracks, favorites],
   )
 
   const handlePlayAll = (tracks: (Track | SeedTrack)[]) => {
@@ -353,10 +342,8 @@ function LibraryContent() {
 
   const filters: { key: FilterKey; label: string }[] = [
     { key: "all", label: "All" },
-    { key: "my-tracks", label: "My Tracks" },
+    { key: "my-tracks", label: "My Library" },
     { key: "favorites", label: "Favorites" },
-    { key: "recent", label: "Recent" },
-    { key: "playlists", label: "Playlists" },
   ]
 
   return (
@@ -375,8 +362,6 @@ function LibraryContent() {
                   <span className="text-foreground font-medium">{createdTracks.length}</span> created tracks
                   <span className="mx-2 text-muted-foreground/50">•</span>
                   <span className="text-foreground font-medium">{favorites.length}</span> favorites
-                  <span className="mx-2 text-muted-foreground/50">•</span>
-                  <span className="text-foreground font-medium">{recentlyPlayed.length}</span> recently played
                 </p>
               </div>
               <Button
@@ -484,42 +469,8 @@ function LibraryContent() {
             )}
           </section>
 
-          {/* 3. Recently Played */}
-          <section ref={recentRef} className="scroll-mt-24">
-            <SectionHeader
-              icon={Clock}
-              iconGradient="from-cyan-500 to-blue-600"
-              title="Recently Played"
-              subtitle="Pick up where you left off"
-              onPlayAll={recentlyPlayed.length > 0 ? () => togglePlayAll(recentlyPlayed) : undefined}
-              isPlayingHere={isSectionPlaying(recentlyPlayed)}
-              onNext={recentlyPlayed.length > 0 ? () => handleNextIn(recentlyPlayed) : undefined}
-              playAllColor="text-cyan-400 hover:text-cyan-400 hover:bg-cyan-500/10"
-            />
-
-            <div className="bg-card/30 rounded-xl border border-border/30 overflow-hidden divide-y divide-border/20">
-              {recentlyPlayed.map((track, index) => (
-                <TrackListItem key={track.id} track={track} index={index} />
-              ))}
-            </div>
-          </section>
-
-          {/* 4. My Playlists */}
-          <section ref={playlistsRef} className="scroll-mt-24">
-            <SectionHeader
-              icon={ListMusic}
-              iconGradient="from-violet-500 to-purple-600"
-              title="My Playlists"
-              subtitle="Organize your music"
-            />
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              <PlaylistCard title="Create Playlist" trackCount={0} isEmpty />
-            </div>
-          </section>
-
-          {/* 5. Followed AI Agents */}
-          <section ref={agentsRef} className="scroll-mt-24">
+          {/* Followed AI Agents */}
+          <section className="scroll-mt-24">
             <SectionHeader
               icon={Users}
               iconGradient="from-emerald-500 to-teal-600"
@@ -546,7 +497,7 @@ function LibraryContent() {
           {/* 6. Activity / Stats */}
           <section className="bg-card/30 rounded-xl border border-border/30 p-6">
             <h2 className="text-lg font-semibold text-foreground mb-4">Your Activity</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div className="text-center p-4 bg-background/50 rounded-lg">
                 <Sparkles className="w-6 h-6 text-glow-primary mx-auto mb-2" />
                 <div className="text-2xl font-bold text-foreground">{createdTracks.length}</div>
@@ -556,11 +507,6 @@ function LibraryContent() {
                 <Heart className="w-6 h-6 text-pink-500 mx-auto mb-2" />
                 <div className="text-2xl font-bold text-foreground">{favorites.length}</div>
                 <div className="text-xs text-muted-foreground">Favorites</div>
-              </div>
-              <div className="text-center p-4 bg-background/50 rounded-lg">
-                <Clock className="w-6 h-6 text-cyan-500 mx-auto mb-2" />
-                <div className="text-2xl font-bold text-foreground">{recentlyPlayed.length}</div>
-                <div className="text-xs text-muted-foreground">Recently Played</div>
               </div>
               <div className="text-center p-4 bg-background/50 rounded-lg">
                 <Users className="w-6 h-6 text-emerald-500 mx-auto mb-2" />
