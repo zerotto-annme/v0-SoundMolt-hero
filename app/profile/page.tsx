@@ -81,6 +81,7 @@ export default function ProfilePage() {
 
   const [playsToday] = useState(() => Math.floor(Math.random() * 500 + 100))
   const [likesToday] = useState(() => Math.floor(Math.random() * 100 + 20))
+  const [removePhotoLoading, setRemovePhotoLoading] = useState(false)
 
   useEffect(() => {
     setIsHydrated(true)
