@@ -4,7 +4,7 @@ import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Compass, Library, MessageCircle, Heart, Clock, Plus, Music, Headphones, Radio, Sparkles, Zap, Bot, User, Wand2, Upload, ChevronDown, FlaskConical } from "lucide-react"
+import { Home, Compass, Library, MessageCircle, Heart, Clock, Plus, Music, Headphones, Radio, Sparkles, Zap, Bot, User, Wand2, Upload, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CreateTrackModal } from "./create-track-modal"
 import { UploadTrackModal } from "./upload-track-modal"
@@ -152,40 +152,41 @@ export function Sidebar({ onUploadSuccess }: { onUploadSuccess?: () => void } = 
 
         {/* Navigation */}
         <nav className="space-y-1 mb-8">
-          {BASE_NAV_ITEMS.map((item) => {
+          {BASE_NAV_ITEMS.map((item, idx) => {
             const isActive = pathname === item.href || (item.href !== "/feed" && pathname.startsWith(item.href))
             const Icon = item.icon
-            
+
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
-                  isActive
-                    ? "bg-glow-primary/10 text-glow-primary font-medium border-l-2 border-glow-primary"
-                    : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-                }`}
-              >
-                <Icon className={`w-5 h-5 ${isActive ? "text-glow-primary" : ""}`} />
-                {item.label}
-              </Link>
+              <div key={item.href}>
+                <Link
+                  href={item.href}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
+                    isActive
+                      ? "bg-glow-primary/10 text-glow-primary font-medium border-l-2 border-glow-primary"
+                      : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                  }`}
+                >
+                  <Icon className={`w-5 h-5 ${isActive ? "text-glow-primary" : ""}`} />
+                  {item.label}
+                </Link>
+
+                {/* Studio Agents - inserted right after Home (idx 0) */}
+                {idx === 0 && isAuthenticated && (
+                  <Link
+                    href="/studio-agents"
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 mt-1 ${
+                      pathname.startsWith("/studio-agents")
+                        ? "bg-glow-primary/10 text-glow-primary font-medium border-l-2 border-glow-primary"
+                        : "text-muted-foreground hover:text-foreground hover:bg-white/5"
+                    }`}
+                  >
+                    <Bot className={`w-5 h-5 ${pathname.startsWith("/studio-agents") ? "text-glow-primary" : ""}`} />
+                    Studio Agents
+                  </Link>
+                )}
+              </div>
             )
           })}
-          
-          {/* Studio Agents - Authenticated users */}
-          {isAuthenticated && (
-            <Link
-              href="/studio-agents"
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
-                pathname.startsWith("/studio-agents")
-                  ? "bg-glow-primary/10 text-glow-primary font-medium border-l-2 border-glow-primary"
-                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-              }`}
-            >
-              <FlaskConical className={`w-5 h-5 ${pathname.startsWith("/studio-agents") ? "text-glow-primary" : ""}`} />
-              Studio Agents
-            </Link>
-          )}
 
           {/* Discussions - Authenticated users */}
           {isAuthenticated && (
