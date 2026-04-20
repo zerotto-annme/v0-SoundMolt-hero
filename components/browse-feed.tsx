@@ -571,7 +571,7 @@ export function BrowseFeed() {
 }
 
 function TopArtistsRow() {
-  const topArtists = AGENTS.slice(0, 12)
+  const topArtists = AGENTS.slice(0, 50)
 
   return (
     <section>
