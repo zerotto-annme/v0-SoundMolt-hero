@@ -7,12 +7,18 @@ export function isNetworkUploadError(error: UploadError): boolean {
   const msg = error.message?.toLowerCase() ?? ""
   const status = String(error.statusCode ?? "")
   if (["401", "403", "404", "413"].includes(status)) return false
+  // Transient upstream HTTP errors from the storage gateway — worth retrying.
+  if (["408", "429", "500", "502", "503", "504"].includes(status)) return true
+  if (/\bhttp\s*5\d\d\b/i.test(error.message ?? "")) return true
   return (
     msg.includes("network") ||
     msg.includes("fetch failed") ||
     msg.includes("failed to fetch") ||
     msg.includes("econnrefused") ||
-    msg.includes("timeout")
+    msg.includes("timeout") ||
+    msg.includes("bad gateway") ||
+    msg.includes("gateway timeout") ||
+    msg.includes("service unavailable")
   )
 }
 
@@ -44,21 +50,32 @@ export function getUploadErrorMessage(error: UploadError): string {
 export async function uploadWithRetry<T>(
   uploadFn: () => Promise<{ data: T | null; error: UploadError | null }>,
   label: string,
-  options?: { onRetry?: () => void; onRetryDone?: () => void }
+  options?: { onRetry?: () => void; onRetryDone?: () => void; maxRetries?: number }
 ): Promise<{ data: T | null; error: UploadError | null }> {
+  const maxRetries = options?.maxRetries ?? 3
   let result = await uploadFn()
+  let attempt = 0
+  let notifiedRetry = false
 
-  if (result.error && isNetworkUploadError(result.error)) {
-    console.warn(`[upload] ${label} failed due to network error, retrying once…`, {
+  while (result.error && isNetworkUploadError(result.error) && attempt < maxRetries) {
+    attempt += 1
+    const delayMs = Math.min(500 * 2 ** (attempt - 1), 4000)
+    console.warn(`[upload] ${label} failed (attempt ${attempt}/${maxRetries}), retrying in ${delayMs}ms…`, {
       error: result.error.message,
+      statusCode: result.error.statusCode,
     })
-    options?.onRetry?.()
+    if (!notifiedRetry) {
+      options?.onRetry?.()
+      notifiedRetry = true
+    }
+    await new Promise(r => setTimeout(r, delayMs))
     try {
       result = await uploadFn()
-    } finally {
-      options?.onRetryDone?.()
+    } catch (err) {
+      result = { data: null, error: { message: err instanceof Error ? err.message : String(err) } }
     }
   }
 
+  if (notifiedRetry) options?.onRetryDone?.()
   return result
 }
