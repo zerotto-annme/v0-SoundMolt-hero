@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { Search, ChevronRight, TrendingUp, Zap, Sparkles, Bot, Music, Headphones, Radio, Activity, Plus, User, Loader2, Crown, Flame, Play, SkipForward, Heart, ListMusic } from "lucide-react"
-import { AGENTS, getTopTracksByAgent } from "@/lib/agents"
+import { Search, ChevronRight, TrendingUp, Zap, Sparkles, Bot, Music, Headphones, Radio, Activity, Plus, User, Loader2, Crown, Flame, Play, Heart, ListMusic } from "lucide-react"
+import { AGENTS } from "@/lib/agents"
 import { BrowseTrackCard } from "./browse-track-card"
 import { ChartTrackCard } from "./chart-track-card"
 import { Sidebar } from "./sidebar"
@@ -51,7 +51,7 @@ export function BrowseFeed() {
   // mounted prevents seed/demo track sections from rendering during SSR,
   // avoiding hydration mismatches caused by Math.random() in seed-tracks.ts
   const [mounted, setMounted] = useState(false)
-  const { createdTracks, playTrack, currentTrack } = usePlayer()
+  const { createdTracks } = usePlayer()
   const { user, isAuthenticated } = useAuth()
   
   // Dynamic activity simulation (seed/demo data for charts and trending)
@@ -442,54 +442,14 @@ export function BrowseFeed() {
               {mounted && (() => {
                 const topArtists = AGENTS.slice(0, 12)
 
-                const playArtistTop = (artistName: string) => {
-                  const tracks = getTopTracksByAgent(artistName, 1)
-                  if (tracks.length > 0) playTrack(tracks[0] as unknown as Track)
-                }
-
-                const handlePlayAllArtists = () => {
-                  if (topArtists.length === 0) return
-                  playArtistTop(topArtists[0].name)
-                }
-
-                const handleNextArtist = () => {
-                  if (topArtists.length === 0) return
-                  const currentIdx = currentTrack
-                    ? topArtists.findIndex((a) => a.name === currentTrack.artist)
-                    : -1
-                  const nextIdx = currentIdx === -1 ? 0 : (currentIdx + 1) % topArtists.length
-                  playArtistTop(topArtists[nextIdx].name)
-                }
-
                 return (
                   <section>
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
-                      <div className="flex items-center gap-3">
-                        <Crown className="w-5 h-5 text-amber-400" />
-                        <h2 className="text-xl font-bold text-foreground">Top Artists</h2>
-                        <span className="px-2 py-0.5 text-xs font-mono rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                          {topArtists.length} ranked
-                        </span>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          onClick={handlePlayAllArtists}
-                          disabled={topArtists.length === 0}
-                          className="bg-glow-primary hover:bg-glow-primary/90 text-white rounded-full h-9 px-4 disabled:opacity-40"
-                        >
-                          <Play className="w-4 h-4 mr-1.5 fill-current" />
-                          Play All
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          onClick={handleNextArtist}
-                          disabled={topArtists.length === 0}
-                          className="rounded-full h-9 px-4 text-foreground hover:bg-white/5 border border-border/40 disabled:opacity-40"
-                        >
-                          <SkipForward className="w-4 h-4 mr-1.5" />
-                          Next
-                        </Button>
-                      </div>
+                    <div className="flex items-center gap-3 mb-4">
+                      <Crown className="w-5 h-5 text-amber-400" />
+                      <h2 className="text-xl font-bold text-foreground">Top Artists</h2>
+                      <span className="px-2 py-0.5 text-xs font-mono rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                        {topArtists.length} ranked
+                      </span>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
@@ -541,20 +501,8 @@ export function BrowseFeed() {
                                   sizes="(max-width: 768px) 50vw, 200px"
                                   className="object-cover transition-transform duration-300 group-hover:scale-105"
                                 />
-                                {/* Hover overlay with play button */}
-                                <button
-                                  onClick={(e) => {
-                                    e.preventDefault()
-                                    e.stopPropagation()
-                                    playArtistTop(artist.name)
-                                  }}
-                                  className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-200"
-                                  aria-label={`Play top track by ${artist.name}`}
-                                >
-                                  <div className="w-12 h-12 rounded-full bg-glow-primary flex items-center justify-center shadow-2xl scale-90 group-hover:scale-100 transition-transform">
-                                    <Play className="w-5 h-5 text-white fill-current ml-0.5" />
-                                  </div>
-                                </button>
+                                {/* Hover highlight overlay (no playback) */}
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                               </div>
 
                               {/* Name + verified */}

@@ -3,6 +3,7 @@
 import { useState, use } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { 
   ArrowLeft, 
   Music, 
@@ -84,6 +85,7 @@ export default function AgentProfilePage({ params }: { params: Promise<{ name: s
   const agentName = decodeURIComponent(resolvedParams.name)
   const agent = getAgentByName(agentName)
   
+  const router = useRouter()
   const [isFollowing, setIsFollowing] = useState(false)
   const [activeTab, setActiveTab] = useState<"tracks" | "releases" | "collabs" | "about">("tracks")
   const { playTrack, currentTrack, isPlaying, togglePlay } = usePlayer()
@@ -131,12 +133,20 @@ export default function AgentProfilePage({ params }: { params: Promise<{ name: s
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
         
         {/* Back button */}
-        <Link 
-          href="/"
-          className="absolute top-4 left-4 md:top-6 md:left-6 lg:hidden w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center hover:bg-black/70 transition-colors"
+        <button
+          type="button"
+          onClick={() => {
+            if (typeof window !== "undefined" && window.history.length > 1) {
+              router.back()
+            } else {
+              router.push("/feed")
+            }
+          }}
+          className="absolute top-4 left-4 md:top-6 md:left-6 inline-flex items-center gap-2 h-10 px-4 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-white text-sm font-medium hover:bg-black/80 hover:border-white/20 transition-colors shadow-lg"
         >
-          <ArrowLeft className="w-5 h-5 text-white" />
-        </Link>
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </button>
       </div>
       
       {/* Profile Header */}
