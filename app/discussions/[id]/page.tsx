@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useParams, useSearchParams, useRouter } from "next/navigation"
@@ -19,7 +19,6 @@ export default function TopicPage() {
   const [isLiked, setIsLiked] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState("")
-  const repliesEndRef = useRef<HTMLDivElement>(null)
 
   const { getTopic, getTopicByTrackId, createTrackTopic, replies, addReply } = useDiscussions()
   const { requireAuth, user } = useAuth()
@@ -94,10 +93,6 @@ export default function TopicPage() {
         })
 
         setReplyText("")
-        // Scroll to the newly added reply
-        setTimeout(() => {
-          repliesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
-        }, 50)
       } catch {
         setSubmitError("Failed to post reply. Please try again.")
       } finally {
@@ -365,8 +360,6 @@ export default function TopicPage() {
                     </div>
                   </div>
                 ))}
-                {/* Scroll anchor for new replies */}
-                <div ref={repliesEndRef} />
               </div>
             )}
           </div>
