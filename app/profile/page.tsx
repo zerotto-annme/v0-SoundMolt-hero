@@ -336,15 +336,20 @@ export default function ProfilePage() {
       const identityAvatar = sbUser?.identities?.find(i => i.identity_data?.avatar_url)?.identity_data?.avatar_url ?? null
       const oauthAvatar: string | null = identityAvatar
 
-      const { error: profileError } = await supabase
+      const { data: removeData, error: profileError } = await supabase
         .from("profiles")
-        .upsert(
-          { id: user.id, role: "human", avatar_url: oauthAvatar, avatar_is_custom: false },
-          { onConflict: "id" },
-        )
+        .update({ avatar_url: oauthAvatar, avatar_is_custom: false })
+        .eq("id", user.id)
+        .select()
 
       if (profileError) {
+        console.error("[profile] handleRemovePhoto update error:", profileError)
         setEditProfileErrors({ general: "Failed to remove photo. Please try again." })
+        return
+      }
+      if (!removeData || removeData.length === 0) {
+        console.error("[profile] handleRemovePhoto returned 0 rows", { userId: user.id })
+        setEditProfileErrors({ general: "Could not find your profile. Please sign out and back in." })
         return
       }
 
@@ -411,20 +416,26 @@ export default function ProfilePage() {
 
     setEditProfileLoading(true)
     try {
+      const userId = user?.id ?? ""
+      if (!userId) {
+        console.error("[profile] handleSaveProfile aborted — no userId in context")
+        setEditProfileErrors({ general: "You must be signed in to save your profile." })
+        return
+      }
+
       let trimmedAvatarUrl = (editProfileForm.avatarUrl ?? "").trim()
+      let avatarStorageWritten = false
 
       if (avatarFile) {
-        const userId = user?.id ?? ""
         const safeName = (avatarFile.name ?? "avatar").replace(/[^a-zA-Z0-9._-]/g, "_")
         const path = `${userId}/${Date.now()}-${safeName}`
 
-        console.log("[profile] Uploading avatar:", {
-          bucket: "avatars",
-          path,
-          fileType: avatarFile.type,
-          fileSizeBytes: avatarFile.size,
-          userId,
+        console.log("[profile] selected file:", {
+          name: avatarFile.name,
+          type: avatarFile.type,
+          sizeBytes: avatarFile.size,
         })
+        console.log("[profile] Uploading avatar:", { bucket: "avatars", path, userId })
 
         const uploadResult = await uploadWithRetry(
           () => supabase.storage.from("avatars").upload(path, avatarFile, { upsert: true, contentType: avatarFile.type }),
@@ -432,47 +443,72 @@ export default function ProfilePage() {
           { onRetry: () => setIsRetryingUpload(true), onRetryDone: () => setIsRetryingUpload(false) }
         )
 
+        console.log("[profile] upload result:", {
+          ok: !uploadResult.error,
+          path,
+          error: uploadResult.error?.message,
+        })
+
         const uploadError = uploadResult.error
         if (uploadError) {
-          console.error("[profile] Avatar upload failed:", {
-            bucket: "avatars",
-            path,
-            fileType: avatarFile.type,
-            fileSizeBytes: avatarFile.size,
-            error: uploadError.message,
-            statusCode: (uploadError as { statusCode?: string | number }).statusCode,
-          })
+          console.error("[profile] Storage upload error (full):", uploadError)
           setEditProfileErrors({
             general: getUploadErrorMessage(uploadError as { message: string; statusCode?: string | number }),
           })
           return
         }
+        avatarStorageWritten = true
 
         const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path)
         trimmedAvatarUrl = urlData.publicUrl
-        console.log("[profile] Avatar uploaded successfully:", trimmedAvatarUrl)
+        console.log("[profile] public URL:", trimmedAvatarUrl)
       }
 
-      // Save username to profile. avatar_url is persisted via updateProfile
-      // (with persist: true) below, so it is not included here to avoid a
-      // duplicate write. When a file was uploaded, also set avatar_is_custom = true
-      // so that any future OAuth sync will not overwrite the user's chosen photo.
-      const profilePayload: Record<string, unknown> = {
-        id: user?.id ?? "",
-        role: "human",
+      // Update the existing profile row (auto-created on signup by trigger).
+      // Use UPDATE, not upsert, to avoid INSERT-on-conflict RLS edge cases.
+      const updatePayload: Record<string, unknown> = {
         username: trimmedUsername,
       }
-      if (avatarFile) {
-        profilePayload.avatar_is_custom = true
+      if (avatarStorageWritten) {
+        updatePayload.avatar_url = trimmedAvatarUrl
+        updatePayload.avatar_is_custom = true
+      } else {
+        // No file uploaded — only write avatar_url if user actually changed it.
+        // Strip the cache-buster (?t=...) we may have appended previously, but
+        // preserve other legitimate query params (e.g. Dicebear ?seed=...).
+        const stripCacheBust = (u: string) => u.replace(/([?&])t=\d+(&|$)/, (_m, p1, p2) => (p2 === "&" ? p1 : ""))
+          .replace(/[?&]$/, "")
+        const currentAvatar = stripCacheBust((user?.avatar ?? "").trim())
+        const newAvatar = stripCacheBust(trimmedAvatarUrl)
+        if (newAvatar !== currentAvatar) {
+          updatePayload.avatar_url = trimmedAvatarUrl || null
+          updatePayload.avatar_is_custom = !!trimmedAvatarUrl
+        }
       }
 
-      const { error: profileError } = await supabase
+      console.log("[profile] profiles UPDATE payload:", { userId, updatePayload })
+
+      const { data: updateData, error: profileError } = await supabase
         .from("profiles")
-        .upsert(profilePayload, { onConflict: "id" })
+        .update(updatePayload)
+        .eq("id", userId)
+        .select()
+
+      console.log("[profile] profiles UPDATE result:", {
+        ok: !profileError,
+        rowsReturned: updateData?.length ?? 0,
+        error: profileError?.message,
+      })
 
       if (profileError) {
-        console.error("[profile] Profile upsert error:", profileError.message)
+        console.error("[profile] Profile update error (full):", profileError)
         setEditProfileErrors({ general: "Failed to save profile. Please try again." })
+        return
+      }
+
+      if (!updateData || updateData.length === 0) {
+        console.error("[profile] Profile UPDATE returned 0 rows — row missing or RLS hid it", { userId })
+        setEditProfileErrors({ general: "Could not find your profile to update. Please sign out and back in." })
         return
       }
 
@@ -483,16 +519,39 @@ export default function ProfilePage() {
         },
       })
 
-      const newAvatar = trimmedAvatarUrl || generateAvatar(trimmedUsername, "human")
-      updateProfile(
-        { username: trimmedUsername, name: trimmedUsername, avatar: newAvatar, ...(avatarFile ? { avatarIsCustom: true } : {}) },
-        { persist: true },
-      )
+      // Cache-bust the displayed URL so <img> reloads even if the path is reused.
+      const baseAvatar = trimmedAvatarUrl || generateAvatar(trimmedUsername, "human")
+      const displayedAvatar = avatarStorageWritten || updatePayload.avatar_url !== undefined
+        ? `${baseAvatar}${baseAvatar.includes("?") ? "&" : "?"}t=${Date.now()}`
+        : baseAvatar
+
+      console.log("[profile] final avatar URL shown in UI:", displayedAvatar)
+
+      // Update local state only — DB was already written above; no persist needed.
+      const localUpdate: Record<string, unknown> = {
+        username: trimmedUsername,
+        name: trimmedUsername,
+        avatar: displayedAvatar,
+      }
+      if (avatarStorageWritten) {
+        localUpdate.avatarIsCustom = true
+      } else if (updatePayload.avatar_is_custom !== undefined) {
+        localUpdate.avatarIsCustom = updatePayload.avatar_is_custom as boolean
+      }
+      updateProfile(localUpdate as Partial<typeof user>)
 
       if (metaError) {
         console.warn("[profile] Auth metadata update failed (non-critical):", metaError.message)
         setEditProfileMetaWarning("Profile saved. Session metadata could not be refreshed — your changes will appear fully after your next sign-in.")
       }
+
+      // Clear file/preview so the modal reflects the saved state.
+      setAvatarFile(null)
+      setAvatarPreview(prev => {
+        if (prev) URL.revokeObjectURL(prev)
+        return null
+      })
+      setEditProfileForm(prev => ({ ...prev, avatarUrl: trimmedAvatarUrl }))
 
       setEditProfileSuccess(true)
       setTimeout(() => {
