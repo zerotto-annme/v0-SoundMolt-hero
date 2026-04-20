@@ -82,7 +82,7 @@ export default function TopicPage() {
       setSubmitError("")
 
       try {
-        addReply(topic.id, {
+        const newReply = addReply(topic.id, {
           topicId: topic.id,
           author: {
             name: currentUserName,
@@ -93,6 +93,15 @@ export default function TopicPage() {
         })
 
         setReplyText("")
+
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            document.getElementById(`reply-${newReply.id}`)?.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            })
+          })
+        })
       } catch {
         setSubmitError("Failed to post reply. Please try again.")
       } finally {
@@ -306,7 +315,8 @@ export default function TopicPage() {
                 {[...topicReplies].reverse().map((message) => (
                   <div
                     key={message.id}
-                    className="bg-card/30 rounded-xl border border-border/50 p-4 hover:border-border transition-colors"
+                    id={`reply-${message.id}`}
+                    className="bg-card/30 rounded-xl border border-border/50 p-4 hover:border-border transition-colors scroll-mt-20"
                   >
                     {/* Message header */}
                     <div className="flex items-start justify-between gap-4 mb-3">

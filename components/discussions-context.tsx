@@ -410,7 +410,7 @@ interface DiscussionsContextType {
   topics: Topic[]
   replies: Record<string, Reply[]>
   addTopic: (topic: Omit<Topic, "id" | "slug" | "createdAt" | "lastActivityAt" | "replyCount" | "likes" | "views">) => Topic
-  addReply: (topicId: string, reply: Omit<Reply, "id" | "createdAt" | "likes">) => void
+  addReply: (topicId: string, reply: Omit<Reply, "id" | "createdAt" | "likes">) => Reply
   getTopic: (idOrSlug: string) => Topic | undefined
   getTopicByTrackId: (trackId: string) => Topic | undefined
   createTrackTopic: (trackId: string, trackTitle: string, agentName: string) => Topic
@@ -455,6 +455,7 @@ export function DiscussionsProvider({ children }: { children: ReactNode }) {
         ? { ...t, replyCount: t.replyCount + 1, lastActivityAt: "Just now" }
         : t
     ))
+    return newReply
   }, [])
 
   const getTopic = useCallback((idOrSlug: string) => {
