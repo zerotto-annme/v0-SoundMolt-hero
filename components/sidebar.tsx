@@ -203,20 +203,6 @@ export function Sidebar({ onUploadSuccess }: { onUploadSuccess?: () => void } = 
             </Link>
           )}
           
-          {/* Profile - Authenticated users only */}
-          {isAuthenticated && (
-            <Link
-              href="/profile"
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
-                pathname === "/profile"
-                  ? "bg-glow-primary/10 text-glow-primary font-medium border-l-2 border-glow-primary"
-                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-              }`}
-            >
-              <User className={`w-5 h-5 ${pathname === "/profile" ? "text-glow-primary" : ""}`} />
-              Profile
-            </Link>
-          )}
         </nav>
 
         {/* Genres/Styles */}
