@@ -109,115 +109,220 @@ async function claimUsername(userId: string, base: string): Promise<string | nul
   return null
 }
 
-async function fetchProfileData(
-  userId: string,
-  fallbackUsername: string,
-  fallbackAvatar: string,
-): Promise<{ username: string; avatar: string; profileUsernameIsNull: boolean; avatarIsCustom: boolean }> {
+// Minimal shape of the Supabase auth user we rely on. Avoids importing the
+// @supabase/supabase-js types into this file.
+type AuthUserLike = {
+  id: string
+  email?: string | null
+  created_at?: string
+  user_metadata?: Record<string, unknown> | null
+} | null | undefined
+
+export interface MergedProfile {
+  id: string
+  email: string
+  username: string
+  artist_name: string
+  avatar_url: string
+  role: string
+  profileUsernameIsNull: boolean
+  avatarIsCustom: boolean
+}
+
+// Build a safe merged profile from an auth user + (possibly null) profile row.
+// Pure / no I/O — used both before and after any heal write.
+function buildMergedProfile(authUser: NonNullable<AuthUserLike>, row: Record<string, unknown> | null): MergedProfile {
+  const meta = (authUser.user_metadata || {}) as Record<string, unknown>
+  const metaFullName = typeof meta.full_name === "string" ? meta.full_name : undefined
+  const metaName = typeof meta.name === "string" ? meta.name : undefined
+  const metaAvatar = typeof meta.avatar_url === "string" ? meta.avatar_url : undefined
+  const metaPicture = typeof meta.picture === "string" ? meta.picture : undefined
+  const emailPrefix = authUser.email ? authUser.email.split("@")[0] : undefined
+
+  const rowUsername = row && typeof row.username === "string" ? (row.username as string) : null
+  const rowArtist = row && typeof row.artist_name === "string" ? (row.artist_name as string) : null
+  const rowAvatar = row && typeof row.avatar_url === "string" ? (row.avatar_url as string) : null
+  const rowRole = row && typeof row.role === "string" ? (row.role as string) : null
+  const rowAvatarIsCustom = row ? (row as Record<string, unknown>).avatar_is_custom === true : false
+
+  const username = rowUsername || metaFullName || metaName || emailPrefix || "user"
+  const artist_name = rowArtist || rowUsername || metaFullName || metaName || emailPrefix || "User"
+  const avatar_url = rowAvatar || metaAvatar || metaPicture || ""
+  const role = rowRole || "human"
+
+  return {
+    id: authUser.id,
+    email: authUser.email || "",
+    username,
+    artist_name,
+    avatar_url,
+    role,
+    profileUsernameIsNull: !!row && rowUsername === null,
+    avatarIsCustom: rowAvatarIsCustom,
+  }
+}
+
+async function fetchProfileData(authUser: AuthUserLike): Promise<MergedProfile | null> {
+  // 1. Get current authenticated user first (callers pass it in; fall back to
+  //    Supabase if missing so the function is self-sufficient per spec).
+  let user: NonNullable<AuthUserLike> | null = authUser ?? null
+  if (!user) {
+    const { data, error: getUserError } = await supabase.auth.getUser()
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[auth] fetchProfileData getUser →", { user: data?.user, error: getUserError })
+    }
+    user = (data?.user as NonNullable<AuthUserLike>) ?? null
+  }
+  if (!user) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[auth] fetchProfileData: no authenticated user")
+    }
+    return null
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    console.log("[auth] fetchProfileData auth user:", { id: user.id, email: user.email, user_metadata: user.user_metadata })
+  }
+
   try {
+    // 2. Query profiles by user.id with maybeSingle so a missing row doesn't throw.
+    //    Select an explicit column list — email lives only on the auth user.
     const { data, error } = await supabase
       .from("profiles")
-      .select("*")
-      .eq("id", userId)
+      .select("id, role, username, artist_name, avatar_url, avatar_is_custom")
+      .eq("id", user.id)
       .maybeSingle()
     if (process.env.NODE_ENV !== "production") {
-      console.log("[auth] fetchProfileData result for", userId, { data, error })
+      console.log("[auth] fetchProfileData profile query result:", { data, error })
     }
     if (error) {
       if (process.env.NODE_ENV !== "production") {
-        console.warn("[auth] fetchProfileData failed for user", userId, error)
+        console.warn("[auth] fetchProfileData failed for user", user.id, error)
       }
-    } else if (data) {
-      // Heal any NULL required fields on existing rows (legacy rows from before
-      // auto-defaulting, or rows created by other paths that didn't set
-      // artist_name). Track each write outcome so we know whether to keep
-      // surfacing the SetUsername modal.
+      // Fall back to a metadata-only merged profile so the app doesn't crash.
+      const merged = buildMergedProfile(user, null)
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[auth] fetchProfileData merged (after error):", merged)
+      }
+      return merged
+    }
+
+    if (data) {
+      // 4. Row exists — heal NULL username/artist_name/avatar_url where possible.
+      const fallbackUsername = buildMergedProfile(user, null).username
       let claimedUsername: string | null = null
       if (data.username == null) {
-        claimedUsername = await claimUsername(userId, fallbackUsername)
+        claimedUsername = await claimUsername(user.id, fallbackUsername)
         if (process.env.NODE_ENV !== "production") {
-          console.log("[auth] heal username for", userId, { claimedUsername })
+          console.log("[auth] heal username →", { claimedUsername })
         }
       }
-      const effectiveUsername = data.username || claimedUsername || fallbackUsername
+      const effectiveUsername = (data.username as string | null) || claimedUsername || fallbackUsername
       const otherPatch: Record<string, unknown> = {}
       if ((data as Record<string, unknown>).artist_name == null) {
         otherPatch.artist_name = effectiveUsername
       }
-      if (data.avatar_url == null && fallbackAvatar) otherPatch.avatar_url = fallbackAvatar
+      if ((data as Record<string, unknown>).avatar_url == null) {
+        const metaAvatar =
+          (typeof user.user_metadata?.avatar_url === "string" && (user.user_metadata.avatar_url as string)) ||
+          (typeof user.user_metadata?.picture === "string" && (user.user_metadata.picture as string)) ||
+          ""
+        if (metaAvatar) otherPatch.avatar_url = metaAvatar
+      }
       if (Object.keys(otherPatch).length > 0) {
         const { error: patchError } = await supabase
           .from("profiles")
           .update(otherPatch)
-          .eq("id", userId)
+          .eq("id", user.id)
         if (process.env.NODE_ENV !== "production") {
-          console.log("[auth] healed NULL profile fields for", userId, { otherPatch, patchError })
+          console.log("[auth] healed NULL profile fields", { otherPatch, patchError })
+        }
+        if (!patchError) {
+          if (otherPatch.artist_name != null) (data as Record<string, unknown>).artist_name = otherPatch.artist_name
+          if (otherPatch.avatar_url != null) (data as Record<string, unknown>).avatar_url = otherPatch.avatar_url
         }
       }
-      return {
-        username: data.username || claimedUsername || fallbackUsername,
-        avatar: data.avatar_url || (otherPatch.avatar_url as string | undefined) || fallbackAvatar,
-        // Only surface SetUsername if username was originally null AND we
-        // failed to claim a default — never lock out users whose default was
-        // already persisted.
-        profileUsernameIsNull: data.username === null && claimedUsername == null,
-        avatarIsCustom: (data as Record<string, unknown>).avatar_is_custom === true,
+      if (claimedUsername) {
+        (data as Record<string, unknown>).username = claimedUsername
       }
-    } else {
-      // No profile row exists yet (e.g. Google OAuth user signing in for the
-      // first time). Create one with sensible defaults so they have the same
-      // baseline state as email/password humans.
-      const sanitized = sanitizeUsername(fallbackUsername)
-      let savedUsername: string | null = sanitized
-      let { error: insertError } = await supabase
-        .from("profiles")
-        .insert({
-          id: userId,
-          username: sanitized,
-          artist_name: sanitized,
-          role: "human",
-          avatar_url: fallbackAvatar || null,
-        })
-      if (insertError && (String(insertError.code || "").includes("23505") || /duplicate key|unique/i.test(insertError.message || ""))) {
-        // Username collision: insert with NULL username, then try to claim a suffixed one.
-        const { error: insertNullError } = await supabase
-          .from("profiles")
-          .insert({
-            id: userId,
-            username: null,
-            artist_name: sanitized,
-            role: "human",
-            avatar_url: fallbackAvatar || null,
-          })
-        if (insertNullError) {
-          insertError = insertNullError
-          savedUsername = null
-        } else {
-          insertError = null
-          savedUsername = await claimUsername(userId, fallbackUsername)
-        }
-      }
+      const merged = buildMergedProfile(user, data as Record<string, unknown>)
+      // If we couldn't claim a username, still surface the SetUsername modal.
+      merged.profileUsernameIsNull = data.username === null && claimedUsername == null
       if (process.env.NODE_ENV !== "production") {
-        console.log("[auth] auto-created profile row for", userId, { insertError, savedUsername })
+        console.log("[auth] fetchProfileData merged:", merged)
       }
-      if (insertError) {
-        return { username: fallbackUsername, avatar: fallbackAvatar, profileUsernameIsNull: false, avatarIsCustom: false }
-      }
-      // Surface SetUsername modal only if no real username was saved.
-      return {
-        username: savedUsername || fallbackUsername,
-        avatar: fallbackAvatar,
-        profileUsernameIsNull: savedUsername == null,
-        avatarIsCustom: false,
+      return merged
+    }
+
+    // 5. No row → create one with sanitized defaults.
+    const fallbackUsername = buildMergedProfile(user, null).username
+    const sanitized = sanitizeUsername(fallbackUsername)
+    const metaAvatar =
+      (typeof user.user_metadata?.avatar_url === "string" && (user.user_metadata.avatar_url as string)) ||
+      (typeof user.user_metadata?.picture === "string" && (user.user_metadata.picture as string)) ||
+      null
+    let savedUsername: string | null = sanitized
+    let { error: insertError } = await supabase.from("profiles").insert({
+      id: user.id,
+      username: sanitized,
+      artist_name: sanitized,
+      role: "human",
+      avatar_url: metaAvatar,
+    })
+    if (
+      insertError &&
+      (String(insertError.code || "").includes("23505") || /duplicate key|unique/i.test(insertError.message || ""))
+    ) {
+      // Username collision: try inserting with NULL username, then claim a suffixed one.
+      const { error: insertNullError } = await supabase.from("profiles").insert({
+        id: user.id,
+        username: null,
+        artist_name: sanitized,
+        role: "human",
+        avatar_url: metaAvatar,
+      })
+      if (insertNullError) {
+        insertError = insertNullError
+        savedUsername = null
+      } else {
+        insertError = null
+        savedUsername = await claimUsername(user.id, fallbackUsername)
       }
     }
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[auth] auto-created profile row", { insertError, savedUsername })
+    }
+    if (insertError) {
+      // Spec: on any DB error, return metadata-only merged profile.
+      const merged = buildMergedProfile(user, null)
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[auth] fetchProfileData merged (insert failed):", merged)
+      }
+      return merged
+    }
+    const synthRow: Record<string, unknown> = {
+      id: user.id,
+      role: "human",
+      username: savedUsername,
+      artist_name: savedUsername || sanitized,
+      avatar_url: metaAvatar,
+      avatar_is_custom: false,
+    }
+    const merged = buildMergedProfile(user, synthRow)
+    merged.profileUsernameIsNull = savedUsername == null
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[auth] fetchProfileData merged (new row):", merged)
+    }
+    return merged
   } catch (err) {
     if (process.env.NODE_ENV !== "production") {
-      console.warn("[auth] fetchProfileData unexpected error for user", userId, err)
+      console.warn("[auth] fetchProfileData unexpected error for user", user.id, err)
     }
+    const merged = buildMergedProfile(user, null)
+    return merged
   }
-  return { username: fallbackUsername, avatar: fallbackAvatar, profileUsernameIsNull: false, avatarIsCustom: false }
 }
+
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
@@ -242,19 +347,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data: { session } } = await supabase.auth.getSession()
         if (session?.user) {
           const sbUser = session.user
-          const metaUsername = sbUser.user_metadata?.username
-
-          const resolvedMetaUsername = metaUsername || sbUser.email?.split("@")[0] || "User"
-          const metaAvatar = sbUser.user_metadata?.avatar_url || generateAvatar(resolvedMetaUsername, "human")
-          const { username, avatar, profileUsernameIsNull, avatarIsCustom } = await fetchProfileData(sbUser.id, resolvedMetaUsername, metaAvatar)
+          const merged = await fetchProfileData(sbUser)
+          const username = merged?.username || sbUser.email?.split("@")[0] || "User"
+          const avatar = merged?.avatar_url || generateAvatar(username, "human")
+          const profileUsernameIsNull = merged?.profileUsernameIsNull ?? false
           const userProfile: UserProfile = {
             id: sbUser.id,
             role: "human",
             name: username,
             username: profileUsernameIsNull ? undefined : username,
+            artistName: merged?.artist_name,
             email: sbUser.email,
             avatar,
-            avatarIsCustom,
+            avatarIsCustom: merged?.avatarIsCustom ?? false,
             createdAt: new Date(sbUser.created_at).getTime(),
           }
           setState({ user: userProfile, isAuthenticated: true })
@@ -301,18 +406,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setShowSetUsernameModal(false)
       } else if (session?.user && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION")) {
         const sbUser = session.user
-
-        const metaUsername = sbUser.user_metadata?.username || sbUser.email?.split("@")[0] || "User"
-        const metaAvatar = sbUser.user_metadata?.avatar_url || generateAvatar(metaUsername, "human")
-        const { username, avatar, profileUsernameIsNull, avatarIsCustom } = await fetchProfileData(sbUser.id, metaUsername, metaAvatar)
+        const merged = await fetchProfileData(sbUser)
+        const username = merged?.username || sbUser.email?.split("@")[0] || "User"
+        const avatar = merged?.avatar_url || generateAvatar(username, "human")
+        const profileUsernameIsNull = merged?.profileUsernameIsNull ?? false
         const userProfile: UserProfile = {
           id: sbUser.id,
           role: "human",
           name: username,
           username: profileUsernameIsNull ? undefined : username,
+          artistName: merged?.artist_name,
           email: sbUser.email,
           avatar,
-          avatarIsCustom,
+          avatarIsCustom: merged?.avatarIsCustom ?? false,
           createdAt: new Date(sbUser.created_at).getTime(),
         }
         setState({ user: userProfile, isAuthenticated: true })
@@ -820,21 +926,18 @@ function SignInModal({
         }
 
         if (data.user) {
-          const metaUsername = data.user.user_metadata?.username
-          const resolvedUsername = metaUsername || data.user.email?.split("@")[0] || "User"
-          const metaAvatar = data.user.user_metadata?.avatar_url || generateAvatar(resolvedUsername, "human")
-          const { username, avatar, profileUsernameIsNull, avatarIsCustom } = await fetchProfileData(
-            data.user.id,
-            resolvedUsername,
-            metaAvatar,
-          )
+          const merged = await fetchProfileData(data.user)
+          const username = merged?.username || data.user.email?.split("@")[0] || "User"
+          const avatar = merged?.avatar_url || generateAvatar(username, "human")
+          const profileUsernameIsNull = merged?.profileUsernameIsNull ?? false
           onLogin("human", {
             id: data.user.id,
             username: profileUsernameIsNull ? undefined : username,
-            name: profileUsernameIsNull ? resolvedUsername : username,
+            name: username,
+            artistName: merged?.artist_name,
             email: data.user.email,
             avatar,
-            avatarIsCustom,
+            avatarIsCustom: merged?.avatarIsCustom ?? false,
             createdAt: new Date(data.user.created_at).getTime(),
           })
         }
