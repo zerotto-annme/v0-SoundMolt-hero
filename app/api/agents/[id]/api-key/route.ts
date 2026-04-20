@@ -88,11 +88,12 @@ export async function POST(
 
   const admin = getAdminClient()
 
-  // Generate, hash, then atomically rotate (revoke + insert) via RPC.
+  // Generate, hash. We persist only the hash + last 4 chars.
   const plaintext = generateAgentApiKey()
   const api_key_hash = hashAgentApiKey(plaintext)
   const api_key_last4 = getAgentApiKeyLast4(plaintext)
 
+  // Preferred path: atomic revoke+insert via Postgres function.
   const { data: rotated, error: rpcErr } = await admin.rpc("rotate_agent_api_key", {
     p_agent_id:      id,
     p_owner_user_id: ownerId,
@@ -100,18 +101,81 @@ export async function POST(
     p_last4:         api_key_last4,
   })
 
-  if (rpcErr || !rotated || (Array.isArray(rotated) && rotated.length === 0)) {
-    console.error("[agent-api-key] rotate error:", rpcErr?.message)
-    return NextResponse.json({ error: "Failed to create key" }, { status: 500 })
+  let row: { id: string; api_key_last4: string; created_at: string } | null = null
+
+  if (!rpcErr && rotated) {
+    row = Array.isArray(rotated) ? rotated[0] : rotated
+  } else {
+    // Fallback when the rotate_agent_api_key function isn't present yet
+    // (older deployment of migration 027). Two-step revoke + insert.
+    // Detect "function not found" (PGRST202) and fall through; bubble any
+    // other error up to the client with details.
+    const isMissingFn =
+      rpcErr?.code === "PGRST202" ||
+      /could not find the function/i.test(rpcErr?.message ?? "")
+
+    if (rpcErr && !isMissingFn) {
+      console.error("[agent-api-key] rotate rpc error:", rpcErr)
+      return NextResponse.json(
+        { error: `Failed to create key: ${rpcErr.message}`, code: rpcErr.code ?? null },
+        { status: 500 }
+      )
+    }
+
+    const nowIso = new Date().toISOString()
+    const { error: revokeErr } = await admin
+      .from("agent_api_keys")
+      .update({ is_active: false, revoked_at: nowIso })
+      .eq("agent_id", id)
+      .eq("is_active", true)
+
+    if (revokeErr) {
+      console.error("[agent-api-key] revoke fallback error:", revokeErr)
+      return NextResponse.json(
+        { error: `Failed to revoke previous key: ${revokeErr.message}`, code: revokeErr.code ?? null },
+        { status: 500 }
+      )
+    }
+
+    const { data: inserted, error: insertErr } = await admin
+      .from("agent_api_keys")
+      .insert({
+        agent_id: id,
+        owner_user_id: ownerId,
+        api_key_hash,
+        api_key_last4,
+        is_active: true,
+      })
+      .select("id, api_key_last4, created_at")
+      .single()
+
+    if (insertErr || !inserted) {
+      console.error("[agent-api-key] insert fallback error:", insertErr)
+      return NextResponse.json(
+        {
+          error: `Failed to create key: ${insertErr?.message ?? "unknown insert error"}`,
+          code: insertErr?.code ?? null,
+        },
+        { status: 500 }
+      )
+    }
+
+    row = inserted
   }
 
-  const row = Array.isArray(rotated) ? rotated[0] : rotated
+  if (!row) {
+    return NextResponse.json({ error: "Failed to create key: no row returned" }, { status: 500 })
+  }
 
   return NextResponse.json({
-    api_key:       plaintext,           // shown ONCE
+    success:       true,
+    api_key:       plaintext,                                  // shown ONCE
+    apiKey:        plaintext,                                  // alias for spec compatibility
     api_key_last4: row.api_key_last4,
+    masked:        `${"•".repeat(8)}${row.api_key_last4}`,
     key_id:        row.id,
     created_at:    row.created_at,
+    status:        "active",
   })
 }
 

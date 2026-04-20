@@ -1,0 +1,165 @@
+Fix the Agent API key system in the existing SoundMolt project end-to-end.
+
+Current bug:
+On the Studio Agent details page, clicking "Generate API key" shows:
+- no key
+- Failed to create key
+
+The frontend button exists, but backend creation is failing.
+
+Do NOT rewrite the app. Keep the existing architecture, existing agent detail page, existing UI, and existing Supabase stack.
+
+==================================================
+WHAT TO FIX
+==================================================
+
+1. Make API key generation actually work for an agent.
+2. Use the current logged-in human user as owner.
+3. Ensure the selected agent belongs to the current owner_user_id before creating or regenerating a key.
+4. Persist the key correctly in Supabase.
+5. Use a secure pattern:
+   - generate plaintext key once
+   - store only hash + last4 in DB
+   - return plaintext key only once in response
+6. Make Regenerate invalidate the previous active key immediately.
+7. Make Revoke disable the current active key immediately.
+8. Make GET /api/agents/me work using:
+   Authorization: Bearer <agent_api_key>
+
+==================================================
+IMPORTANT IMPLEMENTATION RULES
+==================================================
+
+- Use the existing SoundMolt project structure
+- Reuse existing agent routes / agent detail page / agent settings page
+- Do not break Studio Agents flow
+- Do not break agent connect flow
+- Use Supabase admin/service-role client for server-side key creation/revocation logic
+- Do not rely on Replit Preview auth assumptions
+- Make backend robust even if frontend uses normal deployed app domain
+
+==================================================
+DB / TABLES
+==================================================
+
+Use or create table:
+public.agent_api_keys
+
+Columns:
+- id uuid primary key
+- agent_id uuid not null references public.agents(id) on delete cascade
+- owner_user_id uuid not null references auth.users(id) on delete cascade
+- api_key_hash text not null unique
+- api_key_last4 text not null
+- is_active boolean not null default true
+- created_at timestamptz not null default now()
+- revoked_at timestamptz null
+- last_used_at timestamptz null
+
+If agents table is missing these fields, add only if needed:
+- owner_user_id
+- status
+- capabilities
+- last_active_at
+
+==================================================
+BACKEND TASKS
+==================================================
+
+1. Add secure helper for:
+- generate plaintext API key
+- sha256 hash
+- extract last4
+- parse Authorization Bearer token
+
+2. Add / fix route for Generate API key
+- must verify current signed-in human user owns the agent
+- must revoke old active key first if regenerate
+- must insert a new active key row
+- must return:
+  {
+    success: true,
+    apiKey: "<plaintext key>",
+    masked: "••••••••1234",
+    status: "active"
+  }
+
+3. Add / fix route for Revoke API key
+- must set current active key to inactive
+- set revoked_at
+- return success JSON
+
+4. Add / fix GET /api/agents/me
+- authenticate using Bearer token
+- hash token
+- find active key
+- reject revoked / inactive / invalid keys
+- return:
+  - agent_id
+  - name
+  - owner_user_id
+  - status
+  - capabilities
+  - created_at
+  - last_active_at
+
+5. Update last_used_at on successful auth
+6. Update agents.last_active_at on successful auth
+
+==================================================
+UI TASKS
+==================================================
+
+On the existing Agent API Key panel:
+- if no key exists, show Generate API key
+- on success, show the plaintext key ONCE in a success panel/modal
+- show masked key in normal view
+- show status active / revoked
+- Regenerate API key must work
+- Revoke API key must work
+- show backend error message if creation fails
+- keep the current SoundMolt styling
+
+==================================================
+LIKELY ROOT CAUSE TO FIX
+==================================================
+
+Check and fix all of these:
+- route currently using wrong Supabase client
+- route missing service-role access
+- missing insert permissions / RLS
+- wrong owner_user_id validation
+- selected agent not found for current user
+- frontend hitting wrong endpoint
+- route not returning actual error details
+- table or column mismatch
+
+==================================================
+FILES TO UPDATE
+==================================================
+
+Find and update the real files in this project, likely including:
+- Supabase migration file
+- agent API helper / auth helper
+- agent create/connect flow
+- agent API key route(s)
+- /api/agents/me route
+- existing Studio Agent details/settings UI component
+
+Use actual existing file paths from the project.
+
+==================================================
+WHAT TO RETURN
+==================================================
+
+After changes, show:
+1. files changed
+2. migration added
+3. route handlers added/updated
+4. UI changes
+5. exact reason why "Failed to create key" was happening
+6. how to test:
+   - generate key
+   - regenerate
+   - revoke
+   - GET /api/agents/me
