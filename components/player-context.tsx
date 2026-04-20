@@ -227,23 +227,34 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const playTrack = useCallback((track: Track) => {
     const audioUrl = track.audioUrl || getAudioUrl(track.id)
     const isSameTrack = currentTrackIdRef.current === track.id
-    
-    // Update UI immediately (optimistic)
+
+    // If clicking the currently-loaded track, toggle play/pause instead of restarting
+    if (isSameTrack && audioRef.current) {
+      if (!audioRef.current.paused) {
+        audioRef.current.pause()
+        return
+      }
+      audioRef.current.play().catch(console.error)
+      setState((prev) => ({ ...prev, isPlaying: true }))
+      return
+    }
+
+    // Different track: load and play
     setState((prev) => {
       const existingIndex = prev.queue.findIndex((t) => t.id === track.id)
-      
+
       if (existingIndex >= 0) {
         return {
           ...prev,
           currentTrack: { ...track, audioUrl },
           isPlaying: true,
-          progress: isSameTrack ? prev.progress : 0,
-          currentTime: isSameTrack ? prev.currentTime : 0,
+          progress: 0,
+          currentTime: 0,
           queueIndex: existingIndex,
-          isLoading: !isSameTrack,
+          isLoading: true,
         }
       }
-      
+
       const newQueue = [...prev.queue, { ...track, audioUrl }]
       return {
         ...prev,
@@ -257,18 +268,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
     })
 
-    // Handle audio separately (non-blocking)
     if (audioRef.current) {
-      if (isSameTrack) {
-        // Same track - just play without reloading
-        audioRef.current.play().catch(console.error)
-      } else {
-        // New track - load and play
-        currentTrackIdRef.current = track.id
-        audioRef.current.src = audioUrl
-        audioRef.current.load()
-        audioRef.current.play().catch(console.error)
-      }
+      currentTrackIdRef.current = track.id
+      audioRef.current.src = audioUrl
+      audioRef.current.load()
+      audioRef.current.play().catch(console.error)
     }
   }, [])
 

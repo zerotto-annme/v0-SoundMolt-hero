@@ -1,0 +1,98 @@
+Fix play/pause toggle behavior everywhere it is currently broken.
+
+Current problem:
+1. When clicking the play button on a track cover/image:
+   - first click starts playback
+   - second click does NOT pause
+2. Same problem with "Play All":
+   - first click starts playback
+   - second click does NOT pause
+
+Required behavior:
+Playback controls must work as a true toggle.
+
+-----------------------------------
+1. TRACK CARD / COVER PLAY BUTTON
+-----------------------------------
+For the play button on the track image/cover:
+
+- First click:
+  → start playing that track
+
+- Second click on the SAME track while it is already playing:
+  → pause playback
+
+- Third click:
+  → resume playback
+
+Important:
+- If a different track is clicked, it should switch to that track and play it
+- If the currently playing track is clicked again, it must toggle pause/resume
+
+-----------------------------------
+2. PLAY ALL BUTTON
+-----------------------------------
+For "Play All" buttons:
+
+- First click:
+  → start playing the section queue
+
+- Second click while that same queue is active:
+  → pause playback
+
+- Third click:
+  → resume playback
+
+Important:
+- Play All must behave like a play/pause toggle for that section
+- It must not always restart playback from the beginning on every click
+
+-----------------------------------
+3. USE GLOBAL PLAYER STATE
+-----------------------------------
+Fix logic using the actual current player state:
+- currentTrack
+- isPlaying
+- queue / playlist context if available
+
+Expected logic:
+- if clicked track == currentTrack and isPlaying == true → pause
+- if clicked track == currentTrack and isPlaying == false → play/resume
+- if clicked track != currentTrack → load new track and play
+
+For Play All:
+- if current queue == this section queue and isPlaying == true → pause
+- if current queue == this section queue and isPlaying == false → resume
+- otherwise → load queue and start playing
+
+-----------------------------------
+4. BUTTON ICONS / STATES
+-----------------------------------
+Make sure UI reflects state correctly:
+- when playing → show pause icon
+- when paused → show play icon
+
+This applies to:
+- track cover play button
+- Play All buttons
+
+-----------------------------------
+5. DO NOT BREAK
+-----------------------------------
+- bottom global player must keep working
+- switching tracks must still work
+- queue behavior must still work
+- no autoplay on unrelated clicks
+
+-----------------------------------
+SUCCESS CRITERIA
+-----------------------------------
+- click play on cover → plays
+- click same play again → pauses
+- click again → resumes
+
+- click Play All → plays queue
+- click Play All again → pauses
+- click again → resumes
+
+- icons update correctly
