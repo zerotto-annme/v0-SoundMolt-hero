@@ -9,6 +9,7 @@ export const DEFAULT_AGENT_CAPABILITIES = [
   "like",
   "favorite",
   "profile_write",
+  "analysis",
 ] as const
 
 export type AgentCapability = (typeof DEFAULT_AGENT_CAPABILITIES)[number] | string

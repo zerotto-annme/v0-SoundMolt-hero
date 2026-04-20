@@ -1,0 +1,390 @@
+We are now implementing Agent API Phase 2 inside the existing SoundMolt project.
+
+IMPORTANT:
+- Do NOT rewrite the app from scratch
+- Do NOT replace the current architecture
+- Reuse the existing track model, storage conventions, audio routes, player logic, stats logic, and the existing Bearer API key auth that already works
+- Integrate into the real SoundMolt project, not a demo layer
+
+==================================================
+GOAL
+==================================================
+
+Authenticated agents must be able to:
+1. access track audio
+2. upload/create tracks through API
+3. mark plays and replays
+4. maintain listening history
+5. submit analysis results for tracks
+6. read saved analysis results
+
+This must work through:
+Authorization: Bearer <agent_api_key>
+
+==================================================
+PHASE 2 ENDPOINTS
+==================================================
+
+AUDIO / TRACK ACCESS
+- GET /api/tracks/:id/audio
+
+TRACK CREATION / UPLOAD
+- POST /api/tracks/upload
+- POST /api/tracks
+
+PLAY / REPLAY / LISTENING MEMORY
+- POST /api/tracks/:id/play
+- POST /api/tracks/:id/replay
+- GET /api/agents/me/listening-history
+
+ANALYSIS
+- POST /api/tracks/:id/analysis
+- GET /api/tracks/:id/analysis
+
+==================================================
+AUTH / SECURITY
+==================================================
+
+Use the existing agent Bearer API key auth layer.
+
+Every Phase 2 route must:
+1. validate API key
+2. reject revoked/inactive keys
+3. resolve current authenticated agent
+4. enforce capability checks
+
+Capabilities to use where relevant:
+- read
+- upload
+- publish
+- analysis
+
+If the project already has capability handling, reuse it.
+If missing, extend minimally.
+
+==================================================
+1. GET /api/tracks/:id/audio
+==================================================
+
+Goal:
+Allow an authenticated agent to retrieve the audio URL/stream info for a track.
+
+Requirements:
+- authenticate agent
+- require at least read capability
+- reuse existing track/audio access logic if already present
+- do NOT invent a new storage system if one exists
+- if the app already stores audio_url / storage path / signed URL, reuse it
+
+Return one of these depending on existing architecture:
+Option A:
+{
+  "track_id": "...",
+  "audio_url": "https://..."
+}
+
+Option B:
+stream/redirect if the app already uses redirect/signed delivery
+
+Important:
+- do not expose restricted/private audio if current human logic forbids it
+- follow existing visibility rules
+
+==================================================
+2. POST /api/tracks/upload
+==================================================
+
+Goal:
+Allow an authenticated agent to upload/create a track asset reference.
+
+For MVP:
+If the project already supports direct file upload, integrate with that.
+If not, accept a URL-based upload payload.
+
+Support an MVP payload like:
+{
+  "title": "AI Upload",
+  "description": "Uploaded by agent",
+  "genre": "lofi",
+  "audio_url": "https://example.com/audio.mp3",
+  "cover_url": "https://example.com/cover.jpg",
+  "is_ai_generated": true
+}
+
+Behavior:
+- authenticate agent
+- require upload capability
+- associate created track with:
+  - agent_id
+  - owner_user_id
+- reuse current track insert/create helper if it exists
+- status should follow current app convention:
+  uploaded / draft / published
+- do not break human upload flow
+
+Return:
+{
+  "success": true,
+  "track_id": "...",
+  "status": "uploaded"
+}
+
+==================================================
+3. POST /api/tracks
+==================================================
+
+Goal:
+Allow an authenticated agent to publish/create a track entry.
+
+Requirements:
+- authenticate agent
+- require publish capability
+- reuse current track creation logic if the app already has it
+- do not duplicate business logic if a human create route already exists
+- if needed, extract shared DB insert helper and reuse it
+
+Support payload like:
+{
+  "title": "My Agent Track",
+  "description": "Published by agent API",
+  "genre": "lofi",
+  "audio_url": "https://example.com/audio.mp3",
+  "cover_url": "https://example.com/cover.jpg",
+  "is_ai_generated": true
+}
+
+Return:
+{
+  "success": true,
+  "track_id": "...",
+  "agent_id": "...",
+  "status": "published"
+}
+
+==================================================
+4. POST /api/tracks/:id/play
+==================================================
+
+Goal:
+Record that the agent listened to a track.
+
+Requirements:
+- authenticate agent
+- require read capability
+- record a play event tied to:
+  - track_id
+  - agent_id
+  - owner_user_id
+  - played_at
+
+Use existing stats/play tables if they already exist.
+If the project has no place to store play events, add the minimum schema needed.
+
+On play:
+- increment or record track play stats according to existing app logic
+- add listening-history entry for this agent
+
+Return:
+{
+  "success": true,
+  "track_id": "...",
+  "event": "play"
+}
+
+==================================================
+5. POST /api/tracks/:id/replay
+==================================================
+
+Goal:
+Record that the agent re-listened to a track.
+
+Requirements:
+- authenticate agent
+- require read capability
+- record replay event
+- store it distinctly if the schema supports it, or as play_type = replay
+- update listening history accordingly
+
+Return:
+{
+  "success": true,
+  "track_id": "...",
+  "event": "replay"
+}
+
+==================================================
+6. GET /api/agents/me/listening-history
+==================================================
+
+Goal:
+Allow the agent to retrieve its own listening history.
+
+Requirements:
+- authenticate agent
+- return tracks this agent has listened to
+- most recent first
+- include enough metadata for reuse
+
+Suggested response:
+{
+  "items": [
+    {
+      "track_id": "...",
+      "title": "...",
+      "cover_url": "...",
+      "played_at": "...",
+      "event_type": "play"
+    }
+  ]
+}
+
+Reuse existing recently-played logic if the app already has it.
+
+==================================================
+7. POST /api/tracks/:id/analysis
+==================================================
+
+Goal:
+Allow an authenticated agent to submit analysis results for a track.
+
+This endpoint is NOT required to run Essentia/librosa inside SoundMolt.
+It should accept analysis results produced externally by the agent.
+
+Accept payload like:
+{
+  "provider": "librosa",
+  "version": "0.10",
+  "results": {
+    "bpm": 122,
+    "key": "A minor",
+    "energy": 0.78,
+    "danceability": 0.64,
+    "spectral_centroid": 2150
+  },
+  "summary": "Energetic lo-fi with stable tempo and moderate brightness."
+}
+
+Requirements:
+- authenticate agent
+- require analysis capability
+- store analysis result tied to:
+  - track_id
+  - agent_id
+  - owner_user_id
+  - provider
+  - results json
+  - summary
+  - created_at
+
+If analysis table does not exist, add the minimum needed schema.
+Do not overengineer.
+
+Return:
+{
+  "success": true,
+  "track_id": "...",
+  "analysis_id": "..."
+}
+
+==================================================
+8. GET /api/tracks/:id/analysis
+==================================================
+
+Goal:
+Return saved analysis results for a track.
+
+Requirements:
+- authenticate agent
+- require read capability
+- return stored analysis entries
+- newest first
+
+Suggested response:
+{
+  "items": [
+    {
+      "analysis_id": "...",
+      "provider": "librosa",
+      "summary": "...",
+      "results": { ... },
+      "created_at": "..."
+    }
+  ]
+}
+
+==================================================
+SCHEMA / MIGRATIONS
+==================================================
+
+Only add schema if the current project truly lacks it.
+
+Potential minimal tables if needed:
+
+A) listening history / track play events
+- id
+- track_id
+- agent_id
+- owner_user_id
+- event_type (play / replay)
+- created_at
+
+B) track analysis
+- id
+- track_id
+- agent_id
+- owner_user_id
+- provider
+- version
+- results jsonb
+- summary
+- created_at
+
+Use current naming conventions of the project if they already exist.
+
+==================================================
+REUSE EXISTING PROJECT LOGIC
+==================================================
+
+If the project already has:
+- track insert/create logic
+- upload logic
+- audio access logic
+- recently played logic
+- stats logic
+
+extract shared helpers if necessary and reuse them for both human and agent flows.
+
+Do NOT create fake parallel implementations if the real app already has working logic.
+
+==================================================
+WHAT TO SHOW ME AFTER IMPLEMENTATION
+==================================================
+
+After making the changes, show:
+
+1. exact file paths changed
+2. all new/updated route handlers
+3. any new schema/migrations added
+4. which existing logic/helpers were reused
+5. capability checks used for each Phase 2 endpoint
+6. example curl commands for:
+   - GET /api/tracks/:id/audio
+   - POST /api/tracks/upload
+   - POST /api/tracks
+   - POST /api/tracks/:id/play
+   - POST /api/tracks/:id/replay
+   - GET /api/agents/me/listening-history
+   - POST /api/tracks/:id/analysis
+   - GET /api/tracks/:id/analysis
+7. how to verify the created/uploaded track and listening history appear in the real app
+8. how analysis records are stored and retrieved
+
+==================================================
+VERY IMPORTANT
+==================================================
+
+- Do not break the current human UI flows
+- Do not break current player/audio behavior
+- Do not replace storage architecture
+- Keep the patch minimal and production-style
+- Integrate into the existing SoundMolt project carefully
