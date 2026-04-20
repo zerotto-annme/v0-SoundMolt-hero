@@ -6,7 +6,7 @@ import Image from "next/image"
 import {
   ArrowLeft, Bot, Music, BarChart3, Loader2, Play, Download,
   Calendar, Headphones, TrendingUp, Activity, Globe, Cpu, Server,
-  ChevronDown, ChevronUp, Clock
+  ChevronDown, ChevronUp, Clock, Key, RefreshCw, Ban, Copy, Check, Eye, EyeOff
 } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
 import { useAuth } from "@/components/auth-context"
@@ -279,6 +279,9 @@ export default function AgentStudioPage() {
                     ))}
                   </div>
 
+                  {/* API Key management */}
+                  <ApiKeySection agentId={agent.id} />
+
                   {/* Advanced Settings — API details */}
                   {hasApiDetails && (
                     <div>
@@ -441,6 +444,297 @@ export default function AgentStudioPage() {
           )}
         </div>
       </main>
+    </div>
+  )
+}
+
+// ─── API Key Management ───────────────────────────────────────────────────────
+
+interface ApiKeyInfo {
+  id: string
+  api_key_last4: string
+  is_active: boolean
+  created_at: string
+  revoked_at: string | null
+  last_used_at: string | null
+}
+
+function ApiKeySection({ agentId }: { agentId: string }) {
+  const [keyInfo, setKeyInfo] = useState<ApiKeyInfo | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isWorking, setIsWorking] = useState(false)
+  const [revealedKey, setRevealedKey] = useState<string | null>(null)
+  const [hideRevealed, setHideRevealed] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [confirmAction, setConfirmAction] = useState<"regenerate" | "revoke" | null>(null)
+
+  const fetchKey = useCallback(async () => {
+    setError(null)
+    const { data: sess } = await supabase.auth.getSession()
+    const token = sess.session?.access_token
+    if (!token) { setIsLoading(false); return }
+    try {
+      const res = await fetch(`/api/agents/${agentId}/api-key`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const json = await res.json()
+        setKeyInfo(json.key as ApiKeyInfo | null)
+      } else {
+        setError(`Failed to load API key (${res.status})`)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load API key")
+    } finally {
+      setIsLoading(false)
+    }
+  }, [agentId])
+
+  useEffect(() => { fetchKey() }, [fetchKey])
+
+  const performRegenerate = async () => {
+    setIsWorking(true); setError(null); setConfirmAction(null)
+    const { data: sess } = await supabase.auth.getSession()
+    const token = sess.session?.access_token
+    if (!token) { setError("Not authenticated"); setIsWorking(false); return }
+    try {
+      const res = await fetch(`/api/agents/${agentId}/api-key`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setError(json.error ?? "Failed to regenerate")
+      } else {
+        setRevealedKey(json.api_key)
+        setHideRevealed(false)
+        await fetchKey()
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to regenerate")
+    } finally {
+      setIsWorking(false)
+    }
+  }
+
+  const performRevoke = async () => {
+    setIsWorking(true); setError(null); setConfirmAction(null)
+    const { data: sess } = await supabase.auth.getSession()
+    const token = sess.session?.access_token
+    if (!token) { setError("Not authenticated"); setIsWorking(false); return }
+    try {
+      const res = await fetch(`/api/agents/${agentId}/api-key`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        setError(json.error ?? "Failed to revoke")
+      } else {
+        setRevealedKey(null)
+        await fetchKey()
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to revoke")
+    } finally {
+      setIsWorking(false)
+    }
+  }
+
+  const handleCopy = () => {
+    if (!revealedKey) return
+    navigator.clipboard.writeText(revealedKey)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const masked = keyInfo?.is_active
+    ? `smk_••••••••••••${keyInfo.api_key_last4}`
+    : null
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3">
+        <Key className="w-4 h-4 text-glow-primary" />
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          Agent API Key
+        </h3>
+      </div>
+
+      <div className="rounded-xl bg-card/30 border border-border/30 p-4 space-y-3">
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+          </div>
+        ) : (
+          <>
+            {/* Status row */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {keyInfo?.is_active ? (
+                <span className="text-xs px-2 py-0.5 rounded-full border bg-emerald-500/20 text-emerald-400 border-emerald-500/30 font-medium">
+                  active
+                </span>
+              ) : (
+                <span className="text-xs px-2 py-0.5 rounded-full border bg-red-500/20 text-red-400 border-red-500/30 font-medium">
+                  {keyInfo ? "revoked" : "no key"}
+                </span>
+              )}
+              {keyInfo?.last_used_at && (
+                <span className="text-xs text-muted-foreground">
+                  Last used {new Date(keyInfo.last_used_at).toLocaleString()}
+                </span>
+              )}
+            </div>
+
+            {/* Just-revealed plaintext key */}
+            {revealedKey && (
+              <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-3 space-y-2">
+                <p className="text-xs text-amber-300 font-medium">
+                  New API key — shown only once. Copy it now.
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 font-mono text-xs text-foreground break-all bg-black/30 rounded px-2 py-1.5">
+                    {hideRevealed ? "smk_••••••••••••••••••••••••••••••••" : revealedKey}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => setHideRevealed((v) => !v)}
+                    className="p-1.5 rounded hover:bg-white/5 text-muted-foreground hover:text-foreground"
+                    title={hideRevealed ? "Show" : "Hide"}
+                  >
+                    {hideRevealed ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCopy}
+                    className="p-1.5 rounded hover:bg-white/5 text-muted-foreground hover:text-foreground"
+                    title="Copy"
+                  >
+                    {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Masked existing key */}
+            {!revealedKey && masked && (
+              <div className="flex items-center gap-2">
+                <code className="flex-1 font-mono text-sm text-foreground/80 bg-black/30 rounded px-3 py-2">
+                  {masked}
+                </code>
+              </div>
+            )}
+
+            {!keyInfo && (
+              <p className="text-xs text-muted-foreground">
+                No API key has been issued yet for this agent.
+              </p>
+            )}
+
+            {error && (
+              <div className="text-xs text-red-400">{error}</div>
+            )}
+
+            {/* Actions */}
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setConfirmAction("regenerate")}
+                disabled={isWorking}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-glow-primary/15 text-glow-primary border border-glow-primary/30 hover:bg-glow-primary/25 transition-colors disabled:opacity-50"
+              >
+                {isWorking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                {keyInfo ? "Regenerate API key" : "Generate API key"}
+              </button>
+              {keyInfo?.is_active && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmAction("revoke")}
+                  disabled={isWorking}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500/15 text-red-400 border border-red-500/30 hover:bg-red-500/25 transition-colors disabled:opacity-50"
+                >
+                  <Ban className="w-3.5 h-3.5" />
+                  Revoke
+                </button>
+              )}
+            </div>
+
+            <p className="text-[11px] text-muted-foreground leading-relaxed pt-1">
+              The full API key is shown only at creation or after Regenerate. We store
+              only a hash. Use it as <code className="font-mono">Authorization: Bearer &lt;key&gt;</code>{" "}
+              when calling <code className="font-mono">/api/agents/me</code>.
+            </p>
+          </>
+        )}
+      </div>
+
+      {/* Confirm modal */}
+      {confirmAction && (
+        <ConfirmKeyAction
+          action={confirmAction}
+          onCancel={() => setConfirmAction(null)}
+          onConfirm={confirmAction === "regenerate" ? performRegenerate : performRevoke}
+        />
+      )}
+    </div>
+  )
+}
+
+function ConfirmKeyAction({
+  action,
+  onCancel,
+  onConfirm,
+}: {
+  action: "regenerate" | "revoke"
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel() }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onCancel])
+
+  const title = action === "regenerate" ? "Regenerate API key?" : "Revoke API key?"
+  const body = action === "regenerate"
+    ? "The current API key will stop working immediately. A new key will be created and shown only once."
+    : "The agent will lose API access immediately. You can issue a new key later by regenerating."
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-150"
+      onClick={onCancel}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative w-full max-w-sm mx-4 rounded-2xl bg-card border border-border/60 shadow-2xl p-6 animate-in zoom-in-95 fade-in duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-base font-semibold text-foreground mb-2">{title}</h3>
+        <p className="text-sm text-muted-foreground mb-5">{body}</p>
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2 rounded-lg text-sm font-semibold bg-white/5 text-foreground hover:bg-white/10 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors ${
+              action === "regenerate"
+                ? "bg-glow-primary hover:opacity-90"
+                : "bg-red-500 hover:bg-red-600"
+            }`}
+          >
+            {action === "regenerate" ? "Regenerate" : "Revoke"}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

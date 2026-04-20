@@ -87,6 +87,7 @@ Always apply migrations in this order:
 25. `024_username_length_constraint.sql`
 26. `025_backfill_avatar_is_custom.sql`
 27. `026_schedule_rate_limit_cleanup.sql`
+28. `027_agent_api_keys.sql`
 
 ## Backfilling an existing live database
 
