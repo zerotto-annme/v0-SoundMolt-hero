@@ -14,6 +14,7 @@ import {
   MoreHorizontal,
   ChevronRight,
   Pause,
+  SkipForward,
   FolderPlus,
   Music2,
   Mic,
@@ -154,6 +155,8 @@ function SectionHeader({
   title,
   subtitle,
   onPlayAll,
+  isPlayingHere = false,
+  onNext,
   playAllColor = "text-glow-primary hover:text-glow-primary hover:bg-glow-primary/10",
   rightSlot,
 }: {
@@ -162,6 +165,8 @@ function SectionHeader({
   title: string
   subtitle: string
   onPlayAll?: () => void
+  isPlayingHere?: boolean
+  onNext?: () => void
   playAllColor?: string
   rightSlot?: React.ReactNode
 }) {
@@ -181,8 +186,23 @@ function SectionHeader({
       <div className="flex items-center gap-2 flex-shrink-0">
         {onPlayAll && (
           <Button variant="ghost" size="sm" onClick={onPlayAll} className={playAllColor}>
-            <Play className="w-4 h-4 mr-2" />
-            Play All
+            {isPlayingHere ? (
+              <Pause className="w-4 h-4 mr-2 fill-current" />
+            ) : (
+              <Play className="w-4 h-4 mr-2 fill-current" />
+            )}
+            {isPlayingHere ? "Pause" : "Play All"}
+          </Button>
+        )}
+        {onNext && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onNext}
+            className="text-muted-foreground hover:text-foreground hover:bg-white/5"
+          >
+            <SkipForward className="w-4 h-4 mr-2" />
+            Next
           </Button>
         )}
         {rightSlot}
@@ -265,7 +285,7 @@ function LibraryContent() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all")
   const { tracks: dynamicTracks } = useActivitySimulation()
-  const { createdTracks, playTrack } = usePlayer()
+  const { createdTracks, playTrack, togglePlay, currentTrack, isPlaying } = usePlayer()
   const { favorites } = useFavorites()
 
   const recentlyPlayed = useMemo(() => dynamicTracks.slice(0, 6), [dynamicTracks])
@@ -302,6 +322,28 @@ function LibraryContent() {
   const handlePlayAll = (tracks: (Track | SeedTrack)[]) => {
     if (tracks.length > 0) playTrack(tracks[0] as Track)
   }
+
+  // Toggle play/pause if current track belongs to this section, otherwise start it
+  const togglePlayAll = (tracks: (Track | SeedTrack)[]) => {
+    if (tracks.length === 0) return
+    const idx = currentTrack ? tracks.findIndex((t) => t.id === currentTrack.id) : -1
+    if (idx >= 0) {
+      togglePlay()
+    } else {
+      playTrack(tracks[0] as Track)
+    }
+  }
+
+  // Skip to next track within a specific section's list
+  const handleNextIn = (tracks: (Track | SeedTrack)[]) => {
+    if (tracks.length === 0) return
+    const idx = currentTrack ? tracks.findIndex((t) => t.id === currentTrack.id) : -1
+    const nextIdx = idx === -1 ? 0 : (idx + 1) % tracks.length
+    playTrack(tracks[nextIdx] as Track)
+  }
+
+  const isSectionPlaying = (tracks: (Track | SeedTrack)[]) =>
+    isPlaying && !!currentTrack && tracks.some((t) => t.id === currentTrack.id)
 
   const handleShuffleAll = () => {
     if (allPlayable.length === 0) return
@@ -389,38 +431,23 @@ function LibraryContent() {
         </div>
 
         <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-10">
-          {/* 1. My Tracks */}
+          {/* 1. My Library */}
           <section ref={myTracksRef} className="scroll-mt-24">
             <SectionHeader
               icon={Sparkles}
               iconGradient="from-glow-primary to-glow-secondary"
-              title="My Tracks"
+              title="My Library"
               subtitle={`${createdTracks.length} ${createdTracks.length === 1 ? "track" : "tracks"} you created with AI`}
-              onPlayAll={createdTracks.length > 0 ? () => handlePlayAll(createdTracks) : undefined}
+              onPlayAll={createdTracks.length > 0 ? () => togglePlayAll(createdTracks) : undefined}
+              isPlayingHere={isSectionPlaying(createdTracks)}
+              onNext={createdTracks.length > 0 ? () => handleNextIn(createdTracks) : undefined}
             />
 
-            {createdTracks.length > 0 ? (
+            {createdTracks.length > 0 && (
               <div className="bg-card/30 rounded-xl border border-border/30 overflow-hidden divide-y divide-border/20">
                 {createdTracks.map((track, index) => (
                   <TrackListItem key={track.id} track={track} index={index} />
                 ))}
-              </div>
-            ) : (
-              <div className="text-center py-12 bg-card/30 rounded-xl border border-border/30">
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-glow-primary/20 to-glow-secondary/20 flex items-center justify-center mx-auto mb-4">
-                  <Sparkles className="w-8 h-8 text-glow-primary" />
-                </div>
-                <h3 className="text-lg font-medium text-foreground mb-2">No tracks created yet</h3>
-                <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
-                  Create your first AI-generated track with just a text prompt
-                </p>
-                <Button
-                  onClick={() => setIsCreateModalOpen(true)}
-                  className="bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90 text-white"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Your First Track
-                </Button>
               </div>
             )}
           </section>
@@ -432,7 +459,9 @@ function LibraryContent() {
               iconGradient="from-pink-500 to-rose-600"
               title="My Favorites Playlist"
               subtitle={`${favorites.length} ${favorites.length === 1 ? "track" : "tracks"} you've saved`}
-              onPlayAll={favorites.length > 0 ? () => handlePlayAll(favorites) : undefined}
+              onPlayAll={favorites.length > 0 ? () => togglePlayAll(favorites) : undefined}
+              isPlayingHere={isSectionPlaying(favorites)}
+              onNext={favorites.length > 0 ? () => handleNextIn(favorites) : undefined}
               playAllColor="text-pink-400 hover:text-pink-400 hover:bg-pink-500/10"
             />
 
@@ -462,14 +491,10 @@ function LibraryContent() {
               iconGradient="from-cyan-500 to-blue-600"
               title="Recently Played"
               subtitle="Pick up where you left off"
-              onPlayAll={recentlyPlayed.length > 0 ? () => handlePlayAll(recentlyPlayed) : undefined}
+              onPlayAll={recentlyPlayed.length > 0 ? () => togglePlayAll(recentlyPlayed) : undefined}
+              isPlayingHere={isSectionPlaying(recentlyPlayed)}
+              onNext={recentlyPlayed.length > 0 ? () => handleNextIn(recentlyPlayed) : undefined}
               playAllColor="text-cyan-400 hover:text-cyan-400 hover:bg-cyan-500/10"
-              rightSlot={
-                <Button variant="ghost" size="sm" className="text-muted-foreground hidden sm:inline-flex">
-                  See All
-                  <ChevronRight className="w-4 h-4 ml-1" />
-                </Button>
-              }
             />
 
             <div className="bg-card/30 rounded-xl border border-border/30 overflow-hidden divide-y divide-border/20">
