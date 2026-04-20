@@ -4,7 +4,7 @@ import { useAuth } from "@/components/auth-context"
 import { Sidebar } from "@/components/sidebar"
 import { 
   Music, Plus, Play, MoreHorizontal, Edit2, Trash2, Heart, 
-  BarChart3, Globe, Pause, X, Check, Wand2, Upload, Sparkles
+  BarChart3, Globe, Pause, Wand2, Upload, Sparkles
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useEffect, useState, useCallback } from "react"
@@ -222,7 +222,6 @@ export default function MyTracksPage() {
               {displayTracks.map((track, index) => {
                 const isCurrentPlaying = currentTrack?.id === track.id && isPlaying
                 const isLiked = likedTracks.has(track.id)
-                const isDeleting = deleteConfirmId === track.id
 
                 return (
                   <div 
@@ -326,51 +325,33 @@ export default function MyTracksPage() {
                         <Heart className={`w-4 h-4 ${isLiked ? "fill-current" : ""}`} />
                       </button>
                       
-                      {/* Delete confirmation */}
-                      {isDeleting ? (
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => handleDelete(track.id)}
-                            className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
-                          >
-                            <Check className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirmId(null)}
-                            className="p-2 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 transition-colors"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        /* More options */
-                        <div className="relative">
-                          <button 
-                            onClick={() => setActiveMenuId(activeMenuId === track.id ? null : track.id)}
-                            className="p-2 rounded-lg hover:bg-white/10 text-white/40 hover:text-white opacity-0 group-hover:opacity-100 transition-all"
-                          >
-                            <MoreHorizontal className="w-4 h-4" />
-                          </button>
-                          
-                          <TrackActionsMenu
-                            track={track}
-                            isOpen={activeMenuId === track.id}
-                            onClose={() => setActiveMenuId(null)}
-                            onEdit={() => {
-                              setActiveMenuId(null)
-                              setEditingTrack(track)
-                            }}
-                            onDelete={() => {
-                              setActiveMenuId(null)
-                              setDeleteConfirmId(track.id)
-                            }}
-                            onPublish={() => {
-                              setActiveMenuId(null)
-                              // Publish functionality would go here
-                            }}
-                          />
-                        </div>
-                      )}
+                      {/* More options */}
+                      <div className="relative">
+                        <button 
+                          onClick={() => setActiveMenuId(activeMenuId === track.id ? null : track.id)}
+                          className="p-2 rounded-lg hover:bg-white/10 text-white/40 hover:text-white opacity-0 group-hover:opacity-100 transition-all"
+                        >
+                          <MoreHorizontal className="w-4 h-4" />
+                        </button>
+                        
+                        <TrackActionsMenu
+                          track={track}
+                          isOpen={activeMenuId === track.id}
+                          onClose={() => setActiveMenuId(null)}
+                          onEdit={() => {
+                            setActiveMenuId(null)
+                            setEditingTrack(track)
+                          }}
+                          onDelete={() => {
+                            setActiveMenuId(null)
+                            setDeleteConfirmId(track.id)
+                          }}
+                          onPublish={() => {
+                            setActiveMenuId(null)
+                            // Publish functionality would go here
+                          }}
+                        />
+                      </div>
                     </div>
                   </div>
                 )
@@ -450,6 +431,69 @@ export default function MyTracksPage() {
           )
         }}
       />
+
+      {/* Delete confirmation modal */}
+      <DeleteTrackConfirmModal
+        isOpen={deleteConfirmId !== null}
+        onCancel={() => setDeleteConfirmId(null)}
+        onConfirm={() => {
+          if (deleteConfirmId) handleDelete(deleteConfirmId)
+        }}
+      />
+    </div>
+  )
+}
+
+function DeleteTrackConfirmModal({
+  isOpen,
+  onCancel,
+  onConfirm,
+}: {
+  isOpen: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel()
+    }
+    window.addEventListener("keydown", handleKey)
+    return () => window.removeEventListener("keydown", handleKey)
+  }, [isOpen, onCancel])
+
+  if (!isOpen) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-sm bg-[#1a1a1c] border border-white/10 rounded-2xl shadow-2xl p-6"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <h2 className="text-lg font-semibold text-white mb-2">Delete track</h2>
+        <p className="text-sm text-white/70 mb-6">
+          Are you sure you want to delete this track?
+        </p>
+        <div className="flex items-center justify-end gap-3">
+          <button
+            onClick={onCancel}
+            className="px-5 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors text-sm font-medium"
+          >
+            No
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-5 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors text-sm font-medium"
+          >
+            Yes
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
