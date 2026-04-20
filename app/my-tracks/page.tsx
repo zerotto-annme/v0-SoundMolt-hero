@@ -12,6 +12,7 @@ import { usePlayer, type Track } from "@/components/player-context"
 import { CreateTrackModal } from "@/components/create-track-modal"
 import { UploadTrackModal } from "@/components/upload-track-modal"
 import { EditTrackModal } from "@/components/edit-track-modal"
+import { TrackDetailModal } from "@/components/track-detail-modal"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import Image from "next/image"
@@ -69,6 +70,7 @@ export default function MyTracksPage() {
   const [likedTracks, setLikedTracks] = useState<Set<string>>(new Set())
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [editingTrack, setEditingTrack] = useState<Track | null>(null)
+  const [detailTrack, setDetailTrack] = useState<Track | null>(null)
   const [supabaseTracks, setSupabaseTracks] = useState<Track[]>([])
   const [tracksLoading, setTracksLoading] = useState(false)
   const { createdTracks, playTrack, currentTrack, isPlaying, togglePlay, removeCreatedTrack } = usePlayer()
@@ -226,7 +228,8 @@ export default function MyTracksPage() {
                 return (
                   <div 
                     key={track.id}
-                    className={`grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-4 items-center px-4 py-3 rounded-lg transition-colors group ${
+                    onClick={() => setDetailTrack(track)}
+                    className={`grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-4 items-center px-4 py-3 rounded-lg transition-colors group cursor-pointer ${
                       isCurrentPlaying ? "bg-glow-primary/10" : "hover:bg-white/5"
                     }`}
                   >
@@ -236,7 +239,7 @@ export default function MyTracksPage() {
                         {index + 1}
                       </span>
                       <button 
-                        onClick={() => handlePlayPause(track)}
+                        onClick={(e) => { e.stopPropagation(); handlePlayPause(track) }}
                         className="hidden group-hover:flex items-center justify-center w-8 h-8 rounded-full bg-glow-primary/20 hover:bg-glow-primary/30 transition-colors"
                       >
                         {isCurrentPlaying ? (
@@ -306,7 +309,10 @@ export default function MyTracksPage() {
                     
                     {/* Stats button */}
                     <div className="w-20 flex justify-end">
-                      <button className="p-2 rounded-lg hover:bg-white/10 text-white/40 hover:text-white opacity-0 group-hover:opacity-100 transition-all">
+                      <button
+                        onClick={(e) => e.stopPropagation()}
+                        className="p-2 rounded-lg hover:bg-white/10 text-white/40 hover:text-white opacity-0 group-hover:opacity-100 transition-all"
+                      >
                         <BarChart3 className="w-4 h-4" />
                       </button>
                     </div>
@@ -315,7 +321,7 @@ export default function MyTracksPage() {
                     <div className="w-24 flex justify-end items-center gap-1">
                       {/* Like button */}
                       <button 
-                        onClick={() => handleLike(track.id)}
+                        onClick={(e) => { e.stopPropagation(); handleLike(track.id) }}
                         className={`p-2 rounded-lg transition-all ${
                           isLiked 
                             ? "text-pink-400 bg-pink-500/10" 
@@ -326,9 +332,9 @@ export default function MyTracksPage() {
                       </button>
                       
                       {/* More options */}
-                      <div className="relative">
+                      <div className="relative" onClick={(e) => e.stopPropagation()}>
                         <button 
-                          onClick={() => setActiveMenuId(activeMenuId === track.id ? null : track.id)}
+                          onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === track.id ? null : track.id) }}
                           className="p-2 rounded-lg hover:bg-white/10 text-white/40 hover:text-white opacity-0 group-hover:opacity-100 transition-all"
                         >
                           <MoreHorizontal className="w-4 h-4" />
@@ -431,6 +437,15 @@ export default function MyTracksPage() {
           )
         }}
       />
+
+      {/* Track detail modal */}
+      {detailTrack && (
+        <TrackDetailModal
+          track={detailTrack}
+          isOpen={detailTrack !== null}
+          onClose={() => setDetailTrack(null)}
+        />
+      )}
 
       {/* Delete confirmation modal */}
       <DeleteTrackConfirmModal
