@@ -1,0 +1,173 @@
+Add full agent management controls to the Studio Agents page.
+
+Goal:
+Allow the user to manage both pending agent connections and active agents directly from the UI.
+
+--------------------------------------------------
+1. WAITING FOR CONNECTION CARDS
+--------------------------------------------------
+For every card in the "WAITING FOR CONNECTION" section
+(where the text says "Waiting for agent to connect..."):
+
+Add a visible "Delete" button on each pending connection card.
+
+Behavior:
+- Clicking "Delete" removes that pending connection request/card
+- The card must disappear from the UI after deletion
+- The deletion must persist (not come back after refresh)
+
+UI:
+- Place the Delete button clearly on the card
+- Keep the premium dark style
+- Use a red-toned button or destructive action styling
+
+--------------------------------------------------
+2. ACTIVE AGENTS CARDS
+--------------------------------------------------
+For every card in the "ACTIVE AGENTS" section:
+
+Add two buttons:
+- Stop
+- Delete
+
+--------------------------------------------------
+3. STOP BUTTON BEHAVIOR
+--------------------------------------------------
+When clicking "Stop" on an active agent:
+
+Required behavior:
+- Revoke / disable that agent’s access
+- Change the agent status from:
+  "Active" (green)
+  to
+  "Not Active" (red)
+
+Important:
+- The status must update in the UI immediately
+- The status change must persist after refresh
+- The agent should no longer be treated as active by the system
+
+UI:
+- "Stop" should be a functional button
+- It should look like a warning/secondary destructive action
+- After stopping, the card should visually reflect inactive state
+
+--------------------------------------------------
+4. DELETE BUTTON FOR ACTIVE AGENTS
+--------------------------------------------------
+Next to the "Stop" button, add a "Delete" button.
+
+Behavior:
+- Clicking "Delete" must NOT instantly delete
+- It must first open a confirmation modal
+
+--------------------------------------------------
+5. DELETE CONFIRMATION MODAL
+--------------------------------------------------
+When the user clicks Delete for an active agent, show a popup modal.
+
+Modal text must be in English:
+"Are you sure you want to delete this agent?"
+
+Buttons:
+- Yes
+- No
+
+Button colors:
+- Yes = green
+- No = red
+
+Behavior:
+- Yes → permanently delete the selected agent
+- No → close the modal and do nothing
+
+Also:
+- clicking outside modal = same as No
+- pressing Escape = same as No
+
+--------------------------------------------------
+6. DELETE CONFIRMATION FOR PENDING CONNECTIONS
+--------------------------------------------------
+Apply the same confirmation modal behavior to deleting pending connection cards too.
+
+Modal text:
+"Are you sure you want to delete this agent?"
+
+Buttons:
+- Yes (green)
+- No (red)
+
+Behavior:
+- Yes → delete pending connection
+- No → cancel
+
+--------------------------------------------------
+7. PERSISTENCE / DATA LOGIC
+--------------------------------------------------
+All actions must be real and persistent:
+
+Pending connections:
+- Delete removes them from storage/database
+
+Active agents:
+- Stop updates their status to inactive
+- Delete removes them from storage/database
+
+Do not make these buttons UI-only.
+They must actually change the underlying data.
+
+--------------------------------------------------
+8. STATUS LOGIC
+--------------------------------------------------
+Statuses must behave clearly:
+
+Pending connection:
+- remains "pending" until deleted or connected
+
+Active agent:
+- starts as "Active" (green)
+
+Stopped agent:
+- becomes "Not Active" (red)
+
+Make sure the UI always reflects the true stored state.
+
+--------------------------------------------------
+9. UI / DESIGN REQUIREMENTS
+--------------------------------------------------
+Keep the premium SoundMolt dark design.
+
+Requirements:
+- buttons aligned neatly on cards
+- no broken spacing
+- status pills remain clean and readable
+- destructive actions must be visually clear
+- modal should match the rest of the app
+
+--------------------------------------------------
+10. DO NOT BREAK
+--------------------------------------------------
+Do not break:
+- Add Agent flow
+- existing card layouts
+- agent connection logic
+- active agent rendering
+- overall Studio Agents page structure
+
+--------------------------------------------------
+11. SUCCESS CRITERIA
+--------------------------------------------------
+Pending cards:
+- each pending card has Delete
+- clicking Delete opens confirmation modal
+- Yes deletes it permanently
+- No cancels
+
+Active agent cards:
+- each active card has Stop and Delete
+- Stop changes status to Not Active (red) and persists
+- Delete opens confirmation modal
+- Yes deletes permanently
+- No cancels
+
+All buttons must be functional, not just visual.

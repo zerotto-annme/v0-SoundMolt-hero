@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
-import { Bot, Plus, Loader2, FlaskConical, Music, Activity, Clock } from "lucide-react"
+import { Bot, Plus, Loader2, FlaskConical, Music, Activity, Clock, Trash2, Power } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/components/auth-context"
@@ -11,10 +11,10 @@ import { supabase } from "@/lib/supabase"
 import { AddAgentModal, type Agent } from "@/components/add-agent-modal"
 
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  active:   { label: "Active",              className: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" },
+  active:   { label: "Active",                 className: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" },
   pending:  { label: "Waiting for connection", className: "bg-amber-500/20 text-amber-400 border-amber-500/30" },
-  inactive: { label: "Inactive",            className: "bg-white/10 text-white/50 border-white/20" },
-  disabled: { label: "Disabled",            className: "bg-red-500/20 text-red-400 border-red-500/30" },
+  inactive: { label: "Not Active",             className: "bg-red-500/20 text-red-400 border-red-500/30" },
+  disabled: { label: "Not Active",             className: "bg-red-500/20 text-red-400 border-red-500/30" },
 }
 
 export default function StudioAgentsPage() {
@@ -25,6 +25,8 @@ export default function StudioAgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [isFetching, setIsFetching] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState<Agent | null>(null)
+  const [pendingActionId, setPendingActionId] = useState<string | null>(null)
 
   useEffect(() => { setIsHydrated(true) }, [])
 
@@ -62,9 +64,43 @@ export default function StudioAgentsPage() {
     setAgents((prev) => [agent, ...prev])
   }
 
+  const handleStop = useCallback(async (agent: Agent) => {
+    if (!user?.id || pendingActionId) return
+    setPendingActionId(agent.id)
+    const previous = agents
+    setAgents((prev) => prev.map((a) => (a.id === agent.id ? { ...a, status: "inactive" } : a)))
+    const { error } = await supabase
+      .from("agents")
+      .update({ status: "inactive" })
+      .eq("id", agent.id)
+      .eq("user_id", user.id)
+    if (error) {
+      console.error("[studio-agents] stop error:", error.message)
+      setAgents(previous)
+    }
+    setPendingActionId(null)
+  }, [user?.id, agents, pendingActionId])
+
+  const handleDeleteConfirmed = useCallback(async () => {
+    if (!confirmDelete || !user?.id) return
+    const target = confirmDelete
+    setPendingActionId(target.id)
+    const previous = agents
+    setAgents((prev) => prev.filter((a) => a.id !== target.id))
+    setConfirmDelete(null)
+    const { error } = await supabase
+      .from("agents")
+      .delete()
+      .eq("id", target.id)
+      .eq("user_id", user.id)
+    if (error) {
+      console.error("[studio-agents] delete error:", error.message)
+      setAgents(previous)
+    }
+    setPendingActionId(null)
+  }, [confirmDelete, user?.id, agents])
+
   // Show loader only while hydration or auth state is still resolving.
-  // Once authenticated, render the page even if user data is still being fetched —
-  // the inner sections handle their own loading states.
   if (!isHydrated || !isAuthenticated) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -141,7 +177,12 @@ export default function StudioAgentsPage() {
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                     {pendingAgents.map((agent) => (
-                      <PendingAgentCard key={agent.id} agent={agent} />
+                      <PendingAgentCard
+                        key={agent.id}
+                        agent={agent}
+                        isBusy={pendingActionId === agent.id}
+                        onDelete={() => setConfirmDelete(agent)}
+                      />
                     ))}
                   </div>
                 </div>
@@ -161,7 +202,10 @@ export default function StudioAgentsPage() {
                       <ActiveAgentCard
                         key={agent.id}
                         agent={agent}
+                        isBusy={pendingActionId === agent.id}
                         onClick={() => router.push(`/studio-agents/${agent.id}`)}
+                        onStop={() => handleStop(agent)}
+                        onDelete={() => setConfirmDelete(agent)}
                       />
                     ))}
                   </div>
@@ -182,7 +226,9 @@ export default function StudioAgentsPage() {
                       <ActiveAgentCard
                         key={agent.id}
                         agent={agent}
+                        isBusy={pendingActionId === agent.id}
                         onClick={() => router.push(`/studio-agents/${agent.id}`)}
+                        onDelete={() => setConfirmDelete(agent)}
                       />
                     ))}
                   </div>
@@ -220,13 +266,27 @@ export default function StudioAgentsPage() {
         onClose={() => setIsModalOpen(false)}
         onSuccess={handleAgentCreated}
       />
+
+      <ConfirmDeleteModal
+        isOpen={confirmDelete !== null}
+        onConfirm={handleDeleteConfirmed}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </div>
   )
 }
 
-function PendingAgentCard({ agent }: { agent: Agent }) {
+function PendingAgentCard({
+  agent,
+  isBusy,
+  onDelete,
+}: {
+  agent: Agent
+  isBusy: boolean
+  onDelete: () => void
+}) {
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-card/30 border border-amber-500/20 text-left opacity-80">
+    <div className="relative overflow-hidden rounded-2xl bg-card/30 border border-amber-500/20 text-left">
       <div className="relative h-20 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 to-amber-900/20" />
         <div className="absolute inset-0 bg-gradient-to-t from-card via-transparent to-transparent" />
@@ -235,26 +295,60 @@ function PendingAgentCard({ agent }: { agent: Agent }) {
         <div className="w-10 h-10 rounded-xl border-2 border-border/50 overflow-hidden mb-3 bg-card flex items-center justify-center">
           <Clock className="w-5 h-5 text-amber-400" />
         </div>
-        <h3 className="font-semibold text-foreground/60 text-sm truncate font-mono">
+        <h3 className="font-semibold text-foreground/80 text-sm truncate font-mono">
           {agent.connection_code ?? "—"}
         </h3>
         <p className="text-xs text-amber-400 mt-1">Waiting for agent to connect…</p>
-        <div className="mt-3">
+        <div className="mt-3 flex items-center justify-between gap-2">
           <span className="text-xs px-2 py-0.5 rounded-full border bg-amber-500/20 text-amber-400 border-amber-500/30 font-medium">
             pending
           </span>
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={isBusy}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-red-500/15 text-red-400 border border-red-500/30 hover:bg-red-500/25 transition-colors disabled:opacity-50"
+          >
+            {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+            Delete
+          </button>
         </div>
       </div>
     </div>
   )
 }
 
-function ActiveAgentCard({ agent, onClick }: { agent: Agent; onClick: () => void }) {
+function ActiveAgentCard({
+  agent,
+  isBusy,
+  onClick,
+  onStop,
+  onDelete,
+}: {
+  agent: Agent
+  isBusy: boolean
+  onClick: () => void
+  onStop?: () => void
+  onDelete: () => void
+}) {
   const status = STATUS_CONFIG[agent.status] ?? STATUS_CONFIG.inactive
+  const stopAction = (e: React.MouseEvent, action: () => void) => {
+    e.stopPropagation()
+    action()
+  }
+
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className="group relative overflow-hidden rounded-2xl bg-card/50 border border-border/50 hover:border-glow-primary/40 hover:bg-card/80 transition-all duration-200 hover:scale-[1.02] text-left w-full"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          onClick()
+        }
+      }}
+      className="group relative overflow-hidden rounded-2xl bg-card/50 border border-border/50 hover:border-glow-primary/40 hover:bg-card/80 transition-all duration-200 hover:scale-[1.02] text-left w-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-glow-primary/50"
     >
       <div className="relative h-28 overflow-hidden">
         {agent.cover_url ? (
@@ -291,7 +385,93 @@ function ActiveAgentCard({ agent, onClick }: { agent: Agent; onClick: () => void
             {status.label}
           </span>
         </div>
+
+        <div className="mt-3 flex items-center gap-2">
+          {onStop && (
+            <button
+              type="button"
+              onClick={(e) => stopAction(e, onStop)}
+              disabled={isBusy}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-amber-500/15 text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 transition-colors disabled:opacity-50"
+            >
+              {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Power className="w-3 h-3" />}
+              Stop
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={(e) => stopAction(e, onDelete)}
+            disabled={isBusy}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-red-500/15 text-red-400 border border-red-500/30 hover:bg-red-500/25 transition-colors disabled:opacity-50"
+          >
+            <Trash2 className="w-3 h-3" />
+            Delete
+          </button>
+        </div>
       </div>
-    </button>
+    </div>
+  )
+}
+
+function ConfirmDeleteModal({
+  isOpen,
+  onConfirm,
+  onCancel,
+}: {
+  isOpen: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  useEffect(() => {
+    if (!isOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [isOpen, onCancel])
+
+  if (!isOpen) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-150"
+      onClick={onCancel}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative w-full max-w-sm mx-4 rounded-2xl bg-card border border-border/60 shadow-2xl p-6 animate-in zoom-in-95 fade-in duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3 mb-5">
+          <div className="w-10 h-10 rounded-xl bg-red-500/15 border border-red-500/30 flex items-center justify-center shrink-0">
+            <Trash2 className="w-5 h-5 text-red-400" />
+          </div>
+          <div>
+            <h3 className="text-base font-semibold text-foreground">Delete agent</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Are you sure you want to delete this agent?
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2 rounded-lg text-sm font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors"
+          >
+            No
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 transition-colors"
+          >
+            Yes
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
