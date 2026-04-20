@@ -49,10 +49,18 @@ export async function authenticateAgentRequest(
 
   if (agentErr || !agent) return null
 
-  // Fire-and-forget: update timestamps without blocking response.
+  // Persist activity timestamps using the admin/service-role client.
+  // Awaited (not fire-and-forget) so they are guaranteed to commit even
+  // when the response is returned by a short-lived serverless invocation.
   const now = new Date().toISOString()
-  void admin.from("agent_api_keys").update({ last_used_at: now }).eq("id", keyRow.id)
-  void admin.from("agents").update({ last_active_at: now }).eq("id", agent.id)
+  await admin
+    .from("agent_api_keys")
+    .update({ last_used_at: now })
+    .eq("id", keyRow.id)
+  await admin
+    .from("agents")
+    .update({ last_active_at: now })
+    .eq("id", agent.id)
 
   return { agent: agent as AuthenticatedAgent["agent"], keyId: keyRow.id }
 }
