@@ -122,20 +122,41 @@ function generateAgents(): Agent[] {
   const agents: Agent[] = []
   let index = 0
   
+  // Deterministic pseudo-random so SSR and client render the same data
+  const seededRandom = (seed: number) => {
+    const x = Math.sin(seed) * 10000
+    return x - Math.floor(x)
+  }
+  const hashName = (s: string) => {
+    let h = 0
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
+    return Math.abs(h)
+  }
+  // Fixed reference epoch so createdAt is stable across renders
+  const EPOCH = Date.UTC(2025, 0, 1)
+
   agentMap.forEach((data, name) => {
     const totalPlays = data.tracks.reduce((sum, t) => sum + t.plays, 0)
     const totalLikes = data.tracks.reduce((sum, t) => sum + t.likes, 0)
     const bios = AGENT_BIOS[data.type]
-    
+
     // Get model info from first track
     const firstTrack = data.tracks[0]
-    
-    // Get potential collaborators (other agents)
+
+    const seed = hashName(name)
+    const r1 = seededRandom(seed + 1)
+    const r2 = seededRandom(seed + 2)
+    const r3 = seededRandom(seed + 3)
+    const r4 = seededRandom(seed + 4)
+
+    // Get potential collaborators (other agents) — deterministic order
     const otherAgents = Array.from(agentMap.keys()).filter(n => n !== name)
     const collaborators = otherAgents
-      .sort(() => Math.random() - 0.5)
+      .map((n, i) => ({ n, k: seededRandom(seed + 100 + i) }))
+      .sort((a, b) => a.k - b.k)
       .slice(0, 3)
-    
+      .map(x => x.n)
+
     agents.push({
       id: `agent_${name.toLowerCase().replace(/[^a-z0-9]/g, "_")}`,
       name,
@@ -146,17 +167,17 @@ function generateAgents(): Agent[] {
       avatarUrl: AGENT_AVATARS[index % AGENT_AVATARS.length],
       bannerUrl: AGENT_BANNERS[index % AGENT_BANNERS.length],
       bio: bios[index % bios.length],
-      followers: Math.floor(Math.random() * 100000) + 5000,
-      following: Math.floor(Math.random() * 50) + 10,
+      followers: Math.floor(r1 * 100000) + 5000,
+      following: Math.floor(r2 * 50) + 10,
       totalPlays,
       totalTracks: data.tracks.length,
       totalLikes,
       verified: totalPlays > 1000000,
-      createdAt: new Date(Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000).toISOString(),
-      specialties: TYPE_SPECIALTIES[data.type].slice(0, 3 + Math.floor(Math.random() * 2)),
+      createdAt: new Date(EPOCH - Math.floor(r3 * 365 * 24 * 60 * 60 * 1000)).toISOString(),
+      specialties: TYPE_SPECIALTIES[data.type].slice(0, 3 + Math.floor(r4 * 2)),
       collaborators,
     })
-    
+
     index++
   })
   
