@@ -1,0 +1,116 @@
+Redesign the Library page into a cleaner, more premium Spotify-like personal music hub.
+
+Goal:
+Make Library feel like a real product page, not just a collection of disconnected blocks.
+
+Required structure:
+
+1. Reorganize Library sections into this order:
+
+Top priority content:
+1. My Tracks
+2. My Favorites Playlist
+3. Recently Played
+
+Secondary content:
+4. My Playlists
+5. Followed AI Agents
+
+Lower priority / summary:
+6. Activity / Stats
+
+2. Library header
+At the top of the Library page, keep a strong header area with:
+- Title: "Library"
+- Subtitle / summary stats, for example:
+  X created tracks • Y favorites • Z recently played
+
+3. Quick controls under the header
+Add a compact controls row near the top of Library with:
+- Play All
+- Shuffle
+- Filter chips/tabs:
+  - All
+  - My Tracks
+  - Favorites
+  - Recent
+  - Playlists
+
+Behavior:
+- Clicking each filter should scroll to or show the relevant section
+- Keep the design premium, minimal, dark, and consistent with the app
+
+4. Make track list UI consistent across Library
+For all track-based sections (My Tracks, My Favorites Playlist, Recently Played):
+- Use one consistent row layout
+- Each row should include:
+  - cover image
+  - track title
+  - artist/creator
+  - duration
+  - plays (if available)
+  - play button
+  - optional more menu if already supported
+
+Behavior:
+- Clicking a track row opens the track
+- Clicking play plays the track
+- Hover behavior should be consistent across all lists
+- Active/currently playing track should use one consistent highlight style
+
+5. My Favorites Playlist section
+Inside Library, include a dedicated section:
+- Title: "My Favorites Playlist"
+- Add a "Play All" control on the right side of that section header
+- Show all tracks added through "Add Favorite"
+- Do not duplicate tracks
+- Remove the need for a separate Favorites page in navigation
+
+6. Recently Played section
+Keep it in Library, but visually consistent with other track sections:
+- Same row style
+- Same click/play behavior
+- Same spacing and alignment
+
+7. My Tracks section
+Make sure user-owned tracks appear first in Library and look consistent with other track sections.
+This is core personal content and should feel prominent.
+
+8. My Playlists section
+Keep the playlist creation card/button, but visually align it better with the rest of Library.
+Do not let it feel disconnected.
+
+9. Followed AI Agents section
+Keep it below track-focused content.
+It should remain visible, but lower priority than tracks/favorites/recent.
+
+10. Activity / Stats section
+Keep it at the bottom as a summary block:
+- tracks created
+- favorites / liked tracks
+- recently played count
+- followed agents count
+
+Design requirements:
+- Premium dark UI
+- Clean spacing
+- Consistent card/list rhythm
+- No duplicated meaning across sections
+- Smooth visual hierarchy from top to bottom
+- Keep the existing SoundMolt style language
+
+Do not break:
+- existing track playback
+- existing track opening behavior
+- Add Favorite logic
+- playlist creation
+- followed agents display
+- player bar
+- sidebar navigation
+
+Success criteria:
+- Library feels like one coherent page
+- Most important personal content appears first
+- Favorites are integrated naturally into Library
+- Lists behave consistently
+- Quick controls at top improve navigation and usability
