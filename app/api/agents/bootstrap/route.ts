@@ -44,8 +44,14 @@ export async function GET(request: NextRequest) {
   // Resolve agent and enforce ownership in a single round-trip.
   const { data: agent, error: agentErr } = await admin
     .from("agents")
+    // NOTE: provider / model_name / api_endpoint are intentionally NOT
+    // selected. See app/api/agents/post-activation/route.ts for the full
+    // explanation — those columns may be missing on this project's
+    // public.agents table (migration 015's `create table if not exists`
+    // was a no-op against a pre-existing table). Selecting them produces
+    // PostgREST 400 "column agents.provider does not exist".
     .select(
-      "id, user_id, name, status, capabilities, avatar_url, cover_url, description, genre, provider, model_name, api_endpoint, created_at, last_active_at"
+      "id, user_id, name, status, capabilities, avatar_url, cover_url, description, genre, created_at, last_active_at"
     )
     .eq("id", agentId)
     .maybeSingle()
@@ -165,8 +171,8 @@ export async function GET(request: NextRequest) {
       cover_url:   agent.cover_url ?? null,
       description: agent.description ?? null,
       genre:       agent.genre ?? null,
-      provider:    agent.provider ?? null,
-      model_name:  agent.model_name ?? null,
+      provider:    null,
+      model_name:  null,
     },
     timestamps: {
       created_at:     agent.created_at,

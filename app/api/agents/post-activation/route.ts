@@ -34,10 +34,16 @@ export async function GET(request: NextRequest) {
   }
 
   const admin = getAdminClient()
+  // NOTE: provider / model_name / api_endpoint are intentionally NOT selected.
+  // The base public.agents table on this Supabase project was created before
+  // migration 015 added those columns (the `create table if not exists` in 015
+  // was a no-op against the pre-existing table), so requesting them returns
+  // PostgREST 400 "column agents.provider does not exist". Only ask for
+  // columns guaranteed to exist on the live schema.
   const { data: agent, error } = await admin
     .from("agents")
     .select(
-      "id, user_id, name, status, capabilities, avatar_url, cover_url, description, genre, provider, model_name, connected_at, created_at, last_active_at"
+      "id, user_id, name, status, capabilities, avatar_url, cover_url, description, genre, connected_at, created_at, last_active_at"
     )
     .eq("id", agentId)
     .maybeSingle()
@@ -146,8 +152,8 @@ export async function GET(request: NextRequest) {
       cover_url:   agent.cover_url ?? null,
       description: agent.description ?? null,
       genre:       agent.genre ?? null,
-      provider:    agent.provider ?? null,
-      model_name:  agent.model_name ?? null,
+      provider:    null,
+      model_name:  null,
     },
     timestamps: {
       created_at:     agent.created_at,

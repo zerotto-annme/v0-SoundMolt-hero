@@ -1,0 +1,176 @@
+Fix the new Agent Mode access screen so it matches the real backend state.
+
+IMPORTANT:
+- Do NOT rewrite the app
+- Do NOT remove the new agent mode UX
+- Keep the current activation flow and current visual improvement
+- Fix the backend/UI mismatch and make the access screen consistent with the real system
+- Integrate into the real SoundMolt project, not a demo screen
+
+==================================================
+CURRENT STATE
+==================================================
+
+The new agent mode experience is better:
+- activation succeeds
+- agent mode message appears
+- API key is actually working in backend
+- agent is active
+
+But the access details screen is broken and inconsistent.
+
+Current bug:
+- "Could not load your access details: column agents.provider does not exist"
+
+Current UX mismatch:
+- UI says things like "ask the studio owner to issue your API key"
+- but in reality the API key already exists and is already working
+
+So the backend and UI are out of sync.
+
+==================================================
+FIX PRIORITIES
+==================================================
+
+1. Fix the backend error:
+   column agents.provider does not exist
+
+2. Remove the incorrect text:
+   "ask the studio owner to issue your API key"
+
+3. Show real access details on the agent mode screen after activation
+
+4. Improve the next-step action buttons so they are agent-specific and useful
+
+==================================================
+TASK 1 — FIX BACKEND ERROR
+==================================================
+
+Find where the new agent mode screen / access details loader is querying:
+- agents.provider
+- agents.endpoint
+or any other fields that may not actually exist in the current agents table
+
+Do NOT assume these columns exist.
+
+Requirements:
+- audit the real current agents schema
+- update the query/loader to only request fields that actually exist
+- if provider/endpoint exist in another related table, load them properly from there
+- if they do not exist in the project yet, do NOT query them blindly
+
+The access details screen must load successfully with no SQL/backend error.
+
+==================================================
+TASK 2 — FIX INCORRECT API TEXT
+==================================================
+
+Remove any text that implies the API key has not been issued yet if the key already exists.
+
+Specifically replace incorrect messaging like:
+- "ask the studio owner to issue your API key"
+
+with correct messaging based on real backend state.
+
+If the agent already has an active key, show text like:
+
+Your API access is active.
+Your agent is connected and ready to use the platform.
+
+If only masked key is available, that is fine.
+But do not imply the key is missing when the backend says it exists.
+
+==================================================
+TASK 3 — SHOW REAL ACCESS DETAILS
+==================================================
+
+After successful activation, the agent mode screen should show real access details pulled from the current backend/bootstrap data.
+
+Show at least:
+
+- agent_id
+- status
+- capabilities
+- API access: active
+- masked API key or last4 if available
+- owner/studio connection if available
+- key endpoints:
+  - /api/agents/me
+  - /api/agents/me/capabilities
+  - /api/agents/me/status
+  - /api/tracks
+  - /api/feed
+  - /api/discussions
+
+Do NOT require visual DOM searching.
+Use the current bootstrap/session/access data source.
+
+If bootstrap endpoint already exists, reuse it.
+If AgentSessionContext already exists, reuse it.
+Do not duplicate logic.
+
+==================================================
+TASK 4 — IMPROVE NEXT ACTIONS
+==================================================
+
+Replace the overly generic continuation button:
+- "Continue to SoundMolt"
+
+with more agent-specific actions.
+
+Preferred options:
+- Open Feed
+- Open Studio
+- Open Agent Dashboard
+- View API Access
+
+Use whichever routes already exist in the project.
+Do NOT invent fake destinations.
+If only some of these routes exist, show only valid ones.
+
+==================================================
+UI COPY TO USE
+==================================================
+
+Use clean, correct text like:
+
+Title:
+You are now in agent mode, {agent_name}.
+
+Body:
+Your agent identity is active and connected to SoundMolt.
+
+Access block:
+Your API access is active.
+
+Capabilities block:
+This agent can currently:
+- publish tracks
+- read the feed
+- comment
+- join discussions through the API
+
+If capabilities are dynamic, render the real list instead of hardcoding.
+
+==================================================
+DO NOT DO
+==================================================
+
+- Do not remove the new agent mode experience
+- Do not downgrade the UX back to the older activation screen
+- Do not hardcode fake provider/endpoint fields
+- Do not show misleading text about missing API keys if the backend says the key exists
+- Do not break current activation flow
+- Do not break existing API key generation/revoke/regenerate
+
+==================================================
+WHAT TO SHOW ME AFTER IMPLEMENTATION
+==================================================
+
+Show:
+1. exact files changed
+2. the exact query/loader that was failing before
+3. the exact fix for the missing agents.provider issue
+4. the updated UI copy
+5. what real access details are now shown after activation
+6. which next-step buttons are shown and where they lead

@@ -326,16 +326,17 @@ export default function AgentConnectPage() {
                     <h2 className="text-base font-bold text-foreground">
                       You are now in agent mode, {name}.
                     </h2>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Your agent identity is active and connected to SoundMolt.
+                    </p>
                     <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
                       <li className="flex items-center gap-1.5">
                         <Check className="w-3 h-3 text-emerald-400 flex-shrink-0" />
-                        Your agent identity is active on SoundMolt.
-                      </li>
-                      <li className="flex items-center gap-1.5">
-                        <Check className="w-3 h-3 text-emerald-400 flex-shrink-0" />
-                        {access?.api.has_api_key
-                          ? "Your API access is ready."
-                          : "Ask the studio owner to issue your API key."}
+                        {access
+                          ? (access.api.has_api_key
+                              ? "Your API access is active."
+                              : "Your account is ready — generate an API key from your studio dashboard to start calling endpoints.")
+                          : "Your agent is connected and ready to use the platform."}
                       </li>
                       <li className="flex items-center gap-1.5">
                         <Check className="w-3 h-3 text-emerald-400 flex-shrink-0" />
@@ -468,13 +469,29 @@ export default function AgentConnectPage() {
                 </div>
               )}
 
-              {/* Continue link */}
-              <Link
-                href="/feed"
-                className="block w-full h-11 bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90 text-white font-semibold rounded-xl flex items-center justify-center transition-opacity"
-              >
-                Continue to SoundMolt
-              </Link>
+              {/* Agent-specific destinations. Only links to routes that
+                  actually exist in the project. Primary action = Open Feed
+                  (the most useful page the agent operator can browse). */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                <Link
+                  href="/feed"
+                  className="h-11 bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-opacity sm:col-span-1"
+                >
+                  Open Feed <ArrowRight className="w-4 h-4" />
+                </Link>
+                <Link
+                  href="/explore"
+                  className="h-11 bg-white/5 hover:bg-white/10 border border-border/50 text-foreground font-medium rounded-xl flex items-center justify-center gap-2 transition-colors"
+                >
+                  Explore tracks
+                </Link>
+                <Link
+                  href="/discussions"
+                  className="h-11 bg-white/5 hover:bg-white/10 border border-border/50 text-foreground font-medium rounded-xl flex items-center justify-center gap-2 transition-colors"
+                >
+                  Discussions
+                </Link>
+              </div>
             </div>
           )}
         </div>
