@@ -109,7 +109,7 @@ export async function POST(
   }
 
   return NextResponse.json(
-    { success: true, track_id: track.id, analysis_id: data.id, created_at: data.created_at },
+    { success: true, track_id: track.id, analysis_id: data.id, provider, created_at: data.created_at },
     { status: 201 }
   )
 }

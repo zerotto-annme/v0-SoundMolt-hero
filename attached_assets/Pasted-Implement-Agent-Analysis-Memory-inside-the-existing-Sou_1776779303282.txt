@@ -1,0 +1,193 @@
+Implement Agent Analysis Memory inside the existing SoundMolt project.
+
+IMPORTANT:
+- Do NOT rewrite the app
+- Do NOT replace the current architecture
+- Reuse the existing agent auth, track logic, listening history, and current Supabase stack
+- Integrate into the real project, not a demo layer
+- Keep the implementation minimal, real, and production-style
+
+==================================================
+GOAL
+==================================================
+
+Allow an authenticated agent to save analysis results for tracks and retrieve them later.
+
+This is the foundation for future agent taste memory.
+
+Implement:
+
+1. POST /api/tracks/:id/analysis
+2. GET /api/tracks/:id/analysis
+
+Do NOT build a full recommendation engine yet.
+Do NOT build complex ML inside SoundMolt.
+Assume the agent analyzes tracks externally and sends the results to SoundMolt.
+
+==================================================
+AUTH / PERMISSIONS
+==================================================
+
+Use existing authenticated agent API key / session auth.
+
+Requirements:
+- validate active agent
+- require capability: analysis
+  (if this capability does not yet exist, add it minimally)
+- attach:
+  - agent_id
+  - owner_user_id
+  - track_id
+
+==================================================
+POST /api/tracks/:id/analysis
+==================================================
+
+Goal:
+Allow the authenticated agent to submit analysis results for a track.
+
+Input JSON example:
+{
+  "provider": "librosa",
+  "version": "0.10",
+  "results": {
+    "bpm": 122,
+    "key": "A minor",
+    "energy": 0.78,
+    "danceability": 0.64,
+    "brightness": 0.51,
+    "mood": ["uplifting", "dreamy"],
+    "tags": ["lofi", "night", "chill"]
+  },
+  "summary": "Energetic lo-fi track with stable tempo, moderate brightness, and dreamy mood."
+}
+
+Requirements:
+- authenticate agent
+- verify track exists
+- save analysis linked to:
+  - track_id
+  - agent_id
+  - owner_user_id
+  - provider
+  - version
+  - results (json/jsonb)
+  - summary
+  - created_at
+
+Behavior:
+- do NOT overwrite unrelated existing track data
+- allow multiple analysis records if useful
+- newest analysis should be easy to retrieve
+
+Return:
+{
+  "success": true,
+  "track_id": "...",
+  "analysis_id": "...",
+  "provider": "librosa"
+}
+
+==================================================
+GET /api/tracks/:id/analysis
+==================================================
+
+Goal:
+Return saved analysis records for the requested track.
+
+Requirements:
+- authenticate agent
+- require read capability
+- return newest first
+
+Suggested response:
+{
+  "items": [
+    {
+      "analysis_id": "...",
+      "track_id": "...",
+      "agent_id": "...",
+      "provider": "librosa",
+      "version": "0.10",
+      "results": {
+        "bpm": 122,
+        "key": "A minor",
+        "energy": 0.78
+      },
+      "summary": "...",
+      "created_at": "..."
+    }
+  ]
+}
+
+==================================================
+SCHEMA RULES
+==================================================
+
+If the project already has a suitable analysis table, reuse it.
+
+If not, add a minimal table, for example:
+- id
+- track_id
+- agent_id
+- owner_user_id
+- provider
+- version
+- results jsonb
+- summary text
+- created_at timestamptz
+
+Keep schema changes minimal.
+Do NOT overengineer.
+
+==================================================
+OPTIONAL LIGHTWEIGHT TASTE MEMORY PREPARATION
+==================================================
+
+If it is easy and clean, also add the foundation for future agent taste memory:
+
+Option A:
+Store analysis records only for now
+
+Option B (only if very easy):
+Add a lightweight derived summary per agent, such as:
+- favorite bpm range
+- most common moods
+- most common tags
+
+But do NOT build a full recommendation or scoring engine in this task.
+This task is primarily about storing and reading analysis memory.
+
+==================================================
+REUSE EXISTING LOGIC
+==================================================
+
+- Reuse current track auth/access rules
+- Reuse current agent auth
+- Reuse current JSON / DB helpers if already present
+- Do not create a second parallel data layer
+
+==================================================
+DO NOT DO
+==================================================
+
+- Do not run heavy audio analysis inside the backend
+- Do not build recommendations yet
+- Do not redesign dashboard
+- Do not break human track routes
+- Do not add heavy analytics systems
+
+==================================================
+WHAT TO SHOW AFTER IMPLEMENTATION
+==================================================
+
+Show:
+1. exact files changed
+2. new/updated route handlers
+3. any schema changes added
+4. whether multiple analyses per track are supported
+5. example curl commands for:
+   - POST /api/tracks/:id/analysis
+   - GET /api/tracks/:id/analysis
+6. how this prepares the system for future agent taste memory
+7. how to verify records in the real app / database
