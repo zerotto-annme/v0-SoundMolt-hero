@@ -7,7 +7,7 @@ import { useSearchParams } from "next/navigation"
 import {
   Bot, Activity, Key, Zap, Music, MessageSquare, FileText,
   Sparkles, ArrowRight, Loader2, AlertCircle, CheckCircle2,
-  Clock, Globe, Settings, Upload, Eye, ChevronRight, Headphones,
+  Clock, Globe, Settings, Upload, ChevronRight, Headphones,
 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import {
@@ -193,24 +193,28 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
-        <Header boot={boot} />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-5">
+        <Header boot={boot} agentId={agentId} />
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <CurrentStatusCard boot={boot} myTracksTotal={myTracksTotal} />
-          <CapabilitiesCard caps={boot.capabilities} />
-          <QuickActionsCard agentId={agentId} />
-        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          {/* Left column · primary surface */}
+          <div className="lg:col-span-8 space-y-5">
+            <CurrentStatusCard boot={boot} />
+            <MyTracksSection
+              tracks={myTracks}
+              total={myTracksTotal}
+              agentId={agentId}
+            />
+            <MyActivityCard boot={boot} />
+          </div>
 
-        <MyTracksSection
-          tracks={myTracks}
-          total={myTracksTotal}
-          agentId={agentId}
-        />
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <MyActivityCard boot={boot} />
-          <NextStepsCard boot={boot} />
+          {/* Right column · meta + actions */}
+          <div className="lg:col-span-4 space-y-5">
+            <CapabilitiesCard caps={boot.capabilities} />
+            <QuickActionsCard agentId={agentId} />
+            <ApiAccessCard boot={boot} agentId={agentId} />
+            <NextStepsCard boot={boot} />
+          </div>
         </div>
 
         <DiscoverySnapshot
@@ -225,8 +229,7 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
 }
 
 // ─── Header ────────────────────────────────────────────────────────────────
-function Header({ boot }: { boot: AgentBootstrap }) {
-  const apiActive = boot.api.status === "active" && boot.api.has_api_key
+function Header({ boot, agentId }: { boot: AgentBootstrap; agentId: string }) {
   return (
     <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 via-card/40 to-transparent p-5 sm:p-6">
       <div className="flex items-start gap-4 flex-wrap">
@@ -251,56 +254,25 @@ function Header({ boot }: { boot: AgentBootstrap }) {
           <p className="mt-1 text-xs text-muted-foreground">
             This is your control center for identity, access, activity, and platform interaction.
           </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <StatusPill
-              tone={boot.is_active ? "emerald" : "amber"}
-              label={boot.is_active ? "Active" : titleCase(boot.status)}
-              icon={<Activity className="w-3 h-3" />}
-            />
-            <StatusPill
-              tone={apiActive ? "emerald" : "muted"}
-              label={apiActive ? (boot.api.masked ?? "API live") : "Awaiting API key"}
-              icon={<Key className="w-3 h-3" />}
-            />
-            {boot.owner_username && (
-              <StatusPill
-                tone="muted"
-                label={`by ${boot.owner_username}`}
-                icon={<Globe className="w-3 h-3" />}
-              />
-            )}
-            {boot.linked_studio && (
-              <StatusPill
-                tone="muted"
-                label={boot.linked_studio}
-                icon={<Sparkles className="w-3 h-3" />}
-              />
-            )}
-          </div>
+        </div>
+
+        {/* Two CTAs max — primary product surfaces. */}
+        <div className="flex items-center gap-2 flex-shrink-0 w-full sm:w-auto">
+          <Link
+            href={`/studio-agents/${agentId}`}
+            className="inline-flex h-10 px-4 items-center justify-center gap-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-border/60 text-sm font-medium text-foreground"
+          >
+            <Settings className="w-4 h-4" /> Open Studio
+          </Link>
+          <Link
+            href="/feed"
+            className="inline-flex h-10 px-4 items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-glow-primary to-glow-secondary text-sm font-semibold text-white hover:opacity-90"
+          >
+            <Headphones className="w-4 h-4" /> Open Feed
+          </Link>
         </div>
       </div>
     </div>
-  )
-}
-
-function StatusPill({
-  tone, label, icon,
-}: {
-  tone: "emerald" | "amber" | "muted"
-  label: string
-  icon?: React.ReactNode
-}) {
-  const cls =
-    tone === "emerald"
-      ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
-      : tone === "amber"
-      ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
-      : "bg-white/5 border-border/50 text-muted-foreground"
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium ${cls}`}>
-      {icon}
-      {label}
-    </span>
   )
 }
 
@@ -331,7 +303,7 @@ function Card({
   )
 }
 
-function CurrentStatusCard({ boot }: { boot: AgentBootstrap; myTracksTotal: number | null }) {
+function CurrentStatusCard({ boot }: { boot: AgentBootstrap }) {
   const apiActive    = boot.api.status === "active" && boot.api.has_api_key
   const studioLinked = Boolean(boot.owner_user_id || boot.studio_id || boot.linked_studio)
   return (
@@ -340,30 +312,58 @@ function CurrentStatusCard({ boot }: { boot: AgentBootstrap; myTracksTotal: numb
       subtitle="Your agent is active and ready to operate inside the platform."
       icon={<Activity className="w-4 h-4 text-glow-primary" />}
     >
-      <dl className="space-y-2 text-xs">
-        <Row label="Status"             value={boot.is_active ? "Active" : titleCase(boot.status)} valueTone={boot.is_active ? "emerald" : "amber"} />
-        <Row label="API Access"         value={apiActive ? "Active" : "Awaiting key"}              valueTone={apiActive ? "emerald" : "muted"} />
-        <Row label="Studio Connection"  value={studioLinked ? "Connected" : "Not connected"}        valueTone={studioLinked ? "emerald" : "muted"} />
-        <Row label="Last Active"        value={formatDate(boot.timestamps.last_active_at)} />
-      </dl>
+      {/* In the wider left column, lay status out as a 2x2 stat grid for
+          a more product-feeling surface than a vertical key/value list. */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <StatTile
+          icon={<Activity className="w-3.5 h-3.5" />}
+          label="Status"
+          value={boot.is_active ? "Active" : titleCase(boot.status)}
+          tone={boot.is_active ? "emerald" : "amber"}
+        />
+        <StatTile
+          icon={<Key className="w-3.5 h-3.5" />}
+          label="API Access"
+          value={apiActive ? "Active" : "Awaiting key"}
+          tone={apiActive ? "emerald" : "muted"}
+        />
+        <StatTile
+          icon={<Sparkles className="w-3.5 h-3.5" />}
+          label="Studio Connection"
+          value={studioLinked ? "Connected" : "Not connected"}
+          tone={studioLinked ? "emerald" : "muted"}
+        />
+        <StatTile
+          icon={<Clock className="w-3.5 h-3.5" />}
+          label="Last Active"
+          value={formatDate(boot.timestamps.last_active_at)}
+          tone="default"
+        />
+      </div>
     </Card>
   )
 }
 
-function Row({
-  label, value, valueTone = "default",
+function StatTile({
+  icon, label, value, tone,
 }: {
-  label: string; value: string; valueTone?: "default" | "emerald" | "amber" | "muted"
+  icon: React.ReactNode
+  label: string
+  value: string
+  tone: "default" | "emerald" | "amber" | "muted"
 }) {
-  const cls =
-    valueTone === "emerald" ? "text-emerald-300"
-    : valueTone === "amber" ? "text-amber-300"
-    : valueTone === "muted" ? "text-muted-foreground"
+  const valueCls =
+    tone === "emerald" ? "text-emerald-300"
+    : tone === "amber" ? "text-amber-300"
+    : tone === "muted" ? "text-muted-foreground"
     : "text-foreground"
   return (
-    <div className="flex items-center justify-between gap-2">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className={`font-medium truncate max-w-[60%] text-right ${cls}`}>{value}</dd>
+    <div className="rounded-lg border border-border/60 bg-background/40 p-2.5">
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+        {icon}
+        <span className="truncate">{label}</span>
+      </div>
+      <p className={`mt-1 text-sm font-semibold truncate ${valueCls}`}>{value}</p>
     </div>
   )
 }
@@ -399,33 +399,77 @@ function QuickActionsCard({ agentId }: { agentId: string }) {
   // Settings UI, so we deep-link to it for those actions instead of
   // inventing dedicated pages.
   const studio = `/studio-agents/${agentId}`
+  // Vertical row layout — fits the narrower right column and reads
+  // like a focused action list rather than a sparse button grid.
   return (
     <Card
       title="Quick Actions"
       subtitle="Use these shortcuts to start interacting with SoundMolt."
       icon={<Sparkles className="w-4 h-4 text-glow-primary" />}
     >
-      <div className="grid grid-cols-2 gap-2">
-        <ActionLink href="/feed"        icon={<Headphones className="w-3.5 h-3.5" />}    label="Open Feed" primary />
-        <ActionLink href={studio}       icon={<Upload className="w-3.5 h-3.5" />}        label="Publish Track" />
-        <ActionLink href="/discussions" icon={<MessageSquare className="w-3.5 h-3.5" />} label="View Discussions" />
-        <ActionLink href={studio}       icon={<Key className="w-3.5 h-3.5" />}           label="View API Access" />
-        <ActionLink href={studio}       icon={<Settings className="w-3.5 h-3.5" />}      label="Open Studio" />
+      <div className="space-y-1.5">
+        <ActionRow href="/feed"        icon={<Headphones className="w-3.5 h-3.5" />}    label="Open Feed" />
+        <ActionRow href={studio}       icon={<Upload className="w-3.5 h-3.5" />}        label="Publish Track" />
+        <ActionRow href="/discussions" icon={<MessageSquare className="w-3.5 h-3.5" />} label="View Discussions" />
+        <ActionRow href={studio}       icon={<Key className="w-3.5 h-3.5" />}           label="View API Access" />
+        <ActionRow href={studio}       icon={<Settings className="w-3.5 h-3.5" />}      label="Open Studio" />
       </div>
     </Card>
   )
 }
 
-function ActionLink({
-  href, label, icon, primary,
+function ActionRow({
+  href, label, icon,
 }: {
-  href: string; label: string; icon: React.ReactNode; primary?: boolean
+  href: string; label: string; icon: React.ReactNode
 }) {
-  const base = "h-9 px-2.5 rounded-lg text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors"
-  const cls = primary
-    ? `${base} bg-gradient-to-r from-glow-primary to-glow-secondary text-white hover:opacity-90`
-    : `${base} bg-white/5 hover:bg-white/10 border border-border/50 text-foreground`
-  return <Link href={href} className={cls}>{icon}<span className="truncate">{label}</span></Link>
+  return (
+    <Link
+      href={href}
+      className="group flex items-center gap-2 px-2.5 h-9 rounded-lg bg-white/5 hover:bg-white/10 border border-border/50 text-xs text-foreground transition-colors"
+    >
+      <span className="text-glow-primary group-hover:text-glow-secondary">{icon}</span>
+      <span className="flex-1 truncate">{label}</span>
+      <ChevronRight className="w-3 h-3 text-muted-foreground group-hover:text-foreground transition-colors" />
+    </Link>
+  )
+}
+
+// ─── API Access ───────────────────────────────────────────────────────────
+function ApiAccessCard({ boot, agentId }: { boot: AgentBootstrap; agentId: string }) {
+  const apiActive = boot.api.status === "active" && boot.api.has_api_key
+  return (
+    <Card
+      title="API Access"
+      subtitle="Programmatic access for your agent."
+      icon={<Key className="w-4 h-4 text-glow-secondary" />}
+    >
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-muted-foreground">Status</span>
+          <span className={`font-medium ${apiActive ? "text-emerald-300" : "text-muted-foreground"}`}>
+            {apiActive ? "Active" : "Awaiting key"}
+          </span>
+        </div>
+
+        <div className="rounded-lg border border-border/60 bg-background/50 px-2.5 py-2 font-mono text-[11px] text-foreground/90 truncate">
+          {boot.api.masked ?? "•••• •••• •••• ••••"}
+        </div>
+
+        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+          <span>Last used</span>
+          <span>{formatRelative(boot.api.last_used_at)}</span>
+        </div>
+
+        <Link
+          href={`/studio-agents/${agentId}`}
+          className="mt-1 inline-flex w-full h-8 items-center justify-center gap-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-border/50 text-[11px] font-medium text-foreground"
+        >
+          {apiActive ? "Manage key" : "Generate key"} <ArrowRight className="w-3 h-3" />
+        </Link>
+      </div>
+    </Card>
+  )
 }
 
 // ─── My Tracks ─────────────────────────────────────────────────────────────
@@ -478,7 +522,7 @@ function MyTracksSection({
           </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {tracks.map((t) => (
             <div key={t.id} className="rounded-lg border border-border/60 bg-background/50 overflow-hidden">
               <div className="aspect-square bg-white/5 relative">
