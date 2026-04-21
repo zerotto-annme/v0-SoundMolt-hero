@@ -54,14 +54,25 @@ export interface AgentBootstrap {
     endpoint?:   string
     done:        boolean
   }>
+  /** Present only when the bootstrap came from /api/agents/recover. */
+  recovery?: {
+    mode:   "persistent"
+    notice: string
+  }
 }
+
+export type AgentSessionSource =
+  | "local-cache"
+  | "owner-jwt"
+  | "post-activation"
+  | "recover"
 
 interface AgentSessionState {
   data:    AgentBootstrap | null
   loading: boolean
   error:   string | null
   /** Where the current `data` came from. `null` while loading or unloaded. */
-  source:  "session-cache" | "owner-jwt" | "post-activation" | null
+  source:  AgentSessionSource | null
   refresh: () => Promise<void>
 }
 
@@ -73,22 +84,65 @@ interface ProviderProps {
   children: ReactNode
 }
 
-const sessionKey = (agentId: string) => `soundmolt:agent-session:${agentId}`
+// ─── Persistent client-side cache ──────────────────────────────────────────
+// We use localStorage (not sessionStorage) so the cached bootstrap survives
+// tab close + reload. This is the persistent recovery surface for
+// anonymous agent operators — without it, closing the tab between the
+// reveal window and the next visit would force a generic reconnect.
+//
+// SECURITY: We strip every reveal-grade field before persisting so a
+// device compromise or XSS can't lift the API key last4/masked or owner
+// identifiers out of localStorage long after the reveal window closed.
+// What lands on disk is the same shape /api/agents/recover already
+// hands out to anyone with the agent_id.
+const CACHE_KEY  = (agentId: string) => `soundmolt:agent-session:${agentId}`
+const LINKED_KEY = "soundmolt:linked-agent-id"
 
-/** Persist a successful bootstrap so it survives reloads + tab dwell. */
+function sanitizeForCache(payload: AgentBootstrap): AgentBootstrap {
+  return {
+    ...payload,
+    owner_user_id:  null,
+    owner_username: null,
+    api: {
+      ...payload.api,
+      // The presence boolean is fine to keep so the dashboard can
+      // gate "Verify your key" CTAs, but we drop everything that
+      // identifies the key itself.
+      api_key:      null,
+      masked:       null,
+      last4:        null,
+      created_at:   null,
+      last_used_at: null,
+    },
+  }
+}
+
 export function cacheAgentBootstrap(agentId: string, payload: AgentBootstrap) {
   if (typeof window === "undefined") return
   try {
-    sessionStorage.setItem(sessionKey(agentId), JSON.stringify(payload))
+    localStorage.setItem(CACHE_KEY(agentId), JSON.stringify(sanitizeForCache(payload)))
+    // Track the most recently activated agent so a generic /agent-connect
+    // visit can offer to recover it instead of starting from scratch.
+    localStorage.setItem(LINKED_KEY, agentId)
   } catch {
-    /* sessionStorage may be disabled (private mode, quota). Non-fatal. */
+    /* localStorage may be disabled (private mode, quota). Non-fatal. */
   }
+}
+
+function clearCachedBootstrap(agentId: string) {
+  if (typeof window === "undefined") return
+  try {
+    localStorage.removeItem(CACHE_KEY(agentId))
+    if (localStorage.getItem(LINKED_KEY) === agentId) {
+      localStorage.removeItem(LINKED_KEY)
+    }
+  } catch { /* non-fatal */ }
 }
 
 function readCachedBootstrap(agentId: string): AgentBootstrap | null {
   if (typeof window === "undefined") return null
   try {
-    const raw = sessionStorage.getItem(sessionKey(agentId))
+    const raw = localStorage.getItem(CACHE_KEY(agentId))
     if (!raw) return null
     const parsed = JSON.parse(raw) as AgentBootstrap
     return parsed && parsed.agent_id === agentId ? parsed : null
@@ -97,33 +151,35 @@ function readCachedBootstrap(agentId: string): AgentBootstrap | null {
   }
 }
 
+/** Read the most-recently-linked agent id (for the recovery prompt). */
+export function getLinkedAgentId(): string | null {
+  if (typeof window === "undefined") return null
+  try { return localStorage.getItem(LINKED_KEY) } catch { return null }
+}
+
 /**
  * AgentSessionProvider
  *
- * The agent dashboard can be opened by two distinct callers:
+ * Resolves the bootstrap from up to four sources, in priority order:
  *
- *   1. The studio owner (has a Supabase user JWT) — the canonical path.
- *   2. The agent itself, immediately after activation on /agent-connect
- *      (anonymous browser session — no Supabase user account exists).
+ *   a. localStorage cache → instant hydrate, persists across tab close.
+ *   b. GET /api/agents/bootstrap with the studio-owner JWT (full payload).
+ *   c. GET /api/agents/post-activation (anon, 15-min reveal window —
+ *      includes API-key last4 / masked).
+ *   d. GET /api/agents/recover (anon, **no time window**, reduced
+ *      payload — no key reveal details). This is the persistent
+ *      recovery path that keeps the dashboard reachable forever for
+ *      anonymous agent operators after the reveal window expires.
  *
- * To support both we resolve the bootstrap in this priority order:
- *
- *   a. `sessionStorage` cache populated by /agent-connect or a previous
- *      successful fetch — instant hydrate so the UI never shows a
- *      reconnect screen on tab reload.
- *   b. `GET /api/agents/bootstrap` with the owner's Supabase JWT.
- *   c. `GET /api/agents/post-activation` — anonymous, but only succeeds
- *      within 15 min of activation. This is the agent-side path.
- *
- * We only surface an error if all three fail, which prevents the
- * "No active Supabase session" dead-end the previous version threw
- * for newly-activated agents.
+ * We only show the error UI when **all four** sources fail. Cached data
+ * stays visible during background revalidation; transient failures
+ * never blow away the rendered shell.
  */
 export function AgentSessionProvider({ agentId, children }: ProviderProps) {
   const [data, setData]     = useState<AgentBootstrap | null>(null)
   const [loading, setLoad]  = useState<boolean>(true)
   const [error, setError]   = useState<string | null>(null)
-  const [source, setSource] = useState<AgentSessionState["source"]>(null)
+  const [source, setSource] = useState<AgentSessionSource | null>(null)
 
   // Avoid double-fetching under StrictMode.
   const inflight = useRef<string | null>(null)
@@ -136,69 +192,83 @@ export function AgentSessionProvider({ agentId, children }: ProviderProps) {
     if (inflight.current === agentId) return
     inflight.current = agentId
 
-    // ── Step 1: hydrate from sessionStorage immediately ─────────────
-    // This is what unblocks the post-activation handoff from
-    // /agent-connect → /agent-dashboard. The page renders with real
-    // data while step 2/3 revalidate in the background.
+    // ── (a) Hydrate from localStorage immediately ──────────────────
     const cached = readCachedBootstrap(agentId)
     if (cached) {
-      setData(cached); setSource("session-cache"); setError(null); setLoad(false)
+      setData(cached); setSource("local-cache"); setError(null); setLoad(false)
     } else {
       setLoad(true)
     }
 
     let lastError: string | null = null
+    // A 4xx that means "this agent definitively does not exist or is
+    // no longer active" — used to invalidate stale cache. 401/403 don't
+    // count (those are auth-context mismatches; the recover path may
+    // still succeed). 410 from post-activation is a window-expiry, NOT
+    // a revocation signal — only /recover's 404 is authoritative.
+    let definitiveMiss = false
 
-    // ── Step 2: try owner JWT bootstrap ─────────────────────────────
+    const tryFetch = async (
+      url: string,
+      headers: Record<string, string> | undefined,
+      src: AgentSessionSource
+    ): Promise<boolean> => {
+      try {
+        const res = await fetch(url, { headers, cache: "no-store" })
+        const json = await res.json().catch(() => ({}))
+        if (res.ok) {
+          const payload = json as AgentBootstrap
+          setData(payload); setSource(src); setError(null); setLoad(false)
+          cacheAgentBootstrap(agentId, payload)
+          return true
+        }
+        if (src === "recover" && res.status === 404) definitiveMiss = true
+        lastError = typeof json?.error === "string" ? json.error : `${src} failed (${res.status})`
+        return false
+      } catch (e) {
+        lastError = e instanceof Error ? e.message : `${src} failed`
+        return false
+      }
+    }
+
+    // ── (b) Owner JWT path ─────────────────────────────────────────
     try {
       const { data: sessionRes } = await supabase.auth.getSession()
       const token = sessionRes.session?.access_token
       if (token) {
-        const res = await fetch(
+        const ok = await tryFetch(
           `/api/agents/bootstrap?agent_id=${encodeURIComponent(agentId)}`,
-          { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }
+          { Authorization: `Bearer ${token}` },
+          "owner-jwt"
         )
-        const json = await res.json().catch(() => ({}))
-        if (res.ok) {
-          const payload = json as AgentBootstrap
-          setData(payload); setSource("owner-jwt"); setError(null); setLoad(false)
-          cacheAgentBootstrap(agentId, payload)
-          inflight.current = null
-          return
-        }
-        // 401/403 here is expected when the JWT belongs to a different
-        // user (or anon). Fall through to post-activation rather than
-        // surfacing it as a fatal error.
-        lastError = typeof json?.error === "string" ? json.error : `Bootstrap failed (${res.status})`
+        if (ok) { inflight.current = null; return }
       }
     } catch (e) {
       lastError = e instanceof Error ? e.message : "Bootstrap failed"
     }
 
-    // ── Step 3: anon post-activation reveal (15-min window) ─────────
-    try {
-      const res = await fetch(
-        `/api/agents/post-activation?agent_id=${encodeURIComponent(agentId)}`,
-        { cache: "no-store" }
-      )
-      const json = await res.json().catch(() => ({}))
-      if (res.ok) {
-        const payload = json as AgentBootstrap
-        setData(payload); setSource("post-activation"); setError(null); setLoad(false)
-        cacheAgentBootstrap(agentId, payload)
-        inflight.current = null
-        return
-      }
-      // 410 Gone (window expired) is the most common failure here.
-      lastError = typeof json?.error === "string" ? json.error : lastError ?? `Reveal failed (${res.status})`
-    } catch (e) {
-      lastError = lastError ?? (e instanceof Error ? e.message : "Reveal failed")
-    }
+    // ── (c) Anon post-activation reveal (15-min window) ────────────
+    if (await tryFetch(
+      `/api/agents/post-activation?agent_id=${encodeURIComponent(agentId)}`,
+      undefined,
+      "post-activation"
+    )) { inflight.current = null; return }
 
-    // ── All three sources failed ────────────────────────────────────
-    // If we already have cached data we keep showing it (stale-but-
-    // useful) and just surface the revalidation error quietly.
-    if (!cached) {
+    // ── (d) Anon persistent recover (no window, reduced payload) ───
+    if (await tryFetch(
+      `/api/agents/recover?agent_id=${encodeURIComponent(agentId)}`,
+      undefined,
+      "recover"
+    )) { inflight.current = null; return }
+
+    // ── All four sources failed ────────────────────────────────────
+    // If /recover authoritatively returned 404, the agent is gone or
+    // revoked — drop the stale cache so we don't keep showing it.
+    if (definitiveMiss) {
+      clearCachedBootstrap(agentId)
+      setData(null)
+      setError(lastError ?? "This agent is no longer active")
+    } else if (!cached) {
       setData(null)
       setError(lastError ?? "Unable to load agent context")
     }

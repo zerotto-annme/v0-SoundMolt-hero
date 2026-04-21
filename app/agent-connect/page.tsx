@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { Suspense, useState, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
 import {
@@ -32,6 +33,23 @@ type AgentAccessPayload = {
 type Step = "code" | "profile" | "done"
 
 export default function AgentConnectPage() {
+  return (
+    <Suspense fallback={null}>
+      <AgentConnectInner />
+    </Suspense>
+  )
+}
+
+function AgentConnectInner() {
+  const searchParams = useSearchParams()
+  // When the dashboard's "Reconnect this agent" deep-links here it
+  // includes ?recover=<agent_id>. We use it only to render a tailored
+  // header — the actual reconnect still requires a fresh connection
+  // code from the studio owner (codes are single-use and consumed at
+  // activation), so we don't pretend we can resume the old agent
+  // automatically. We just stop pretending it's a blank generic flow.
+  const recoverAgentId = searchParams.get("recover")
+
   const [step, setStep] = useState<Step>("code")
   const [connectionCode, setConnectionCode] = useState("")
   const [agentId, setAgentId] = useState<string | null>(null)
@@ -149,8 +167,14 @@ export default function AgentConnectPage() {
               <Bot className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-foreground">Agent Activation</h1>
-              <p className="text-xs text-muted-foreground">Connect to a SoundMolt studio</p>
+              <h1 className="text-lg font-bold text-foreground">
+                {recoverAgentId && step === "code" ? "Reconnect Your Agent" : "Agent Activation"}
+              </h1>
+              <p className="text-xs text-muted-foreground">
+                {recoverAgentId && step === "code"
+                  ? "Ask your studio owner for a fresh connection code"
+                  : "Connect to a SoundMolt studio"}
+              </p>
             </div>
           </div>
 
@@ -182,6 +206,14 @@ export default function AgentConnectPage() {
           {/* ── Step 1: Enter code ── */}
           {step === "code" && (
             <>
+              {recoverAgentId && (
+                <div className="px-3 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 space-y-1">
+                  <p className="font-semibold">Recovering agent <span className="font-mono">{recoverAgentId.slice(0, 8)}…</span></p>
+                  <p className="text-amber-300/80">
+                    Connection codes are single-use. The studio owner can issue you a new one from <span className="font-mono">Studio Agents → API Access</span>. After you enter it the dashboard will resume normally.
+                  </p>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
                   Connection Code

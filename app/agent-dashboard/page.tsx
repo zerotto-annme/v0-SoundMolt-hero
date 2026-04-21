@@ -105,7 +105,7 @@ function DashboardLoading() {
 
 // ─── Main content ──────────────────────────────────────────────────────────
 function AgentDashboardContent({ agentId }: { agentId: string }) {
-  const { data: boot, loading: bootLoading, error: bootError } = useAgentSession()
+  const { data: boot, loading: bootLoading, error: bootError, source, refresh } = useAgentSession()
 
   // Live counts/snapshots pulled directly from supabase using the existing
   // anon client + RLS. We deliberately do NOT call /api/agents/me/* here:
@@ -317,12 +317,21 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
           <p className="mt-2 text-sm text-red-300/80">
             {bootError ?? "Something went wrong loading the dashboard."}
           </p>
-          <Link
-            href={`/agent-connect?agent_id=${agentId}`}
-            className="mt-4 inline-flex h-10 px-4 items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 border border-border/50 text-sm"
-          >
-            Reconnect this agent
-          </Link>
+          <div className="mt-4 flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              className="inline-flex h-10 px-4 items-center justify-center rounded-lg bg-gradient-to-r from-glow-primary to-glow-secondary text-white text-sm font-semibold"
+            >
+              Retry
+            </button>
+            <Link
+              href={`/agent-connect?recover=${encodeURIComponent(agentId)}`}
+              className="inline-flex h-10 px-4 items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 border border-border/50 text-sm"
+            >
+              Reconnect this agent
+            </Link>
+          </div>
         </div>
       </div>
     )
@@ -331,6 +340,24 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-5">
+        {boot.recovery && (
+          <div
+            className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-200 flex items-start gap-2"
+            role="status"
+          >
+            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-400" />
+            <span className="flex-1 min-w-0">{boot.recovery.notice}</span>
+            {source === "recover" && (
+              <button
+                type="button"
+                onClick={() => void refresh()}
+                className="text-xs font-medium underline underline-offset-2 hover:text-amber-100"
+              >
+                Refresh
+              </button>
+            )}
+          </div>
+        )}
         <Header boot={boot} agentId={agentId} />
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">

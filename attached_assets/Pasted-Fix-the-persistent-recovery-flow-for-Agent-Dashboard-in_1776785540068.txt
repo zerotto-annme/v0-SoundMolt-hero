@@ -1,0 +1,120 @@
+Fix the persistent recovery flow for Agent Dashboard in the existing SoundMolt project.
+
+IMPORTANT:
+- Do NOT rewrite the app
+- Do NOT remove the improved Agent Access screen
+- Do NOT remove the reveal window logic if it is needed for secure temporary access details
+- Keep the current better error messaging
+- Fix the recovery path so Agent Dashboard can still be opened after the post-activation reveal window expires
+
+==================================================
+CURRENT STATE
+==================================================
+
+Current behavior after the recent fix:
+
+Before:
+- opening Agent Dashboard failed with "No active Supabase session"
+
+Now:
+- it fails with a more accurate message:
+  "Post-activation reveal window has expired"
+
+This is better because the state is now clearer.
+
+However, the real recovery flow still does not work:
+
+- clicking "Reconnect this agent" sends the user to the generic agent-connect screen
+- it opens the normal connection code entry flow
+- it does NOT automatically recover the previously activated agent session/context
+
+==================================================
+GOAL
+==================================================
+
+Allow the agent to recover access to Agent Dashboard even after the temporary post-activation reveal window has expired.
+
+The reveal window should only control temporary access/reveal details.
+It should NOT be the only way to reach the persistent Agent Dashboard.
+
+==================================================
+REQUIRED BEHAVIOR
+==================================================
+
+1. After activation, Agent Dashboard should work normally.
+
+2. If the temporary reveal window expires:
+- the dashboard should still be recoverable
+- the user/agent should NOT be forced into a full generic reconnect flow unless there is truly no linked agent context
+
+3. "Reconnect this agent" should become a real recovery path:
+- it should recover the currently linked/activated agent context
+- or reopen the correct specific agent session
+- or restore via bootstrap/session persistence
+- but NOT just dump the user into the generic blank connection-code screen
+
+4. Reveal window expiry should mean:
+- temporary reveal/access details expired
+NOT:
+- agent dashboard is completely inaccessible
+
+==================================================
+IMPLEMENTATION GUIDANCE
+==================================================
+
+Please audit and fix:
+
+1. What data is currently stored after activation
+2. What expires when the reveal window ends
+3. Why dashboard depends on the reveal window instead of a persistent agent context
+4. How "Reconnect this agent" is implemented today
+5. Why it falls back to generic agent-connect instead of targeted agent recovery
+
+Preferred architecture:
+
+- Keep reveal window for temporary access details if needed
+- Separately keep a persistent recoverable agent session reference, such as:
+  - current linked agent id
+  - owner-linked active agent
+  - bootstrap-recoverable agent context
+  - safe persisted agent session marker
+
+Then:
+
+On dashboard load:
+- if reveal window is active → normal flow
+- if reveal window expired → try persistent recovery
+- only if recovery truly fails → show reconnect fallback
+
+For "Reconnect this agent":
+- make it recover the current agent specifically
+- do not send the user to a blank generic connection-code flow if the linked agent is already known
+
+==================================================
+DO NOT DO
+==================================================
+
+- Do not remove security around temporary reveal details
+- Do not expose plaintext API key permanently
+- Do not remove the better current error message unless replaced by a better recovery path
+- Do not break current activation flow
+- Do not downgrade back to the old generic connect-only behavior
+
+==================================================
+WHAT TO SHOW AFTER IMPLEMENTATION
+==================================================
+
+Show:
+1. exact files changed
+2. what currently expires in the reveal window
+3. what persistent agent recovery state is now stored
+4. how dashboard now restores agent context after reveal expiry
+5. how "Reconnect this agent" now works
+6. why the previous version still fell back to generic agent-connect
+7. how to manually verify:
+   - activate agent
+   - open dashboard
+   - wait until reveal window expires
+   - open dashboard again
+   - use reconnect
+   - confirm recovery works without generic full reconnect
