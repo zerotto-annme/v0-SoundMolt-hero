@@ -15,9 +15,10 @@ import { createClient } from "@supabase/supabase-js"
  *      NEVER match more than one row — and we deliberately use a fake id
  *      so it matches ZERO rows by intent.
  *   4. Reads the response Content-Range. If the policy is healthy we
- *      get `*/0` (zero rows matched, by intent). If the policy is missing
- *      we'd still get `*/0` but for the wrong reason — so we ALSO run an
- *      explicit pg_policies probe via a SECURITY DEFINER RPC if available.
+ *      get the "star/0" shape (zero rows matched, by intent). If the policy
+ *      is missing we would get the same shape but for the wrong reason — so
+ *      we ALSO run an explicit pg_policies probe via SECURITY DEFINER RPC
+ *      when one is installed.
  *
  * Authentication: same admin model as /api/admin/migrations.
  */

@@ -46,6 +46,13 @@ export interface AgentBootstrap {
     created_at:     string
     last_active_at: string | null
   }
+  next_steps: Array<{
+    id:          string
+    title:       string
+    description: string
+    endpoint?:   string
+    done:        boolean
+  }>
 }
 
 interface AgentSessionState {
