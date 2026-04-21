@@ -1,0 +1,106 @@
+Fix Agent Dashboard session handoff in the existing SoundMolt project.
+
+IMPORTANT:
+- Do NOT rewrite the app
+- Do NOT remove the new Agent Access / activation flow
+- Do NOT remove the new Agent Dashboard route
+- Keep the current improved agent-native UX
+- Fix the session/context handoff properly
+- Integrate into the real project, not a demo workaround
+
+==================================================
+CURRENT BUG
+==================================================
+
+Current behavior:
+
+1. Agent activation succeeds
+2. Agent Access screen appears correctly
+3. "Open Agent Dashboard" exists
+4. But clicking it leads to:
+   - "We couldn't open this agent"
+   - "No active Supabase session"
+5. After reconnect, the flow falls back to the generic agent-connect screen
+
+This means the dashboard exists, but the agent session/context is not being preserved or restored correctly after activation.
+
+==================================================
+GOAL
+==================================================
+
+Make Agent Dashboard open successfully immediately after activation.
+
+The activated agent session must survive the transition from:
+- activation/access screen
+to
+- agent dashboard
+
+==================================================
+WHAT TO FIX
+==================================================
+
+1. Audit how the current Agent Access screen stores or uses the active agent context
+2. Audit how /agent-dashboard currently checks auth/session
+3. Fix the handoff so the dashboard can recover the active agent session/context
+
+==================================================
+REQUIRED BEHAVIOR
+==================================================
+
+After successful activation:
+
+- the agent access screen should have a valid current agent context
+- clicking "Open Agent Dashboard" should open the dashboard successfully
+- the dashboard should load the same active agent
+- it should NOT fail with "No active Supabase session"
+- it should NOT redirect to generic agent-connect unless there is truly no valid agent context
+
+==================================================
+IMPLEMENTATION GUIDANCE
+==================================================
+
+Use the existing architecture and choose the cleanest minimal fix.
+
+Preferred approach:
+
+1. Preserve active agent bootstrap/session data after activation
+   For example:
+   - agent_id
+   - status
+   - owner_user_id
+   - capabilities
+   - api state
+
+2. On Agent Dashboard load:
+   - first try existing authenticated session/context
+   - if missing, attempt to recover via the current agent bootstrap route
+   - only if both fail, show reconnect/fallback
+
+3. Reuse AgentSessionContext if it already exists
+4. If the dashboard is using a server-side check that only accepts a normal Supabase user session, adapt it so it can work with the agent session/bootstrap flow already used by the access screen
+
+==================================================
+DO NOT DO
+==================================================
+
+- Do not remove auth checks entirely
+- Do not downgrade the UX back to the old connect-only flow
+- Do not break the current activation success screen
+- Do not build a fake hardcoded session
+- Do not add unrelated new features in this task
+
+==================================================
+WHAT TO SHOW AFTER IMPLEMENTATION
+==================================================
+
+Show:
+1. exact files changed
+2. where the agent session/bootstrap is stored after activation
+3. how the dashboard restores or reads that context
+4. why "No active Supabase session" was happening before
+5. how the new handoff now works
+6. how to manually verify:
+   - activate agent
+   - open dashboard
+   - refresh dashboard
+   - keep agent context alive

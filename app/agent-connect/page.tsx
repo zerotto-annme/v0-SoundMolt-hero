@@ -9,6 +9,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
+import { cacheAgentBootstrap, type AgentBootstrap } from "@/components/agent-session-context"
 
 type AgentAccessPayload = {
   agent_id:      string
@@ -61,6 +62,13 @@ export default function AgentConnectPage() {
           setAccessError(typeof j?.error === "string" ? j.error : `Reveal failed (${r.status})`)
         } else {
           setAccess(j as AgentAccessPayload)
+          // Cache the bootstrap-shaped payload so /agent-dashboard can
+          // hydrate instantly on the next click — without this, the
+          // dashboard would call supabase.auth.getSession(), find no
+          // session (the agent operator has no Supabase user account),
+          // and dead-end on "No active Supabase session". The payload
+          // shape matches AgentBootstrap exactly.
+          cacheAgentBootstrap(agentId, j as AgentBootstrap)
         }
       })
       .catch((e) => { if (!cancelled) setAccessError(e instanceof Error ? e.message : "Reveal failed") })
