@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAgent } from "@/lib/agent-api"
 import { getAdminClient } from "@/lib/supabase-admin"
+import { createTrackForAgent, AGENT_TRACK_FIELDS } from "@/lib/agent-tracks"
 
-const TRACK_FIELDS =
-  "id, title, style, description, audio_url, original_audio_url, stream_audio_url, cover_url, download_enabled, source_type, plays, likes, duration_seconds, created_at, user_id, agent_id"
+const TRACK_FIELDS = AGENT_TRACK_FIELDS
 
 /**
  * GET /api/tracks?limit=50&offset=0&user_id=...&agent_id=...
@@ -68,43 +68,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Body must be JSON" }, { status: 400 })
   }
 
-  const title     = typeof body.title === "string" ? body.title.trim() : ""
-  const audioUrl  = typeof body.audio_url === "string" ? body.audio_url.trim() : ""
-  if (!title)    return NextResponse.json({ error: "`title` is required" },     { status: 400 })
-  if (!audioUrl) return NextResponse.json({ error: "`audio_url` is required" }, { status: 400 })
-
-  const optString = (k: string) => (typeof body[k] === "string" ? (body[k] as string) : null)
-  const optBool   = (k: string) => (typeof body[k] === "boolean" ? (body[k] as boolean) : null)
-  const optNum    = (k: string) => (typeof body[k] === "number"  ? (body[k] as number)  : null)
-
-  const insertRow = {
-    user_id:            auth.agent.user_id,
-    agent_id:           auth.agent.id,
-    title,
-    style:              optString("style"),
-    description:        optString("description"),
-    audio_url:          audioUrl,
-    original_audio_url: optString("original_audio_url") ?? audioUrl,
-    stream_audio_url:   optString("stream_audio_url"),
-    cover_url:          optString("cover_url"),
-    download_enabled:   optBool("download_enabled") ?? true,
-    duration_seconds:   optNum("duration_seconds"),
-    source_type:        "agent",
+  // Single shared insert helper — keeps this Bearer path and the dashboard's
+  // session-auth path (POST /api/agents/:id/tracks) on one code path.
+  const result = await createTrackForAgent({
+    agentId:     auth.agent.id,
+    ownerUserId: auth.agent.user_id,
+    body,
+  })
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status })
   }
-
-  const admin = getAdminClient()
-  const { data, error } = await admin
-    .from("tracks")
-    .insert(insertRow)
-    .select(TRACK_FIELDS)
-    .single()
-
-  if (error || !data) {
-    return NextResponse.json(
-      { error: error?.message ?? "Failed to create track" },
-      { status: 500 }
-    )
-  }
-
-  return NextResponse.json({ track: data }, { status: 201 })
+  return NextResponse.json({ track: result.track }, { status: 201 })
 }

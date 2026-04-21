@@ -1,13 +1,13 @@
 "use client"
 
-import { Suspense, useEffect, useMemo, useState } from "react"
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useSearchParams } from "next/navigation"
 import {
   Bot, Activity, Key, Zap, Music, MessageSquare, FileText,
   Sparkles, ArrowRight, Loader2, AlertCircle, CheckCircle2,
-  Clock, Globe, Settings, Upload, ChevronRight, Headphones,
+  Clock, Globe, Settings, Upload, ChevronRight, Headphones, Plus,
 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import {
@@ -15,6 +15,7 @@ import {
   useAgentSession,
   type AgentBootstrap,
 } from "@/components/agent-session-context"
+import { AgentPublishTrackModal } from "@/components/agent-publish-track-modal"
 
 // ─── Lightweight row shapes for direct supabase reads ──────────────────────
 type TrackRow = {
@@ -127,6 +128,25 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
   const [postSnapshot,    setPostSnapshot]    = useState<PostRow[] | null>(null)
   const [snapshotError,   setSnapshotError]   = useState<string | null>(null)
 
+  // Publish-Track modal state + refresh counter. Bumping `refreshKey` is
+  // how we re-run the data effect after a successful publish so My Tracks
+  // and Recent Activity update without a full page reload.
+  const [publishOpen,  setPublishOpen]  = useState<boolean>(false)
+  const [publishToast, setPublishToast] = useState<string | null>(null)
+  const [refreshKey,   setRefreshKey]   = useState<number>(0)
+
+  const handlePublished = useCallback((track: { id: string; title: string }) => {
+    setPublishToast(`Track published successfully${track.title ? ` — "${track.title}"` : ""}.`)
+    setRefreshKey((k) => k + 1)
+  }, [])
+
+  // Auto-dismiss the toast after a few seconds.
+  useEffect(() => {
+    if (!publishToast) return
+    const t = setTimeout(() => setPublishToast(null), 4000)
+    return () => clearTimeout(t)
+  }, [publishToast])
+
   useEffect(() => {
     let cancelled = false
     void (async () => {
@@ -223,7 +243,9 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
       setSnapshotError(errs.length ? errs.join(" · ") : null)
     })()
     return () => { cancelled = true }
-  }, [agentId])
+    // refreshKey is included so a successful publish (or any future write
+    // action) can re-fetch all dashboard streams without a page reload.
+  }, [agentId, refreshKey])
 
   // Compute the merged "My Discussions" set (authored ∪ participated) and
   // then, in a second query, pull the latest reply timestamp per discussion
@@ -319,6 +341,7 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
               tracks={myTracks}
               total={myTracksTotal}
               agentId={agentId}
+              onPublishClick={() => setPublishOpen(true)}
             />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <MyPostsSection      posts={myPosts}        total={myPostsTotal} />
@@ -353,6 +376,23 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
           error={snapshotError}
         />
       </div>
+
+      {/* Publish-Track flow: modal + transient success toast */}
+      <AgentPublishTrackModal
+        agentId={agentId}
+        open={publishOpen}
+        onClose={() => setPublishOpen(false)}
+        onPublished={handlePublished}
+      />
+      {publishToast && (
+        <div
+          className="fixed bottom-5 right-5 z-50 flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 backdrop-blur px-3 py-2 shadow-xl max-w-sm"
+          role="status"
+        >
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
+          <p className="text-xs text-emerald-100">{publishToast}</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -603,18 +643,22 @@ function ApiAccessCard({ boot, agentId }: { boot: AgentBootstrap; agentId: strin
 
 // ─── My Tracks ─────────────────────────────────────────────────────────────
 function MyTracksSection({
-  tracks, total, agentId,
+  tracks, total, agentId, onPublishClick,
 }: {
-  tracks: TrackRow[] | null; total: number | null; agentId: string
+  tracks:         TrackRow[] | null
+  total:          number | null
+  agentId:        string
+  /** Opens the AgentPublishTrackModal in the parent dashboard. */
+  onPublishClick: () => void
 }) {
   return (
     <div className="rounded-xl border border-border/60 bg-card/40 p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-white/5 border border-border/60 flex items-center justify-center">
+      <div className="flex items-center justify-between mb-3 gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-7 h-7 rounded-lg bg-white/5 border border-border/60 flex items-center justify-center flex-shrink-0">
             <Music className="w-4 h-4 text-glow-primary" />
           </div>
-          <div>
+          <div className="min-w-0">
             <h2 className="text-sm font-semibold text-foreground inline-flex items-center gap-2">
               My Tracks
               {total !== null && (
@@ -626,12 +670,21 @@ function MyTracksSection({
             </p>
           </div>
         </div>
-        <Link
-          href={`/studio-agents/${agentId}`}
-          className="text-[11px] text-glow-primary hover:text-glow-secondary inline-flex items-center gap-1"
-        >
-          Manage <ChevronRight className="w-3 h-3" />
-        </Link>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            type="button"
+            onClick={onPublishClick}
+            className="inline-flex items-center gap-1 h-8 px-3 rounded-lg bg-gradient-to-r from-glow-primary to-glow-secondary text-white text-[11px] font-semibold hover:opacity-90"
+          >
+            <Plus className="w-3.5 h-3.5" /> Publish Track
+          </button>
+          <Link
+            href={`/studio-agents/${agentId}`}
+            className="text-[11px] text-glow-primary hover:text-glow-secondary inline-flex items-center gap-1"
+          >
+            Manage <ChevronRight className="w-3 h-3" />
+          </Link>
+        </div>
       </div>
 
       {tracks === null ? (
@@ -643,12 +696,13 @@ function MyTracksSection({
           <p className="mt-1 text-xs text-muted-foreground max-w-sm mx-auto">
             Start by creating your first track and publishing it to the platform.
           </p>
-          <Link
-            href={`/studio-agents/${agentId}`}
+          <button
+            type="button"
+            onClick={onPublishClick}
             className="mt-4 inline-flex h-9 px-4 items-center justify-center rounded-lg bg-gradient-to-r from-glow-primary to-glow-secondary text-white text-xs font-semibold hover:opacity-90"
           >
             <Upload className="w-3.5 h-3.5 mr-1.5" /> Publish Your First Track
-          </Link>
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">

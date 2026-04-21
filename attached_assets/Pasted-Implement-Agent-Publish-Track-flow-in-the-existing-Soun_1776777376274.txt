@@ -1,0 +1,174 @@
+Implement Agent Publish Track flow in the existing SoundMolt project.
+
+IMPORTANT:
+- Do NOT rewrite the app
+- Do NOT break existing human upload/publish flow
+- Reuse existing track creation logic
+- Integrate into Agent Dashboard and existing UI
+- Keep this minimal but real and working
+
+==================================================
+GOAL
+==================================================
+
+Allow an authenticated agent to publish a track directly from the Agent Dashboard.
+
+This should be the first real action the agent can perform inside the system.
+
+==================================================
+ENTRY POINT
+==================================================
+
+From Agent Dashboard:
+- "Publish Track" button should open a modal or lightweight form
+
+Do NOT create a separate page unless required.
+Prefer modal.
+
+==================================================
+FORM FIELDS
+==================================================
+
+Minimal required fields:
+
+- Title (required)
+- Description (optional)
+- Genre (optional)
+- Audio URL (optional for now)
+- Cover URL (optional)
+
+Keep it simple and clean.
+
+==================================================
+SUBMIT BEHAVIOR
+==================================================
+
+On submit:
+
+Call:
+POST /api/tracks
+
+Payload:
+{
+  "title": string,
+  "description": string,
+  "genre": string,
+  "audio_url": string,
+  "cover_url": string,
+  "is_public": true
+}
+
+==================================================
+AUTH
+==================================================
+
+Use existing agent API auth:
+- Authorization: Bearer <agent_api_key>
+
+Or existing session-based agent context if already wired.
+
+==================================================
+BACKEND REQUIREMENTS
+==================================================
+
+- Reuse existing track creation logic
+- Associate track with:
+  - agent_id
+  - owner_user_id
+
+- Set:
+  - created_by = "agent"
+  - status = "published"
+
+Do NOT duplicate track creation logic.
+
+==================================================
+SUCCESS STATE
+==================================================
+
+After successful publish:
+
+1. Show success message:
+Track published successfully.
+
+2. Close modal
+
+3. Immediately update:
+- My Tracks section
+- Recent Activity section
+
+WITHOUT full page reload if possible
+
+==================================================
+ERROR STATE
+==================================================
+
+If error:
+
+- show clear error message
+- do NOT silently fail
+
+==================================================
+ACTIVITY INTEGRATION
+==================================================
+
+After publish:
+Add entry to Recent Activity:
+
+Published a new track
+
+Use existing activity sources if possible.
+If not available, derive from track creation timestamp.
+
+==================================================
+UI REQUIREMENTS
+==================================================
+
+Modal:
+- dark style
+- rounded-xl
+- consistent with SoundMolt UI
+
+Submit button:
+Publish Track
+
+Cancel button:
+Cancel
+
+Loading state:
+Publishing...
+
+==================================================
+EMPTY STATE IMPROVEMENT
+==================================================
+
+In "My Tracks" section:
+
+If empty:
+- CTA button should open this modal
+
+Text:
+Publish Your First Track
+
+==================================================
+DO NOT DO
+==================================================
+
+- Do not build full file upload system yet
+- Do not integrate storage providers now
+- Do not add complex validation
+- Do not build analytics
+- Do not break existing user upload flow
+
+==================================================
+WHAT TO SHOW AFTER IMPLEMENTATION
+==================================================
+
+Show:
+1. exact files changed
+2. modal component code
+3. POST /api/tracks usage
+4. how agent_id is attached
+5. how My Tracks updates after publish
+6. how Recent Activity updates
+7. screenshot or description of flow
