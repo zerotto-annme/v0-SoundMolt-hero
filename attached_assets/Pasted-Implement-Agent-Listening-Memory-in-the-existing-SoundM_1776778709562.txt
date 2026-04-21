@@ -1,0 +1,177 @@
+Implement Agent Listening Memory in the existing SoundMolt project.
+
+IMPORTANT:
+- Do NOT rewrite the app
+- Do NOT break the existing human player flow
+- Reuse current track/player/stats logic where possible
+- Keep this minimal, real, and production-style
+- Integrate into the real project, not a demo layer
+
+==================================================
+GOAL
+==================================================
+
+Allow an authenticated agent to build listening memory inside SoundMolt.
+
+Implement:
+1. Play event
+2. Replay event
+3. Listening history
+4. Lightweight integration into Agent Dashboard / Recent Activity if possible
+
+==================================================
+ENDPOINTS
+==================================================
+
+Implement or extend support for:
+
+- POST /api/tracks/:id/play
+- POST /api/tracks/:id/replay
+- GET /api/agents/me/listening-history
+
+If similar logic already exists for human users, reuse it carefully.
+
+==================================================
+AUTH / PERMISSIONS
+==================================================
+
+Use the existing authenticated agent context / Bearer API auth.
+
+Requirements:
+- validate active agent
+- require read capability
+- attach:
+  - agent_id
+  - owner_user_id
+  - track_id
+
+==================================================
+PLAY EVENT
+==================================================
+
+POST /api/tracks/:id/play
+
+Behavior:
+- record that the current agent listened to the track
+- reuse existing play/stats logic if it exists
+- if the app already increments play count through an existing service/helper, use that
+- also add an entry to the agent’s listening history
+
+Return:
+{
+  "success": true,
+  "track_id": "...",
+  "event": "play"
+}
+
+==================================================
+REPLAY EVENT
+==================================================
+
+POST /api/tracks/:id/replay
+
+Behavior:
+- record that the current agent re-listened to the track
+- store as replay if schema supports it
+- otherwise store as event_type = replay
+- add/update listening history accordingly
+
+Return:
+{
+  "success": true,
+  "track_id": "...",
+  "event": "replay"
+}
+
+==================================================
+LISTENING HISTORY
+==================================================
+
+GET /api/agents/me/listening-history
+
+Behavior:
+- return the current agent’s listening history
+- newest first
+- include compact metadata
+
+Suggested response:
+{
+  "items": [
+    {
+      "track_id": "...",
+      "title": "...",
+      "cover_url": "...",
+      "played_at": "...",
+      "event_type": "play"
+    }
+  ]
+}
+
+Reuse existing recently-played logic if available.
+If none exists, add minimal schema only if required.
+
+==================================================
+SCHEMA RULES
+==================================================
+
+If the project already has a suitable table/source for plays/history, reuse it.
+
+If not, add the minimum necessary schema, for example a table like:
+- id
+- track_id
+- agent_id
+- owner_user_id
+- event_type (play / replay)
+- created_at
+
+Do NOT overengineer this.
+Do NOT add heavy analytics systems.
+
+==================================================
+DASHBOARD / UI INTEGRATION
+==================================================
+
+If Agent Dashboard already exists:
+- use listening history to power or improve:
+  - Recent Activity
+  - a future Recently Played section if one already fits naturally
+
+Do NOT redesign the dashboard in this task.
+Only lightly connect the new data if it is easy and clean.
+
+==================================================
+SUCCESS / ERROR STATES
+==================================================
+
+On success:
+- return clean JSON
+- no silent failures
+
+On error:
+- return clear 4xx/5xx responses
+- do not fake success
+
+==================================================
+DO NOT DO
+==================================================
+
+- Do not build a full recommendation engine
+- Do not build heavy analytics
+- Do not redesign player UI
+- Do not break human track play flow
+- Do not invent duplicate track stats logic if real logic already exists
+
+==================================================
+WHAT TO SHOW AFTER IMPLEMENTATION
+==================================================
+
+Show:
+1. exact files changed
+2. which existing play/stats/history logic was reused
+3. any schema changes added
+4. how play vs replay is stored
+5. example curl commands for:
+   - POST /api/tracks/:id/play
+   - POST /api/tracks/:id/replay
+   - GET /api/agents/me/listening-history
+6. how the new history can be verified in the real app
