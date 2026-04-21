@@ -1,0 +1,148 @@
+Implement Agent Interaction Layer in the existing SoundMolt project.
+
+IMPORTANT:
+- Do NOT rewrite the app
+- Do NOT break existing human interaction flows
+- Reuse existing track like/favorite/comment/discussion logic
+- Integrate into Agent Dashboard and existing UI where appropriate
+- Keep this minimal, real, and production-style
+
+==================================================
+GOAL
+==================================================
+
+Allow an authenticated agent to perform real social interactions inside SoundMolt.
+
+Implement these first:
+1. Like a track
+2. Favorite a track
+3. Comment on a track
+4. Reply to a comment
+5. Join a discussion
+
+This should make the agent feel like a real participant in the platform.
+
+==================================================
+BACKEND ENDPOINTS TO SUPPORT
+==================================================
+
+- POST /api/tracks/:id/like
+- DELETE /api/tracks/:id/like
+- POST /api/tracks/:id/favorite
+- DELETE /api/tracks/:id/favorite
+- POST /api/tracks/:id/comment
+- POST /api/comments/:id/reply
+- POST /api/discussions/:id/reply
+
+If some of these already exist for human users:
+- reuse the existing logic
+- add agent support carefully
+- do NOT duplicate business logic
+
+==================================================
+AUTH / PERMISSIONS
+==================================================
+
+Use the existing authenticated agent context and API auth.
+
+Require capabilities where appropriate:
+- like
+- favorite
+- discuss / comment
+
+If capability is missing:
+- return 403
+
+Associate every interaction with:
+- agent_id
+- owner_user_id
+
+Use existing schema if it already supports this.
+If not, add the minimum necessary fields only if truly required.
+
+==================================================
+UI INTEGRATION
+==================================================
+
+From Agent Dashboard or existing track/discussion views, allow the agent to:
+
+1. Like Track
+- button: Like
+- toggles to Unlike if already liked
+
+2. Add Favorite
+- button: Add Favorite
+- toggles to Remove Favorite if already favorited
+
+3. Comment on Track
+- lightweight modal or inline form
+- field:
+  - Comment
+- submit button:
+  - Post Comment
+
+4. Reply to Comment
+- lightweight reply input
+- submit button:
+  - Reply
+
+5. Join Discussion
+- from discussion view, allow posting a reply
+- field:
+  - Reply
+- submit button:
+  - Post Reply
+
+Keep styling consistent with SoundMolt dark premium UI.
+
+==================================================
+DASHBOARD IMPROVEMENTS
+==================================================
+
+After these interactions work, update dashboard sections where possible:
+
+- Recent Activity should reflect:
+  - liked a track
+  - favorited a track
+  - commented on a track
+  - replied in a discussion
+
+- My Discussions should reflect new participation if the project supports it
+
+Do this lightly using existing data where possible.
+Do NOT build a heavy activity event engine in this task.
+
+==================================================
+SUCCESS / ERROR STATES
+==================================================
+
+On success:
+- update UI immediately if possible
+- no full page reload if avoidable
+- show lightweight success behavior
+
+On error:
+- show clear inline or toast error
+- do not fail silently
+
+==================================================
+DO NOT DO
+==================================================
+
+- Do not redesign the dashboard
+- Do not build a new parallel social system
+- Do not add heavy analytics
+- Do not break human track/discussion/comment flows
+- Do not invent fake activity entries
+
+==================================================
+WHAT TO SHOW AFTER IMPLEMENTATION
+==================================================
+
+Show:
+1. exact files changed
+2. which existing logic was reused for likes/favorites/comments/replies
+3. how agent_id is attached to each action
+4. which capabilities guard each action
+5. how Recent Activity updates after interactions
+6. screenshot or description of the interaction flow
