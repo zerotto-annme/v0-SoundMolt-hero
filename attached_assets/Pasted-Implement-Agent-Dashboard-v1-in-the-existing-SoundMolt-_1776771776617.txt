@@ -1,0 +1,97 @@
+Implement Agent Dashboard v1 in the existing SoundMolt project.
+
+IMPORTANT:
+- Do NOT rewrite the app
+- Do NOT refactor unrelated parts
+- Reuse existing agent auth, bootstrap/session data, Studio Agents flow, and current UI style
+- Do NOT break human flows
+- Keep this minimal and real
+
+GOAL:
+Add a real dashboard page for an activated AI agent.
+
+Route:
+- /agent-dashboard
+- or reuse an existing suitable route if the project already has one
+
+This is NOT the activation screen.
+This is the persistent dashboard the agent opens after activation.
+
+REQUIRED SECTIONS:
+
+1. Header
+Show:
+- Agent Dashboard
+- agent name
+- status
+- API access status
+- owner/studio connection if available
+
+2. Current Status card
+Show:
+- Status
+- API Access
+- capabilities count
+- tracks count if available
+- last active if available
+
+3. Capabilities card
+Render real capabilities dynamically
+
+4. Quick Actions
+Add only valid buttons/routes that already exist, such as:
+- Open Feed
+- Publish Track
+- View Discussions
+- View API Access
+- Open Studio
+
+5. My Tracks
+Show the current agent’s own tracks using real data if available
+If none:
+- show a clean empty state
+
+6. My Activity
+Show lightweight recent activity if real data exists
+If not, keep it minimal and do not build a heavy new event system
+
+7. Discovery Snapshot
+Show compact previews from existing:
+- feed
+- trending tracks
+- discussions
+- posts
+Use real current data sources only
+
+8. Next Steps
+Show a simple practical checklist:
+- Verify your identity
+- Review your capabilities
+- Explore the platform
+- Publish your next track
+- Join a discussion
+
+DATA RULES:
+- Reuse AgentSessionContext / bootstrap if already available
+- Reuse existing loaders/endpoints if available
+- Do NOT hardcode fake backend values if real ones exist
+- Do NOT duplicate agent identity logic
+
+UI RULES:
+- Match SoundMolt dark premium style
+- Use clean cards/sections
+- Keep layout compact and intentional
+- Make it feel agent-specific, not a generic user dashboard
+
+DO NOT:
+- duplicate activation page
+- invent dead links
+- add heavy schema changes unless absolutely required
+- build a big analytics system in this task
+
+AFTER IMPLEMENTATION SHOW:
+1. exact files changed
+2. dashboard route/page
+3. which sections use real data
+4. which buttons/routes were added
+5. how user gets to dashboard from current agent mode flow

@@ -469,25 +469,32 @@ export default function AgentConnectPage() {
                 </div>
               )}
 
-              {/* Agent-specific destinations. Only links to routes that
-                  actually exist in the project. Primary action = Open Feed
-                  (the most useful page the agent operator can browse). */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+              {/* Agent-specific destinations. Primary CTA goes to the new
+                  persistent dashboard at /agent-dashboard?agent_id=…;
+                  secondary actions deep-link into routes that already exist
+                  in the project. */}
+              <Link
+                href={`/agent-dashboard?agent_id=${encodeURIComponent(agentId ?? "")}`}
+                className="block w-full h-11 bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-opacity"
+              >
+                Open Agent Dashboard <ArrowRight className="w-4 h-4" />
+              </Link>
+              <div className="grid grid-cols-3 gap-2">
                 <Link
                   href="/feed"
-                  className="h-11 bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-opacity sm:col-span-1"
+                  className="h-10 bg-white/5 hover:bg-white/10 border border-border/50 text-foreground text-xs font-medium rounded-xl flex items-center justify-center gap-2 transition-colors"
                 >
-                  Open Feed <ArrowRight className="w-4 h-4" />
+                  Open Feed
                 </Link>
                 <Link
                   href="/explore"
-                  className="h-11 bg-white/5 hover:bg-white/10 border border-border/50 text-foreground font-medium rounded-xl flex items-center justify-center gap-2 transition-colors"
+                  className="h-10 bg-white/5 hover:bg-white/10 border border-border/50 text-foreground text-xs font-medium rounded-xl flex items-center justify-center gap-2 transition-colors"
                 >
-                  Explore tracks
+                  Explore
                 </Link>
                 <Link
                   href="/discussions"
-                  className="h-11 bg-white/5 hover:bg-white/10 border border-border/50 text-foreground font-medium rounded-xl flex items-center justify-center gap-2 transition-colors"
+                  className="h-10 bg-white/5 hover:bg-white/10 border border-border/50 text-foreground text-xs font-medium rounded-xl flex items-center justify-center gap-2 transition-colors"
                 >
                   Discussions
                 </Link>
