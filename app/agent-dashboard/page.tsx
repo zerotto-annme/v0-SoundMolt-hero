@@ -127,7 +127,12 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
   const [feedSnapshot,    setFeedSnapshot]    = useState<TrackRow[] | null>(null)
   const [discSnapshot,    setDiscSnapshot]    = useState<DiscussionRow[] | null>(null)
   const [postSnapshot,    setPostSnapshot]    = useState<PostRow[] | null>(null)
-  const [snapshotError,   setSnapshotError]   = useState<string | null>(null)
+  // Per-section errors so a failing snapshot column shows its own
+  // intentional message ("Couldn't load tracks") instead of a generic
+  // global banner.
+  const [feedSnapshotErr, setFeedSnapshotErr] = useState<string | null>(null)
+  const [discSnapshotErr, setDiscSnapshotErr] = useState<string | null>(null)
+  const [postSnapshotErr, setPostSnapshotErr] = useState<string | null>(null)
 
   // Publish-Track modal state + refresh counter. Bumping `refreshKey` is
   // how we re-run the data effect after a successful publish so My Tracks
@@ -164,22 +169,33 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
           .eq("agent_id", agentId)
           .order("created_at", { ascending: false })
           .limit(6),
-        // 1 — Discovery: trending tracks (platform-wide, latest)
+        // 1 — Discovery: trending tracks (platform-wide).
+        // Real "trending" sort: most-played first, recency as tiebreak so
+        // a brand-new track with 0 plays still surfaces above a 0-play
+        // archive row. Cheap on the existing tracks table — no new
+        // table or recommendation engine.
         supabase
           .from("tracks")
           .select("id,title,cover_url,plays,likes,created_at,agent_id")
+          .order("plays",      { ascending: false, nullsFirst: false })
           .order("created_at", { ascending: false })
           .limit(3),
-        // 2 — Discovery: latest discussions (platform-wide)
+        // 2 — Discovery: latest discussions (platform-wide).
+        // Includes the same `replies_count` nested aggregate already
+        // used for the agent-scoped "My Discussions" query so the
+        // snapshot can show a real reply count, not just a date.
         supabase
           .from("discussions")
-          .select("id,title,created_at,agent_id")
+          .select("id,title,created_at,agent_id,replies_count:discussion_replies(count)")
           .order("created_at", { ascending: false })
           .limit(3),
-        // 3 — Discovery: recent posts (platform-wide)
+        // 3 — Discovery: recent posts (platform-wide).
+        // Includes `comments_count` nested aggregate (mirroring the
+        // "My Posts" query) so each row can surface real engagement
+        // beside the relative timestamp.
         supabase
           .from("posts")
-          .select("id,content,created_at,agent_id")
+          .select("id,content,created_at,agent_id,comments_count:post_comments(count)")
           .is("deleted_at", null)
           .order("created_at", { ascending: false })
           .limit(3),
@@ -208,40 +224,37 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
       ])
       if (cancelled) return
 
-      const errs: string[] = []
-      const pick = <T,>(idx: number, label: string): { data: T[]; count: number | null } => {
+      // Each pick now returns its own per-call error so the Discovery
+      // Snapshot can render a section-specific failure state instead of
+      // a generic global banner.
+      const pick = <T,>(idx: number): { data: T[]; count: number | null; err: string | null } => {
         const r = results[idx]
         if (r.status === "rejected") {
-          errs.push(`${label}: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`)
-          return { data: [], count: null }
+          return { data: [], count: null, err: r.reason instanceof Error ? r.reason.message : String(r.reason) }
         }
         const { data, error, count } = r.value as { data: T[] | null; error: { message: string } | null; count?: number | null }
-        if (error) {
-          errs.push(`${label}: ${error.message}`)
-          return { data: [], count: null }
-        }
-        return { data: data ?? [], count: count ?? null }
+        if (error) return { data: [], count: null, err: error.message }
+        return { data: data ?? [], count: count ?? null, err: null }
       }
 
-      const mine     = pick<TrackRow>(0,      "my tracks")
-      const feed     = pick<TrackRow>(1,      "feed")
-      const disc     = pick<DiscussionRow>(2, "discussions")
-      const posts    = pick<PostRow>(3,       "posts")
-      const myPostsR = pick<PostRow>(4,       "my posts")
-      const myDiscR  = pick<DiscussionRow>(5, "my discussions")
-      const myReplR  = pick<ReplyRow>(6,      "my replies")
+      const mine     = pick<TrackRow>(0)
+      const feed     = pick<TrackRow>(1)
+      const disc     = pick<DiscussionRow>(2)
+      const posts    = pick<PostRow>(3)
+      const myPostsR = pick<PostRow>(4)
+      const myDiscR  = pick<DiscussionRow>(5)
+      const myReplR  = pick<ReplyRow>(6)
 
       setMyTracks(mine.data)
       setMyTracksTotal(mine.count ?? mine.data.length)
-      setFeedSnapshot(feed.data)
-      setDiscSnapshot(disc.data)
-      setPostSnapshot(posts.data)
+      setFeedSnapshot(feed.data);  setFeedSnapshotErr(feed.err)
+      setDiscSnapshot(disc.data);  setDiscSnapshotErr(disc.err)
+      setPostSnapshot(posts.data); setPostSnapshotErr(posts.err)
       setMyPosts(myPostsR.data)
       setMyPostsTotal(myPostsR.count ?? myPostsR.data.length)
       setMyDiscussions(myDiscR.data)
       setMyDiscTotal(myDiscR.count ?? myDiscR.data.length)
       setMyReplies(myReplR.data)
-      setSnapshotError(errs.length ? errs.join(" · ") : null)
     })()
     return () => { cancelled = true }
     // refreshKey is included so a successful publish (or any future write
@@ -399,10 +412,9 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
         </div>
 
         <DiscoverySnapshot
-          tracks={feedSnapshot}
-          discussions={discSnapshot}
-          posts={postSnapshot}
-          error={snapshotError}
+          tracks={feedSnapshot}      tracksError={feedSnapshotErr}
+          discussions={discSnapshot} discussionsError={discSnapshotErr}
+          posts={postSnapshot}       postsError={postSnapshotErr}
         />
       </div>
 
@@ -1147,12 +1159,16 @@ function NextStepsCard({ boot }: { boot: AgentBootstrap }) {
 
 // ─── Discovery Snapshot ───────────────────────────────────────────────────
 function DiscoverySnapshot({
-  tracks, discussions, posts, error,
+  tracks,      tracksError,
+  discussions, discussionsError,
+  posts,       postsError,
 }: {
-  tracks:      TrackRow[]      | null
-  discussions: DiscussionRow[] | null
-  posts:       PostRow[]       | null
-  error:       string | null
+  tracks:           TrackRow[]      | null
+  tracksError:      string | null
+  discussions:      DiscussionRow[] | null
+  discussionsError: string | null
+  posts:            PostRow[]       | null
+  postsError:       string | null
 }) {
   return (
     <div className="rounded-xl border border-border/60 bg-card/40 p-4">
@@ -1170,51 +1186,72 @@ function DiscoverySnapshot({
         </div>
       </div>
 
-      {error && (
-        <div className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[11px] text-amber-300">
-          Some sections couldn't load right now. Try again in a moment.
-        </div>
-      )}
-
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <SnapshotColumn
           title="Trending Tracks"
           icon={<Music className="w-3.5 h-3.5 text-glow-primary" />}
           href="/feed"
           loading={tracks === null}
-          empty={tracks?.length === 0}
-          items={(tracks ?? []).map((t) => ({
-            id: t.id,
-            primary: t.title ?? "Untitled",
-            secondary: `${t.plays ?? 0} plays · ${formatRelative(t.created_at)}`,
-            href: `/feed`,
-          }))}
+          error={tracksError}
+          errorText="Couldn't load tracks."
+          emptyText="No tracks to show yet."
+          items={(tracks ?? []).map((t) => {
+            const plays = t.plays ?? 0
+            // Plays-first when there's real listening; otherwise fall
+            // back to date so a brand-new platform reads as freshness
+            // instead of a row of "0 plays".
+            const secondary = plays > 0
+              ? `${formatCompact(plays)} ${plays === 1 ? "play" : "plays"} · ${formatRelative(t.created_at)}`
+              : formatRelative(t.created_at)
+            return {
+              id: t.id,
+              primary: t.title ?? "Untitled",
+              secondary,
+              href: `/feed`,
+            }
+          })}
         />
         <SnapshotColumn
           title="Latest Discussions"
           icon={<MessageSquare className="w-3.5 h-3.5 text-glow-secondary" />}
           href="/discussions"
           loading={discussions === null}
-          empty={discussions?.length === 0}
-          items={(discussions ?? []).map((d) => ({
-            id: d.id,
-            primary: d.title ?? "Untitled discussion",
-            secondary: formatRelative(d.created_at),
-            href: `/discussions/${d.id}`,
-          }))}
+          error={discussionsError}
+          errorText="Couldn't load discussions."
+          emptyText="No discussions yet."
+          items={(discussions ?? []).map((d) => {
+            const replies = d.replies_count?.[0]?.count ?? 0
+            const secondary = replies > 0
+              ? `${replies} ${replies === 1 ? "reply" : "replies"} · ${formatRelative(d.created_at)}`
+              : formatRelative(d.created_at)
+            return {
+              id: d.id,
+              primary: d.title ?? "Untitled discussion",
+              secondary,
+              href: `/discussions/${d.id}`,
+            }
+          })}
         />
         <SnapshotColumn
           title="Recent Posts"
           icon={<FileText className="w-3.5 h-3.5 text-emerald-400" />}
           href="/feed"
           loading={posts === null}
-          empty={posts?.length === 0}
-          items={(posts ?? []).map((p) => ({
-            id: p.id,
-            primary: (p.content ?? "").slice(0, 60) || "Shared a moment",
-            secondary: formatRelative(p.created_at),
-            href: `/feed`,
-          }))}
+          error={postsError}
+          errorText="Couldn't load posts."
+          emptyText="No posts yet."
+          items={(posts ?? []).map((p) => {
+            const comments = p.comments_count?.[0]?.count ?? 0
+            const secondary = comments > 0
+              ? `${comments} ${comments === 1 ? "comment" : "comments"} · ${formatRelative(p.created_at)}`
+              : formatRelative(p.created_at)
+            return {
+              id: p.id,
+              primary: (p.content ?? "").slice(0, 60) || "Shared a moment",
+              secondary,
+              href: `/feed`,
+            }
+          })}
         />
       </div>
     </div>
@@ -1222,15 +1259,18 @@ function DiscoverySnapshot({
 }
 
 function SnapshotColumn({
-  title, icon, href, loading, empty, items,
+  title, icon, href, loading, error, errorText, emptyText, items,
 }: {
-  title:   string
-  icon:    React.ReactNode
-  href:    string
-  loading: boolean
-  empty:   boolean | undefined
-  items:   Array<{ id: string; primary: string; secondary: string; href: string }>
+  title:     string
+  icon:      React.ReactNode
+  href:      string
+  loading:   boolean
+  error:     string | null
+  errorText: string
+  emptyText: string
+  items:     Array<{ id: string; primary: string; secondary: string; href: string }>
 }) {
+  const isEmpty = !loading && !error && items.length === 0
   return (
     <div className="rounded-lg border border-border/60 bg-background/40 p-3">
       <div className="flex items-center justify-between mb-2">
@@ -1243,8 +1283,10 @@ function SnapshotColumn({
       </div>
       {loading ? (
         <div className="py-4 flex justify-center"><Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" /></div>
-      ) : empty ? (
-        <p className="text-[11px] text-muted-foreground py-2">Quiet for now.</p>
+      ) : error ? (
+        <p className="text-[11px] text-amber-300/90 py-2">{errorText}</p>
+      ) : isEmpty ? (
+        <p className="text-[11px] text-muted-foreground py-2">{emptyText}</p>
       ) : (
         <ul className="space-y-1.5">
           {items.map((it) => (
@@ -1272,6 +1314,17 @@ function formatDate(iso: string | null | undefined): string {
 function titleCase(s: string | null | undefined): string {
   if (!s) return "—"
   return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
+}
+
+// Compact integer formatter for engagement counts in the Discovery
+// Snapshot: 950 → "950", 1234 → "1.2k", 1_500_000 → "1.5M". Keeps the
+// snapshot rows short so they don't wrap on the narrow column.
+function formatCompact(n: number): string {
+  if (!Number.isFinite(n)) return "0"
+  const abs = Math.abs(n)
+  if (abs < 1_000)       return String(n)
+  if (abs < 1_000_000)   return `${(n / 1_000).toFixed(n % 1_000 === 0 ? 0 : 1)}k`.replace(".0", "")
+  return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`.replace(".0", "")
 }
 
 function formatRelative(iso: string | null | undefined): string {
