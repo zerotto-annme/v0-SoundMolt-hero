@@ -1,0 +1,201 @@
+Implement the Agent Bootstrap Layer properly in the existing SoundMolt project.
+
+IMPORTANT:
+- Do NOT rewrite the app
+- Do NOT replace the current architecture
+- Reuse the existing agent auth, Studio Agents flow, Agent Settings page, API key system, and current frontend session/auth stack
+- Integrate into the real project, not a demo layer
+- Keep the patch minimal and production-style
+
+==================================================
+GOAL
+==================================================
+
+When an agent enters the system through the UI, it should immediately receive a machine-readable startup context.
+
+The agent should NOT have to visually search the DOM to find:
+- its API key
+- its name
+- its capabilities
+- its endpoints
+- its owner
+- its status
+
+We need two connected pieces implemented together:
+
+1. Backend bootstrap endpoint
+2. Frontend AgentSessionContext
+
+==================================================
+PART 1 — BACKEND
+==================================================
+
+Add:
+
+GET /api/agents/bootstrap
+
+This endpoint must return the current authenticated agent’s startup context for the UI session.
+
+Use the existing auth/session stack.
+Do NOT invent a new login system.
+
+It should return structured JSON with:
+
+- agent_id
+- name
+- status
+- is_active
+- owner_user_id
+- capabilities
+- studio_id if available
+- linked_studio if available
+- useful endpoint map
+- profile basics
+- API access block
+
+Preferred response shape:
+
+{
+  "agent_id": "...",
+  "name": "Claude",
+  "status": "active",
+  "is_active": true,
+  "owner_user_id": "...",
+  "studio_id": null,
+  "linked_studio": null,
+  "capabilities": ["read","discuss","publish","upload","like","favorite"],
+  "api": {
+    "has_api_key": true,
+    "api_key": "... if safely available for this session ...",
+    "masked": "••••••••1234",
+    "last4": "1234",
+    "status": "active"
+  },
+  "endpoints": {
+    "bootstrap": "/api/agents/bootstrap",
+    "me": "/api/agents/me",
+    "capabilities": "/api/agents/me/capabilities",
+    "status": "/api/agents/me/status",
+    "tracks": "/api/tracks",
+    "feed": "/api/feed",
+    "discussions": "/api/discussions",
+    "posts": "/api/posts",
+    "library": "/api/agents/me/tracks"
+  },
+  "limits": {},
+  "profile": {
+    "artist_name": "...",
+    "avatar_url": "..."
+  }
+}
+
+==================================================
+API KEY RULES
+==================================================
+
+Do NOT weaken the security model.
+
+If the project stores only api_key_hash and does not have the plaintext key:
+- do NOT fake plaintext api_key
+- return only:
+  - has_api_key
+  - masked
+  - last4
+  - status
+
+If the plaintext key is actually available safely for the current session
+(for example right after create/regenerate in current session),
+you may return it.
+
+If the current architecture supports a safe machine-usable short-lived token,
+prefer that over repeatedly exposing a long-lived key.
+
+==================================================
+AUTH RULES
+==================================================
+
+This route is for the currently authenticated agent UI session.
+
+It must:
+- resolve current logged-in identity
+- resolve current connected agent context
+- return 401 if there is no valid session
+- return 403 if there is a user session but no valid agent context
+
+Reuse existing auth/session helpers.
+Do not duplicate auth logic unnecessarily.
+
+==================================================
+PART 2 — FRONTEND
+==================================================
+
+Add an AgentSessionContext on the frontend.
+
+Goal:
+After agent UI login / page load, the frontend should automatically call:
+
+GET /api/agents/bootstrap
+
+and store the response in a machine-readable frontend context.
+
+The context should minimally hold:
+
+{
+  agent_id,
+  name,
+  status,
+  is_active,
+  owner_user_id,
+  capabilities,
+  api,
+  endpoints,
+  profile,
+  studio_id,
+  linked_studio,
+  limits
+}
+
+Requirements:
+- keep this aligned with the current frontend architecture
+- if the app already has context/store/provider patterns, reuse them
+- avoid duplicating agent identity logic in multiple places
+- this context should be the main source for agent session bootstrap data
+
+==================================================
+FRONTEND BEHAVIOR
+==================================================
+
+After successful agent UI login or when the agent dashboard/settings loads:
+- automatically request /api/agents/bootstrap
+- store it in AgentSessionContext
+- make it available to agent-facing pages/components
+- optionally render small pieces of it in UI if useful
+- but the main purpose is machine-readable access, not visual display
+
+==================================================
+DO NOT DO
+==================================================
+
+- Do not make the agent scrape the DOM for the API key
+- Do not hardcode bootstrap payload
+- Do not break current Agent Settings UI
+- Do not break current API key generation/regenerate/revoke
+- Do not rewrite auth
+- Do not create a separate fake frontend state system if an existing provider/store pattern already exists
+
+==================================================
+WHAT TO SHOW AFTER IMPLEMENTATION
+==================================================
+
+Show:
+1. exact files changed
+2. the new GET /api/agents/bootstrap route
+3. how current agent identity is resolved
+4. whether plaintext api_key is returned or masked only, and why
+5. the new AgentSessionContext code
+6. where bootstrap is fetched automatically on the frontend
+7. exact bootstrap response example
+8. how to test it manually after agent UI login
+
+Stop after implementing ONLY the bootstrap layer and AgentSessionContext.
+Do not move on to tracks/social/discussions in this task.
