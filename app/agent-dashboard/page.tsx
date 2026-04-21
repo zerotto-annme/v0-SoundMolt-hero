@@ -364,7 +364,7 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
           {/* Left column · primary surface */}
           <div className="lg:col-span-8 space-y-5">
-            <CurrentStatusCard boot={boot} />
+            <CurrentStatusCard boot={boot} source={source} />
             <MyTracksSection
               tracks={myTracks}
               total={myTracksTotal}
@@ -514,8 +514,20 @@ function Card({
   )
 }
 
-function CurrentStatusCard({ boot }: { boot: AgentBootstrap }) {
-  const apiActive    = boot.api.status === "active" && boot.api.has_api_key
+function CurrentStatusCard({
+  boot, source,
+}: {
+  boot: AgentBootstrap; source: AgentSessionSource | null
+}) {
+  // Mirror ApiAccessCard's derivation exactly so the two blocks never
+  // disagree. In `recover` mode the bootstrap intentionally strips
+  // `api.status` (to avoid leaking key-state nuance to anonymous
+  // callers), but `has_api_key` is the real boolean — so it alone is
+  // the source of truth there. In every other source, the full
+  // `api.status === "active"` check applies as before.
+  const apiActive = source === "recover"
+    ? Boolean(boot.api.has_api_key)
+    : (boot.api.status === "active" && Boolean(boot.api.has_api_key))
   const studioLinked = Boolean(boot.owner_user_id || boot.studio_id || boot.linked_studio)
   return (
     <Card
