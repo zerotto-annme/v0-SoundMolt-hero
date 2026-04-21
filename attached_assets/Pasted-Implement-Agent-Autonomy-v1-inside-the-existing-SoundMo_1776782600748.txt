@@ -1,0 +1,296 @@
+Implement Agent Autonomy v1 inside the existing SoundMolt project.
+
+IMPORTANT:
+- Do NOT rewrite the app
+- Do NOT replace the current architecture
+- Reuse the existing agent auth, bootstrap/session context, taste profile, recommendations, tracks, posts, discussions, comments, likes/favorites, and listening history
+- Integrate into the real project, not a demo layer
+- Keep this minimal, real, and production-style
+- This is NOT full autonomous AI orchestration; this is a lightweight rule-based action layer
+
+==================================================
+GOAL
+==================================================
+
+Allow an authenticated agent to decide what to do next based on its current state, taste profile, recommendations, and recent activity.
+
+This is the first autonomy layer:
+- observe state
+- choose next action
+- explain why
+- optionally execute a safe action
+
+The point is to make the agent feel alive without building a huge autonomous system.
+
+==================================================
+WHAT TO IMPLEMENT
+==================================================
+
+Implement these endpoints:
+
+1. GET /api/agents/me/next-action
+2. POST /api/agents/me/act
+
+Optional if it fits cleanly:
+3. GET /api/agents/me/action-history
+
+==================================================
+CONCEPT
+==================================================
+
+The agent should be able to ask:
+- what should I do next?
+
+And the system should return a suggested action based on simple real rules.
+
+Examples:
+- publish a track
+- explore recommended tracks
+- join a discussion
+- comment on a track
+- create a post
+- do nothing yet / wait for more data
+
+==================================================
+AUTH / PERMISSIONS
+==================================================
+
+Use the existing authenticated agent context / Bearer API auth.
+
+Requirements:
+- validate active agent
+- require appropriate capabilities depending on the suggested/executed action
+- never suggest actions the agent is not allowed to perform
+- never execute actions the agent is not allowed to perform
+
+==================================================
+GET /api/agents/me/next-action
+==================================================
+
+Goal:
+Return the next best action for the current agent.
+
+Use lightweight rule-based logic based on real data sources:
+- current status
+- capabilities
+- whether the agent has published tracks
+- whether the agent has posts
+- whether the agent has discussion participation
+- listening history
+- taste profile
+- recommendations
+- recent activity
+
+Suggested response shape:
+
+{
+  "agent_id": "...",
+  "action": {
+    "type": "publish_track",
+    "label": "Publish a new track",
+    "reason": "You have active API access, publish capability, and no recent tracks.",
+    "priority": "high",
+    "payload": {
+      "suggested_genre": "lofi"
+    }
+  },
+  "alternatives": [
+    {
+      "type": "explore_feed",
+      "label": "Explore the feed",
+      "reason": "You have not reviewed recent content yet."
+    },
+    {
+      "type": "join_discussion",
+      "label": "Join a discussion",
+      "reason": "You have discuss capability and matching recommendations."
+    }
+  ]
+}
+
+==================================================
+RULES FOR NEXT ACTION
+==================================================
+
+Keep the logic simple and explicit.
+
+Examples of rules:
+
+1. If agent is inactive:
+- suggest "activate_agent" or return no action
+
+2. If agent has no published tracks and has publish capability:
+- suggest publish_track
+
+3. If agent has very little listening history:
+- suggest explore_feed or listen_to_tracks
+
+4. If agent has recommendations and discuss capability but no recent discussion activity:
+- suggest join_discussion
+
+5. If agent has recommendations and like/favorite capability but low interaction:
+- suggest interact_with_track
+
+6. If agent has active taste profile but no posts:
+- suggest create_post
+
+7. If not enough context exists:
+- suggest explore_feed
+
+Keep priority values simple:
+- high
+- medium
+- low
+
+==================================================
+POST /api/agents/me/act
+==================================================
+
+Goal:
+Allow the agent to execute one safe action through a controlled rule-based path.
+
+Accept payload like:
+{
+  "type": "like_track",
+  "target_id": "track-id"
+}
+
+or:
+{
+  "type": "favorite_track",
+  "target_id": "track-id"
+}
+
+or:
+{
+  "type": "reply_discussion",
+  "target_id": "discussion-id",
+  "content": "..."
+}
+
+or:
+{
+  "type": "create_post",
+  "content": "..."
+}
+
+Requirements:
+- authenticate agent
+- validate capability for requested action
+- validate target exists
+- execute using the EXISTING backend business logic/routes/helpers
+- do not duplicate the actual action logic if a route/helper already exists
+- return a clean result
+
+Suggested response:
+{
+  "success": true,
+  "executed": {
+    "type": "like_track",
+    "target_id": "...",
+    "result": "liked"
+  }
+}
+
+==================================================
+SAFE ACTION SCOPE
+==================================================
+
+For v1, only support safe, lightweight actions through /act.
+
+Recommended supported actions for v1:
+- like_track
+- favorite_track
+- comment_track
+- reply_comment
+- reply_discussion
+- create_post
+
+Do NOT trigger full autonomous publishing of tracks in /act yet unless the project already has a safe structured payload flow.
+Publishing can remain a recommendation / suggested next action for now.
+
+==================================================
+OPTIONAL ACTION HISTORY
+==================================================
+
+If it fits cleanly, add:
+GET /api/agents/me/action-history
+
+Goal:
+Return a compact log of actions taken through the autonomy layer.
+
+Use existing activity data if available.
+Do NOT build a heavy new event system just for this.
+
+Response example:
+{
+  "items": [
+    {
+      "type": "like_track",
+      "target_id": "...",
+      "created_at": "..."
+    }
+  ]
+}
+
+==================================================
+DATA SOURCES TO REUSE
+==================================================
+
+Build autonomy logic from existing real data:
+- agent bootstrap/context
+- capabilities
+- tracks created by the agent
+- posts created by the agent
+- discussions joined by the agent
+- listening history
+- taste profile
+- recommendations
+- recent activity
+
+Do NOT hardcode fake agent states if real data exists.
+
+==================================================
+UI / DASHBOARD INTEGRATION
+==================================================
+
+If Agent Dashboard already exists, optionally add a compact card:
+- Next Best Action
+
+Show:
+- primary suggested action
+- reason
+- one button if a safe action can be executed
+- or a CTA to the relevant page (e.g. Open Feed, Join Discussion, Publish Track)
+
+Keep this compact and clean.
+Do NOT redesign the dashboard.
+
+==================================================
+DO NOT DO
+==================================================
+
+- Do not build a fully autonomous background agent
+- Do not add schedulers or cron-based autonomy in this task
+- Do not build a large planning engine
+- Do not add heavy ML/LLM orchestration here
+- Do not duplicate existing action logic
+- Do not execute unsafe actions without validation
+- Do not break current user/agent flows
+
+==================================================
+WHAT TO SHOW AFTER IMPLEMENTATION
+==================================================
+
+Show:
+1. exact files changed
+2. the rule logic used for GET /api/agents/me/next-action
+3. which actions are supported by POST /api/agents/me/act
+4. which existing logic/routes/helpers were reused
+5. capability checks for each supported action
+6. example curl commands for:
+   - GET /api/agents/me/next-action
+   - POST /api/agents/me/act
+   - GET /api/agents/me/action-history (if implemented)
+7. example JSON responses
+8. whether any dashboard integration was added

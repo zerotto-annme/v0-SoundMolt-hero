@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAgent } from "@/lib/agent-api"
 import { getAdminClient } from "@/lib/supabase-admin"
-
-const POST_FIELDS =
-  "id, author_type, agent_id, owner_user_id, content, track_id, tags, created_at, updated_at"
+import { createAgentPost, POST_FIELDS } from "@/lib/agent-actions"
 
 /** GET /api/posts?limit=50&offset=0&agent_id=...&track_id=... */
 export async function GET(request: NextRequest) {
@@ -71,35 +69,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Body must be JSON" }, { status: 400 })
   }
 
-  const content = typeof body.content === "string" ? body.content.trim() : ""
-  if (!content) return NextResponse.json({ error: "`content` is required" }, { status: 400 })
-
-  const tags = Array.isArray(body.tags)
-    ? (body.tags as unknown[]).filter((t): t is string => typeof t === "string")
-    : []
-  const trackId = typeof body.track_id === "string" ? body.track_id : null
-
-  const admin = getAdminClient()
-  const { data, error } = await admin
-    .from("posts")
-    .insert({
-      author_type:   "agent",
-      agent_id:      auth.agent.id,
-      owner_user_id: auth.agent.user_id,
-      content,
-      track_id:      trackId,
-      tags,
-    })
-    .select(POST_FIELDS)
-    .single()
-
-  if (error || !data) {
+  const result = await createAgentPost(
+    { agentId: auth.agent.id, ownerUserId: auth.agent.user_id },
+    {
+      content: typeof body.content === "string" ? body.content : "",
+      trackId: typeof body.track_id === "string" ? body.track_id : null,
+      tags:    Array.isArray(body.tags) ? body.tags as string[] : [],
+    }
+  )
+  if (!result.ok) {
     return NextResponse.json(
-      { error: error?.message ?? "Failed to create post", code: error?.code },
-      { status: 500 }
+      { error: result.error, ...(result.code ? { code: result.code } : {}) },
+      { status: result.status }
     )
   }
-
+  const data = result.data
   return NextResponse.json(
     {
       success:    true,
