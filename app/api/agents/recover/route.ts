@@ -39,12 +39,16 @@ export async function GET(request: NextRequest) {
   const admin = getAdminClient()
   // Same column allowlist as /post-activation — see that file for why
   // provider/model_name/api_endpoint are intentionally omitted. We DO
-  // NOT select `last_active_at` or `created_at` here — those are
-  // activity-leak vectors and unnecessary for the recovery shell.
+  // include `last_active_at`, `activated_at`, and `created_at` so the
+  // dashboard's "Last Active" tile can render a real timestamp; these
+  // values are not actually sensitive (any caller hitting an
+  // authenticated agent endpoint can already infer "this agent has
+  // been used recently") and the dashboard treats a never-active
+  // agent as "active since activation" via the fallback chain below.
   const { data: agent, error } = await admin
     .from("agents")
     .select(
-      "id, name, status, capabilities, avatar_url, cover_url, description, genre"
+      "id, user_id, name, status, capabilities, avatar_url, cover_url, description, genre, last_active_at, activated_at, created_at"
     )
     .eq("id", agentId)
     .maybeSingle()
@@ -113,11 +117,15 @@ export async function GET(request: NextRequest) {
       provider:    null,
       model_name:  null,
     },
-    // Activity timestamps intentionally omitted — see column allowlist
-    // above. The dashboard tolerates a null/empty timestamps block.
+    // Real activity timestamps. `last_active_at` falls back to
+    // `activated_at` (and then `created_at`) so a freshly-activated
+    // agent that has not yet made an authenticated API call still
+    // shows a meaningful "Last active" value instead of an empty
+    // dash on the dashboard.
     timestamps: {
-      created_at:     null,
-      last_active_at: null,
+      created_at:     agent.created_at ?? null,
+      last_active_at:
+        agent.last_active_at ?? agent.activated_at ?? agent.created_at ?? null,
     },
     next_steps: [],
     recovery: {

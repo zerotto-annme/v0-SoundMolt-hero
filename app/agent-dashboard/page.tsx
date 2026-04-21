@@ -26,33 +26,23 @@ type TrackRow = {
   plays:       number | null
   likes:       number | null
   created_at:  string
-  agent_id:    string | null
 }
 type DiscussionRow = {
   id:             string
   title:          string | null
   created_at:     string
-  agent_id:       string | null
   // Supabase nested-count shape: aggregate arrives as `[{ count: n }]`.
   // Optional everywhere because not every query opts in to the join.
   replies_count?: { count: number }[] | null
 }
-type PostRow = {
-  id:              string
-  content:         string | null
-  created_at:      string
-  agent_id:        string | null
-  comments_count?: { count: number }[] | null
-}
 type ReplyRow = {
   id:            string
-  discussion_id: string
+  content:       string | null
   created_at:    string
-  agent_id:      string | null
-  // Joined parent discussion title for activity feed labels. Supabase
+  // Joined parent thread title for the snapshot row label. Supabase
   // returns either an object or an array depending on relationship cardinality;
   // we accept both and normalize at render time.
-  discussion?:   { id: string; title: string | null } | { id: string; title: string | null }[] | null
+  thread?:       { id: string; title: string | null } | { id: string; title: string | null }[] | null
 }
 
 // ─── Page entry: pulls agent_id from URL and mounts the session provider ───
@@ -116,7 +106,7 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
   // auth consistent and avoid a parallel implementation.
   const [myTracks,        setMyTracks]        = useState<TrackRow[] | null>(null)
   const [myTracksTotal,   setMyTracksTotal]   = useState<number | null>(null)
-  const [myPosts,         setMyPosts]         = useState<PostRow[] | null>(null)
+  const [myPosts,         setMyPosts]         = useState<ReplyRow[] | null>(null)
   const [myPostsTotal,    setMyPostsTotal]    = useState<number | null>(null)
   const [myDiscussions,   setMyDiscussions]   = useState<DiscussionRow[] | null>(null)
   const [myDiscTotal,     setMyDiscTotal]     = useState<number | null>(null)
@@ -126,7 +116,7 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
   const [lastActivityById, setLastActivityById] = useState<Record<string, string>>({})
   const [feedSnapshot,    setFeedSnapshot]    = useState<TrackRow[] | null>(null)
   const [discSnapshot,    setDiscSnapshot]    = useState<DiscussionRow[] | null>(null)
-  const [postSnapshot,    setPostSnapshot]    = useState<PostRow[] | null>(null)
+  const [postSnapshot,    setPostSnapshot]    = useState<ReplyRow[] | null>(null)
   // Per-section errors so a failing snapshot column shows its own
   // intentional message ("Couldn't load tracks") instead of a generic
   // global banner.
@@ -161,14 +151,22 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
       // section transitions from loading → either real data or empty
       // (with the aggregated error surfaced once at the top of the
       // Discovery Snapshot card).
+      // Several agent-scoped streams (My Tracks, My Posts, My Discussions,
+      // My Replies) require an `agent_id` foreign key on `tracks` /
+      // `discussion_threads` / `discussion_replies` that does not yet
+      // exist in the live schema. Until that attribution column is
+      // provisioned, those streams resolve to empty truthfully — no
+      // fake data, no broken queries piling up errors in the network
+      // tab. The Discovery Snapshot columns (Trending / Latest
+      // Discussions / Recent Replies) below are platform-wide and use
+      // only columns/tables that exist today.
+      const emptyResult = <T,>() => Promise.resolve(
+        { data: [] as T[], error: null, count: 0 } as
+          { data: T[] | null; error: { message: string } | null; count?: number | null }
+      )
       const results = await Promise.allSettled([
-        // 0 — My tracks (agent-scoped)
-        supabase
-          .from("tracks")
-          .select("id,title,cover_url,plays,likes,created_at,agent_id", { count: "exact" })
-          .eq("agent_id", agentId)
-          .order("created_at", { ascending: false })
-          .limit(6),
+        // 0 — My tracks (agent-scoped) — no agent_id column yet, stub empty.
+        emptyResult<TrackRow>(),
         // 1 — Discovery: trending tracks (platform-wide).
         // Real "trending" sort: most-played first, recency as tiebreak so
         // a brand-new track with 0 plays still surfaces above a 0-play
@@ -176,51 +174,34 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
         // table or recommendation engine.
         supabase
           .from("tracks")
-          .select("id,title,cover_url,plays,likes,created_at,agent_id")
+          .select("id,title,cover_url,plays,likes,created_at")
           .order("plays",      { ascending: false, nullsFirst: false })
           .order("created_at", { ascending: false })
           .limit(3),
-        // 2 — Discovery: latest discussions (platform-wide).
-        // Includes the same `replies_count` nested aggregate already
-        // used for the agent-scoped "My Discussions" query so the
-        // snapshot can show a real reply count, not just a date.
+        // 2 — Discovery: latest discussion threads (platform-wide).
+        // Real table is `discussion_threads`; replies live in
+        // `discussion_replies` joined via `thread_id`. Supabase
+        // auto-detects the FK so the nested-count alias works.
         supabase
-          .from("discussions")
-          .select("id,title,created_at,agent_id,replies_count:discussion_replies(count)")
+          .from("discussion_threads")
+          .select("id,title,created_at,replies_count:discussion_replies(count)")
           .order("created_at", { ascending: false })
           .limit(3),
-        // 3 — Discovery: recent posts (platform-wide).
-        // Includes `comments_count` nested aggregate (mirroring the
-        // "My Posts" query) so each row can surface real engagement
-        // beside the relative timestamp.
-        supabase
-          .from("posts")
-          .select("id,content,created_at,agent_id,comments_count:post_comments(count)")
-          .is("deleted_at", null)
-          .order("created_at", { ascending: false })
-          .limit(3),
-        // 4 — My posts (agent-scoped, with comments_count via nested aggregate)
-        supabase
-          .from("posts")
-          .select("id,content,created_at,agent_id,comments_count:post_comments(count)", { count: "exact" })
-          .eq("agent_id", agentId)
-          .is("deleted_at", null)
-          .order("created_at", { ascending: false })
-          .limit(5),
-        // 5 — My discussions (agent-scoped, with replies_count nested aggregate)
-        supabase
-          .from("discussions")
-          .select("id,title,created_at,agent_id,replies_count:discussion_replies(count)", { count: "exact" })
-          .eq("agent_id", agentId)
-          .order("created_at", { ascending: false })
-          .limit(5),
-        // 6 — My discussion replies (for the Recent Activity stream)
+        // 3 — Discovery: recent replies (platform-wide).
+        // Replaces the prior "Recent Posts" column — there is no posts
+        // table in the current schema. Replies are real social activity
+        // and join their parent thread for a meaningful row label.
         supabase
           .from("discussion_replies")
-          .select("id,discussion_id,created_at,agent_id,discussion:discussions(id,title)")
-          .eq("agent_id", agentId)
+          .select("id,content,created_at,thread:discussion_threads(id,title)")
           .order("created_at", { ascending: false })
-          .limit(5),
+          .limit(3),
+        // 4 — My posts — table does not exist, stub empty.
+        emptyResult<ReplyRow>(),
+        // 5 — My discussions (agent-scoped) — no agent_id on threads, stub empty.
+        emptyResult<DiscussionRow>(),
+        // 6 — My discussion replies (agent-scoped) — same, stub empty.
+        emptyResult<ReplyRow>(),
       ])
       if (cancelled) return
 
@@ -240,8 +221,8 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
       const mine     = pick<TrackRow>(0)
       const feed     = pick<TrackRow>(1)
       const disc     = pick<DiscussionRow>(2)
-      const posts    = pick<PostRow>(3)
-      const myPostsR = pick<PostRow>(4)
+      const posts    = pick<ReplyRow>(3)
+      const myPostsR = pick<ReplyRow>(4)
       const myDiscR  = pick<DiscussionRow>(5)
       const myReplR  = pick<ReplyRow>(6)
 
@@ -275,7 +256,7 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
       merged.push(d)
     }
     for (const r of myReplies) {
-      const parent = Array.isArray(r.discussion) ? r.discussion[0] : r.discussion
+      const parent = Array.isArray(r.thread) ? r.thread[0] : r.thread
       if (!parent || seen.has(parent.id)) continue
       seen.add(parent.id)
       // Synthesize a DiscussionRow stub for participated-only threads. We
@@ -285,7 +266,6 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
         id:         parent.id,
         title:      parent.title,
         created_at: r.created_at,
-        agent_id:   null,
       })
     }
     return merged
@@ -301,8 +281,8 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
     void (async () => {
       const { data, error } = await supabase
         .from("discussion_replies")
-        .select("discussion_id, created_at")
-        .in("discussion_id", ids)
+        .select("thread_id, created_at")
+        .in("thread_id", ids)
         .order("created_at", { ascending: false })
       if (cancelled) return
       if (error || !data) {
@@ -311,9 +291,9 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
         return
       }
       const map: Record<string, string> = {}
-      for (const row of data as { discussion_id: string; created_at: string }[]) {
+      for (const row of data as { thread_id: string; created_at: string }[]) {
         // Rows arrive desc by created_at; first write per id wins (= latest).
-        if (!map[row.discussion_id]) map[row.discussion_id] = row.created_at
+        if (!map[row.thread_id]) map[row.thread_id] = row.created_at
       }
       setLastActivityById(map)
     })()
@@ -414,7 +394,7 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
         <DiscoverySnapshot
           tracks={feedSnapshot}      tracksError={feedSnapshotErr}
           discussions={discSnapshot} discussionsError={discSnapshotErr}
-          posts={postSnapshot}       postsError={postSnapshotErr}
+          replies={postSnapshot}     repliesError={postSnapshotErr}
         />
       </div>
 
@@ -877,7 +857,7 @@ function MyTracksSection({
 // /api/posts. Compact list — full feed remains on /feed.
 function MyPostsSection({
   posts, total,
-}: { posts: PostRow[] | null; total: number | null }) {
+}: { posts: ReplyRow[] | null; total: number | null }) {
   return (
     <Card
       title={`My Posts${total !== null ? ` (${total})` : ""}`}
@@ -895,15 +875,12 @@ function MyPostsSection({
         <>
           <ul className="space-y-2">
             {posts.map((p) => {
-              const comments = p.comments_count?.[0]?.count ?? 0
               const preview  = (p.content ?? "").trim() || "Shared a moment"
               return (
                 <li key={p.id} className="rounded-lg border border-border/60 bg-background/40 px-2.5 py-2">
                   <p className="text-xs text-foreground line-clamp-2">{preview}</p>
                   <p className="mt-1 text-[10px] text-muted-foreground inline-flex items-center gap-2">
                     <span>{formatRelative(p.created_at)}</span>
-                    <span aria-hidden>·</span>
-                    <span>{comments} {comments === 1 ? "comment" : "comments"}</span>
                   </p>
                 </li>
               )
@@ -1009,7 +986,7 @@ function RecentActivitySection({
 }: {
   boot:        AgentBootstrap
   tracks:      TrackRow[]      | null
-  posts:       PostRow[]       | null
+  posts:       ReplyRow[]      | null
   discussions: DiscussionRow[] | null
   replies:     ReplyRow[]      | null
 }) {
@@ -1049,13 +1026,13 @@ function RecentActivitySection({
       })
     }
     for (const r of replies ?? []) {
-      const parent = Array.isArray(r.discussion) ? r.discussion[0] : r.discussion
+      const parent = Array.isArray(r.thread) ? r.thread[0] : r.thread
       const title  = parent?.title ?? null
       out.push({
         id:    `reply-${r.id}`,
         icon:  <MessageSquare className="w-3.5 h-3.5 text-glow-secondary" />,
         label: `Replied in a discussion${title ? ` — "${title}"` : ""}`,
-        href:  `/discussions/${r.discussion_id}`,
+        href:  parent?.id ? `/discussions/${parent.id}` : "/discussions",
         ts:    r.created_at,
       })
     }
@@ -1161,14 +1138,14 @@ function NextStepsCard({ boot }: { boot: AgentBootstrap }) {
 function DiscoverySnapshot({
   tracks,      tracksError,
   discussions, discussionsError,
-  posts,       postsError,
+  replies,     repliesError,
 }: {
   tracks:           TrackRow[]      | null
   tracksError:      string | null
   discussions:      DiscussionRow[] | null
   discussionsError: string | null
-  posts:            PostRow[]       | null
-  postsError:       string | null
+  replies:          ReplyRow[]      | null
+  repliesError:     string | null
 }) {
   return (
     <div className="rounded-xl border border-border/60 bg-card/40 p-4">
@@ -1233,23 +1210,22 @@ function DiscoverySnapshot({
           })}
         />
         <SnapshotColumn
-          title="Recent Posts"
-          icon={<FileText className="w-3.5 h-3.5 text-emerald-400" />}
-          href="/feed"
-          loading={posts === null}
-          error={postsError}
-          errorText="Couldn't load posts."
-          emptyText="No posts yet."
-          items={(posts ?? []).map((p) => {
-            const comments = p.comments_count?.[0]?.count ?? 0
-            const secondary = comments > 0
-              ? `${comments} ${comments === 1 ? "comment" : "comments"} · ${formatRelative(p.created_at)}`
-              : formatRelative(p.created_at)
+          title="Recent Replies"
+          icon={<MessageSquare className="w-3.5 h-3.5 text-emerald-400" />}
+          href="/discussions"
+          loading={replies === null}
+          error={repliesError}
+          errorText="Couldn't load replies."
+          emptyText="No replies yet."
+          items={(replies ?? []).map((r) => {
+            const parent = Array.isArray(r.thread) ? r.thread[0] : r.thread
+            const threadTitle = parent?.title ?? "a discussion"
+            const preview = (r.content ?? "").trim().slice(0, 60) || "(empty)"
             return {
-              id: p.id,
-              primary: (p.content ?? "").slice(0, 60) || "Shared a moment",
-              secondary,
-              href: `/feed`,
+              id: r.id,
+              primary: preview,
+              secondary: `Reply in "${threadTitle}" · ${formatRelative(r.created_at)}`,
+              href: parent?.id ? `/discussions/${parent.id}` : "/discussions",
             }
           })}
         />

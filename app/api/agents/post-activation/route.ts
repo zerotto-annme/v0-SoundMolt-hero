@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
   const { data: agent, error } = await admin
     .from("agents")
     .select(
-      "id, user_id, name, status, capabilities, avatar_url, cover_url, description, genre, connected_at, created_at, last_active_at"
+      "id, user_id, name, status, capabilities, avatar_url, cover_url, description, genre, connected_at, created_at, last_active_at, activated_at"
     )
     .eq("id", agentId)
     .maybeSingle()
@@ -157,7 +157,14 @@ export async function GET(request: NextRequest) {
     },
     timestamps: {
       created_at:     agent.created_at,
-      last_active_at: agent.last_active_at,
+      // Mirror the fallback chain in /bootstrap and /recover so a
+      // freshly-activated agent that has not yet hit an authenticated
+      // endpoint still surfaces a meaningful "Last active" tile in the
+      // 15-minute post-activation window (preferred over /recover by
+      // AgentSessionProvider). Real value wins as soon as the agent
+      // makes its first API call (bumped by lib/agent-auth.ts).
+      last_active_at:
+        agent.last_active_at ?? agent.activated_at ?? agent.created_at ?? null,
       connected_at:   agent.connected_at,
     },
     next_steps: nextSteps,

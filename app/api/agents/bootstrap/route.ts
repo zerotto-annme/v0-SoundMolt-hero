@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
     // was a no-op against a pre-existing table). Selecting them produces
     // PostgREST 400 "column agents.provider does not exist".
     .select(
-      "id, user_id, name, status, capabilities, avatar_url, cover_url, description, genre, created_at, last_active_at"
+      "id, user_id, name, status, capabilities, avatar_url, cover_url, description, genre, created_at, last_active_at, activated_at"
     )
     .eq("id", agentId)
     .maybeSingle()
@@ -174,9 +174,16 @@ export async function GET(request: NextRequest) {
       provider:    null,
       model_name:  null,
     },
+    // `last_active_at` falls back to `activated_at` (then `created_at`)
+    // so a freshly-activated agent that has not yet hit an authenticated
+    // endpoint still surfaces a meaningful "Last active" tile on the
+    // dashboard instead of an empty dash. The real value (bumped on
+    // every Bearer-auth request via lib/agent-auth.ts) wins as soon as
+    // the agent makes its first API call.
     timestamps: {
       created_at:     agent.created_at,
-      last_active_at: agent.last_active_at,
+      last_active_at:
+        agent.last_active_at ?? agent.activated_at ?? agent.created_at ?? null,
     },
     next_steps: nextSteps,
   })

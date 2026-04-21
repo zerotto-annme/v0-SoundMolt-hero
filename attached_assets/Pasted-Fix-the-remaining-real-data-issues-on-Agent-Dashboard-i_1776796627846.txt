@@ -1,0 +1,142 @@
+Fix the remaining real-data issues on Agent Dashboard in the existing SoundMolt project.
+
+IMPORTANT:
+- Do NOT redesign the dashboard
+- Do NOT rewrite the app
+- Keep the current working agent/recovery/dashboard flow
+- Keep the current better error messaging
+- Focus only on the remaining broken data loading issues
+- Integrate into the real project, not a demo workaround
+
+==================================================
+CURRENT STATE
+==================================================
+
+Progress so far:
+- Agent Dashboard works
+- recovery flow works better
+- status cards are mostly correct
+- API Access is active
+- Studio Connection is connected
+- Discovery Snapshot no longer shows vague generic errors
+
+Current remaining issues:
+
+1. Discovery Snapshot still does not load real data
+   It now shows section-specific errors like:
+   - Couldn't load tracks
+   - Couldn't load discussions
+   - Couldn't load posts
+
+2. Last Active is still empty ("—")
+
+3. Masked API key is fine and should stay masked unless safely available
+
+==================================================
+GOAL
+==================================================
+
+Finish the real data integration for Agent Dashboard.
+
+Specifically:
+1. make Discovery Snapshot load real data
+2. make Last Active show a real timestamp
+
+==================================================
+TASK 1 — FIX DISCOVERY SNAPSHOT DATA LOADING
+==================================================
+
+The dashboard now clearly attempts to load:
+- tracks
+- discussions
+- posts
+
+But those loaders still fail.
+
+Please audit and fix the real root cause for each section.
+
+For each of these:
+- Trending Tracks
+- Latest Discussions
+- Recent Posts
+
+I need you to determine:
+
+1. Which exact query/loader/route is being used
+2. Why it is failing
+3. Whether it is:
+   - wrong route
+   - wrong auth/session assumption
+   - wrong database query
+   - wrong field names
+   - server/client boundary issue
+   - agent context mismatch
+   - trying to use a human-only source from the agent dashboard
+
+Then fix it so Discovery Snapshot loads real current data.
+
+Requirements:
+- use real existing project data
+- show 2–3 real items per section if data exists
+- use clean empty states only if there is truly no data
+- do NOT hardcode fake content
+- do NOT stop at replacing error text
+
+==================================================
+TASK 2 — FIX LAST ACTIVE
+==================================================
+
+The dashboard still shows:
+- Last Active: —
+
+Fix this.
+
+Requirements:
+1. Audit where last_active_at is stored and updated
+2. Ensure it is updated when the agent actually uses the system
+3. Ensure the dashboard reads it from the correct current source
+
+Check existing logic for:
+- GET /api/agents/me
+- bootstrap / dashboard loaders
+- any auth/middleware where agent activity is updated
+
+If last_active_at is not being updated consistently, fix that.
+If it is updated but not rendered correctly, fix the dashboard data source.
+
+The dashboard should show a real timestamp when available.
+
+==================================================
+TASK 3 — KEEP CURRENT GOOD BEHAVIOR
+==================================================
+
+Do NOT break:
+- current recovery dashboard
+- API Access active state
+- Studio Connection connected state
+- masked API key behavior
+- current API-first direction for publish flow
+
+==================================================
+DO NOT DO
+==================================================
+
+- Do not redesign the page
+- Do not add new major features in this task
+- Do not hardcode fake last_active_at
+- Do not replace snapshot with placeholders
+- Do not remove the current specific error reporting unless replaced with working real data loading
+
+==================================================
+WHAT TO SHOW AFTER IMPLEMENTATION
+==================================================
+
+Show:
+1. exact files changed
+2. what was causing tracks snapshot to fail
+3. what was causing discussions snapshot to fail
+4. what was causing posts snapshot to fail
+5. what source now powers each snapshot section
+6. why Last Active was empty before
+7. how Last Active is now updated and rendered
+8. screenshot or description of the fixed dashboard state
