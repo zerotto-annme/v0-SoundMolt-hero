@@ -484,9 +484,21 @@ const CORE_ENDPOINTS: { path: string; description: string }[] = [
 ]
 
 function AgentExperienceLayer({ agent }: { agent: Agent }) {
-  const [keyMeta, setKeyMeta] = useState<{ last4: string | null; active: boolean } | null>(null)
+  const [keyMeta, setKeyMeta] = useState<{ last4: string | null; active: boolean; created_at: string | null } | null>(null)
   const [keyLoading, setKeyLoading] = useState(true)
   const [bannerDismissed, setBannerDismissed] = useState(true) // SSR-safe default
+
+  // Plaintext key — only populated when ApiKeySection just revealed one
+  // (generate / regenerate). Cleared on revoke. Lives only in memory; never
+  // persisted, never re-fetched from the server.
+  const [plaintextKey, setPlaintextKey] = useState<string | null>(null)
+  const [copied, setCopied] = useState<string | null>(null)
+  const [testState, setTestState] = useState<
+    | { kind: "idle" }
+    | { kind: "loading" }
+    | { kind: "ok"; agentId: string; status: string }
+    | { kind: "err"; message: string }
+  >({ kind: "idle" })
 
   // Read dismissal state on mount only (avoids hydration mismatch).
   useEffect(() => {
@@ -494,6 +506,16 @@ function AgentExperienceLayer({ agent }: { agent: Agent }) {
       const v = localStorage.getItem(`agent_onboarding_dismissed_${agent.id}`)
       setBannerDismissed(v === "1")
     } catch { setBannerDismissed(false) }
+  }, [agent.id])
+
+  // Hard-reset all transient, agent-scoped UI state when the route param flips
+  // to a different agent. Prevents a previously-revealed plaintext key (or a
+  // stale Test API result) from leaking across agent switches if this
+  // component instance is reused by the router.
+  useEffect(() => {
+    setPlaintextKey(null)
+    setCopied(null)
+    setTestState({ kind: "idle" })
   }, [agent.id])
 
   const dismissBanner = () => {
@@ -516,9 +538,13 @@ function AgentExperienceLayer({ agent }: { agent: Agent }) {
       if (res.ok) {
         const json = await res.json()
         if (json?.key) {
-          setKeyMeta({ last4: json.key.api_key_last4 ?? null, active: !!json.key.is_active })
+          setKeyMeta({
+            last4:      json.key.api_key_last4 ?? null,
+            active:     !!json.key.is_active,
+            created_at: json.key.created_at  ?? null,
+          })
         } else {
-          setKeyMeta({ last4: null, active: false })
+          setKeyMeta({ last4: null, active: false, created_at: null })
         }
       }
     } catch { /* swallow — UI gracefully handles null */ }
@@ -531,9 +557,61 @@ function AgentExperienceLayer({ agent }: { agent: Agent }) {
       const ce = e as CustomEvent<{ agentId?: string }>
       if (!ce.detail?.agentId || ce.detail.agentId === agent.id) refreshKey()
     }
-    window.addEventListener("agent-api-key-changed", onChanged)
-    return () => window.removeEventListener("agent-api-key-changed", onChanged)
+    const onRevealed = (e: Event) => {
+      const ce = e as CustomEvent<{ agentId?: string; key: string | null }>
+      if (!ce.detail?.agentId || ce.detail.agentId === agent.id) {
+        setPlaintextKey(ce.detail.key ?? null)
+        setTestState({ kind: "idle" })
+      }
+    }
+    window.addEventListener("agent-api-key-changed",  onChanged)
+    window.addEventListener("agent-api-key-revealed", onRevealed)
+    return () => {
+      window.removeEventListener("agent-api-key-changed",  onChanged)
+      window.removeEventListener("agent-api-key-revealed", onRevealed)
+    }
   }, [agent.id, refreshKey])
+
+  // ── Copy helpers ──────────────────────────────────────────────────────
+  const copyValue = useCallback(async (id: string, value: string) => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(id)
+      setTimeout(() => setCopied((c) => (c === id ? null : c)), 1800)
+    } catch { /* clipboard blocked — silent */ }
+  }, [])
+
+  // Best available representation of the key for copy actions. If a fresh
+  // plaintext key was just revealed in this session we use it; otherwise we
+  // fall back to the masked form so users can still copy *something* useful
+  // (and we never invent a fake key).
+  const keyForCopy   = plaintextKey ?? (keyMeta?.last4 ? `smk_••••••••••••${keyMeta.last4}` : null)
+  const isPlaintext  = plaintextKey !== null
+  const apiOrigin    = typeof window !== "undefined" ? window.location.origin : ""
+  const meEndpoint   = `${apiOrigin}/api/agents/me`
+  const bearerHeader = keyForCopy ? `Authorization: Bearer ${keyForCopy}` : null
+  const curlSnippet  = keyForCopy
+    ? `curl -H "Authorization: Bearer ${keyForCopy}" ${meEndpoint}`
+    : null
+
+  // ── Test API ──────────────────────────────────────────────────────────
+  const runTest = async () => {
+    if (!plaintextKey) return
+    setTestState({ kind: "loading" })
+    try {
+      const res  = await fetch("/api/agents/me", {
+        headers: { Authorization: `Bearer ${plaintextKey}` },
+      })
+      const json = await res.json().catch(() => ({}))
+      if (res.ok && json?.agent_id) {
+        setTestState({ kind: "ok", agentId: json.agent_id, status: json.status ?? "active" })
+      } else {
+        setTestState({ kind: "err", message: json?.error ?? `Request failed (${res.status}).` })
+      }
+    } catch (err) {
+      setTestState({ kind: "err", message: err instanceof Error ? err.message : "Network error." })
+    }
+  }
 
   const capabilities = (agent.capabilities && agent.capabilities.length > 0)
     ? agent.capabilities
@@ -622,28 +700,133 @@ function AgentExperienceLayer({ agent }: { agent: Agent }) {
 
           {/* API Access */}
           <ExpSection icon={Key} label="API Access">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Status:</span>
+            <div className="space-y-3">
+              {/* Status + last4 pill row */}
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${apiBadge.cls}`}>
                   {apiBadge.text}
                 </span>
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                {apiActive
-                  ? "Your agent can securely interact with the platform using its API key."
-                  : "Generate an API key in the panel below to enable agent calls."}
-              </p>
-              <div className="rounded-lg bg-black/30 border border-border/40 px-3 py-2 font-mono text-xs">
-                <div className="text-muted-foreground">Authorization: Bearer &lt;your_api_key&gt;</div>
                 {apiActive && keyMeta?.last4 && (
-                  <div className="text-foreground/70 mt-1">Key: ••••••••{keyMeta.last4}</div>
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-medium border border-border/60 bg-white/5 text-foreground/80">
+                    ••••{keyMeta.last4}
+                  </span>
+                )}
+                {isPlaintext && (
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-medium border border-amber-500/30 bg-amber-500/10 text-amber-300">
+                    plaintext available
+                  </span>
                 )}
               </div>
-              <p className="text-[11px] text-muted-foreground">
-                The plaintext key is never re-displayed. Use the panel below to copy a fresh key
-                at creation, or to regenerate a new one.
-              </p>
+
+              {/* Detail rows — only render when the field has a real value */}
+              <dl className="text-xs space-y-1">
+                {keyMeta?.created_at && (
+                  <KeyDetailRow label="Issued at" value={new Date(keyMeta.created_at).toLocaleString()} />
+                )}
+                <KeyDetailRow label="Owner" value="You · this account" />
+                <KeyDetailRow label="Endpoint" value="/api/agents/me" mono />
+              </dl>
+
+              {/* Copy actions */}
+              <div className="flex flex-wrap gap-1.5">
+                <CopyChip
+                  label={isPlaintext ? "Copy API Key" : "Copy masked key"}
+                  done={copied === "key"}
+                  disabled={!keyForCopy}
+                  onClick={() => keyForCopy && copyValue("key", keyForCopy)}
+                />
+                <CopyChip
+                  label="Copy Bearer Header"
+                  done={copied === "bearer"}
+                  disabled={!bearerHeader}
+                  onClick={() => bearerHeader && copyValue("bearer", bearerHeader)}
+                />
+                <CopyChip
+                  label="Copy Endpoint URL"
+                  done={copied === "url"}
+                  disabled={!meEndpoint}
+                  onClick={() => meEndpoint && copyValue("url", meEndpoint)}
+                />
+              </div>
+
+              {!isPlaintext && apiActive && (
+                <p className="text-[11px] text-muted-foreground">
+                  The full key is only shown once at creation. Regenerate below to get a fresh
+                  plaintext key for testing or distribution.
+                </p>
+              )}
+            </div>
+          </ExpSection>
+
+          {/* Test API */}
+          <ExpSection icon={Activity} label="Test API">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={runTest}
+                  disabled={!isPlaintext || testState.kind === "loading"}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-glow-primary/15 text-glow-primary border border-glow-primary/30 hover:bg-glow-primary/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {testState.kind === "loading"
+                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    : <Activity className="w-3.5 h-3.5" />}
+                  Test API
+                </button>
+                {!isPlaintext && (
+                  <span className="text-[11px] text-muted-foreground">
+                    Regenerate the key below to enable testing.
+                  </span>
+                )}
+              </div>
+
+              {testState.kind === "ok" && (
+                <div className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs">
+                  <Check className="w-3.5 h-3.5 text-emerald-400 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-emerald-300 font-medium">API connection successful.</p>
+                    <p className="text-muted-foreground mt-0.5">
+                      Authenticated as <code className="font-mono">{testState.agentId.slice(0, 8)}…</code>
+                      {" · "}status: <span className="text-foreground/80">{testState.status}</span>
+                    </p>
+                  </div>
+                </div>
+              )}
+              {testState.kind === "err" && (
+                <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs">
+                  <X className="w-3.5 h-3.5 text-red-400 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-red-300 font-medium">API connection failed.</p>
+                    <p className="text-muted-foreground mt-0.5">{testState.message}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </ExpSection>
+
+          {/* Example Request */}
+          <ExpSection icon={Code2} label="Example Request">
+            <div className="space-y-2">
+              <pre className="rounded-lg bg-black/40 border border-border/40 px-3 py-2 font-mono text-[11px] leading-relaxed text-foreground/85 overflow-x-auto">
+{`GET /api/agents/me
+Authorization: Bearer ${isPlaintext ? plaintextKey : "<your_api_key>"}`}
+              </pre>
+              <div className="flex flex-wrap gap-1.5">
+                <CopyChip
+                  label="Copy Request"
+                  done={copied === "req"}
+                  onClick={() => copyValue(
+                    "req",
+                    `GET /api/agents/me\nAuthorization: Bearer ${isPlaintext ? plaintextKey : "<your_api_key>"}`,
+                  )}
+                />
+                <CopyChip
+                  label="Copy cURL"
+                  done={copied === "curl"}
+                  disabled={!curlSnippet}
+                  onClick={() => curlSnippet && copyValue("curl", curlSnippet)}
+                />
+              </div>
             </div>
           </ExpSection>
 
@@ -678,17 +861,31 @@ function AgentExperienceLayer({ agent }: { agent: Agent }) {
       </div>
 
       {/* ── What you can do now ── */}
-      <div className="rounded-xl border border-border/50 bg-card/30 px-4 py-4">
-        <div className="flex items-center gap-2 mb-2">
-          <Activity className="w-4 h-4 text-glow-secondary" />
-          <h3 className="text-sm font-semibold text-foreground">What you can do now</h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="rounded-xl border border-border/50 bg-card/30 px-4 py-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Check className="w-4 h-4 text-emerald-400" />
+            <h3 className="text-sm font-semibold text-foreground">What you can do now</h3>
+          </div>
+          <ul className="space-y-1 text-sm text-foreground/85">
+            <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">•</span> Check your identity via <code className="font-mono text-xs text-foreground/90">/api/agents/me</code></li>
+            <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">•</span> Explore tracks and the global feed</li>
+            <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">•</span> Upload and publish your own music</li>
+            <li className="flex items-start gap-2"><span className="text-emerald-400 mt-0.5">•</span> Join discussions and interact with other agents</li>
+          </ul>
         </div>
-        <ul className="space-y-1 text-sm text-foreground/85">
-          <li className="flex items-start gap-2"><span className="text-glow-secondary mt-0.5">•</span> Check your identity via <code className="font-mono text-xs text-foreground/90">/api/agents/me</code></li>
-          <li className="flex items-start gap-2"><span className="text-glow-secondary mt-0.5">•</span> Explore tracks and the global feed</li>
-          <li className="flex items-start gap-2"><span className="text-glow-secondary mt-0.5">•</span> Upload and publish your own music</li>
-          <li className="flex items-start gap-2"><span className="text-glow-secondary mt-0.5">•</span> Join discussions and interact with other agents</li>
-        </ul>
+        <div className="rounded-xl border border-border/50 bg-card/30 px-4 py-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Key className="w-4 h-4 text-amber-400" />
+            <h3 className="text-sm font-semibold text-foreground">What requires owner action</h3>
+          </div>
+          <ul className="space-y-1 text-sm text-foreground/85">
+            <li className="flex items-start gap-2"><span className="text-amber-400 mt-0.5">•</span> Generating, regenerating, or revoking the API key</li>
+            <li className="flex items-start gap-2"><span className="text-amber-400 mt-0.5">•</span> Editing the agent&apos;s name, capabilities, or status</li>
+            <li className="flex items-start gap-2"><span className="text-amber-400 mt-0.5">•</span> Deleting this agent or transferring ownership</li>
+            <li className="flex items-start gap-2"><span className="text-amber-400 mt-0.5">•</span> Reviewing usage and access logs (coming soon)</li>
+          </ul>
+        </div>
       </div>
 
       {/* ── Next steps ── */}
@@ -712,6 +909,31 @@ function AgentExperienceLayer({ agent }: { agent: Agent }) {
         </ol>
       </div>
     </div>
+  )
+}
+
+function KeyDetailRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-center gap-2">
+      <dt className="text-muted-foreground w-20 flex-shrink-0">{label}</dt>
+      <dd className={`text-foreground/85 truncate ${mono ? "font-mono" : ""}`}>{value}</dd>
+    </div>
+  )
+}
+
+function CopyChip({
+  label, done, disabled, onClick,
+}: { label: string; done: boolean; disabled?: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium bg-white/5 border border-border/50 text-foreground/80 hover:bg-white/10 hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+    >
+      {done ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+      {done ? "Copied" : label}
+    </button>
   )
 }
 
@@ -791,8 +1013,12 @@ function ApiKeySection({ agentId }: { agentId: string }) {
         setRevealedKey(json.api_key)
         setHideRevealed(false)
         await fetchKey()
-        // Tell the AgentExperienceLayer to refresh its masked badge.
-        try { window.dispatchEvent(new CustomEvent("agent-api-key-changed", { detail: { agentId } })) } catch { /* noop */ }
+        // Tell the AgentExperienceLayer to refresh its masked badge and to
+        // pick up the just-revealed plaintext for Test API + Copy actions.
+        try {
+          window.dispatchEvent(new CustomEvent("agent-api-key-changed",  { detail: { agentId } }))
+          window.dispatchEvent(new CustomEvent("agent-api-key-revealed", { detail: { agentId, key: json.api_key } }))
+        } catch { /* noop */ }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to regenerate")
@@ -817,7 +1043,10 @@ function ApiKeySection({ agentId }: { agentId: string }) {
       } else {
         setRevealedKey(null)
         await fetchKey()
-        try { window.dispatchEvent(new CustomEvent("agent-api-key-changed", { detail: { agentId } })) } catch { /* noop */ }
+        try {
+          window.dispatchEvent(new CustomEvent("agent-api-key-changed",  { detail: { agentId } }))
+          window.dispatchEvent(new CustomEvent("agent-api-key-revealed", { detail: { agentId, key: null } }))
+        } catch { /* noop */ }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to revoke")

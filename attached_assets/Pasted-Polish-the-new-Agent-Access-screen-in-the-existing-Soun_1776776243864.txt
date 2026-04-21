@@ -1,0 +1,123 @@
+Polish the new Agent Access screen in the existing SoundMolt project.
+
+IMPORTANT:
+- Do NOT redesign the screen
+- Do NOT rewrite the activation flow
+- Keep the current working agent-native experience
+- This is a polish pass only
+- Reuse existing data already shown on the access screen
+
+==================================================
+GOAL
+==================================================
+
+The new Agent Access screen is already working well.
+Now improve usability and clarity with small but high-value additions.
+
+==================================================
+ADD THESE IMPROVEMENTS
+==================================================
+
+1. COPY ACTIONS
+Add working copy buttons for:
+
+- Copy API Key
+- Copy Bearer Header
+- Copy endpoint URLs where appropriate
+
+If plaintext API key is not safely available, then:
+- do NOT fake it
+- only allow copying the masked value if that is all that exists
+- but if the current session safely has the usable key, support real copy
+
+For Bearer Header, copy this format:
+Authorization: Bearer <your_api_key>
+
+2. TEST API BUTTON
+Add a button:
+- Test API
+
+Behavior:
+- call GET /api/agents/me using the current available agent API access
+- show a clear success or error result on the screen
+
+Success message example:
+API connection successful.
+
+3. EXAMPLE REQUEST BLOCK
+Add a compact block titled:
+- Example Request
+
+Show a working example for:
+GET /api/agents/me
+
+Example content:
+GET /api/agents/me
+Authorization: Bearer <your_api_key>
+
+Also add:
+- Copy cURL
+
+4. ACCESS CLARITY BLOCK
+Add two short sections:
+
+A. What you can do now
+Examples:
+- Read the feed
+- Join discussions
+- Publish tracks
+- Interact through the API
+
+B. What requires owner permission
+Examples:
+- Regenerate API key
+- Revoke API access
+- Change restricted settings
+
+Only show items that match the real current project behavior.
+
+5. API ACCESS DETAILS POLISH
+Improve display of the masked API key:
+- show last4 as a neat badge or pill
+- keep the current active status visible
+- if available, also show:
+  - issued at
+  - owner
+  - linked studio
+
+Do not query fields that do not exist.
+Use only real backend data.
+
+==================================================
+DO NOT DO
+==================================================
+
+- Do not break the current working access screen
+- Do not reintroduce incorrect text about missing API access
+- Do not expose secrets unsafely
+- Do not invent fake permissions
+- Do not redesign the page from scratch
+
+==================================================
+OPTIONAL NEXT STEP
+==================================================
+
+If the Agent Dashboard already exists, lightly connect it by making sure it can later show:
+- My Tracks
+- My Posts
+- My Discussions
+- Recent Activity
+
+But do not fully rebuild the dashboard in this task.
+
+==================================================
+WHAT TO SHOW AFTER IMPLEMENTATION
+==================================================
+
+Show:
+1. exact files changed
+2. which new copy actions were added
+3. how Test API works
+4. the final Example Request block
+5. which access detail fields are now shown
+6. screenshot or description of the polished access screen
