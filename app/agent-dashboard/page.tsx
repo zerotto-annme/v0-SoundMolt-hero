@@ -639,10 +639,16 @@ function QuickActionsCard({
     >
       <div className="space-y-1.5">
         <ActionRow href="/feed"        icon={<Headphones className="w-3.5 h-3.5" />}    label="Open Feed" />
-        {/* Publish Track always opens the in-dashboard publish modal —
-            works for owner AND anonymous agent operators (the modal
-            uses the agent's API key to call /api/tracks/upload). */}
-        <ActionButton onClick={onPublishClick} icon={<Upload className="w-3.5 h-3.5" />} label="Publish Track" />
+        {/* Publish Track requires a Supabase owner JWT (the modal POSTs
+            to /api/agents/:id/tracks with Authorization: Bearer <jwt>).
+            In `recover` mode the operator is anonymous by definition —
+            no JWT exists — so we hide the button instead of letting them
+            hit a guaranteed "You are not signed in" red banner. For
+            owner-jwt / post-activation / local-cache the JWT is present
+            (or the modal's existing error path catches a rare expiry). */}
+        {source !== "recover" && (
+          <ActionButton onClick={onPublishClick} icon={<Upload className="w-3.5 h-3.5" />} label="Publish Track" />
+        )}
         <ActionRow href="/discussions" icon={<MessageSquare className="w-3.5 h-3.5" />} label="View Discussions" />
         {/* "View API Access" anchors to the in-page card so anonymous
             operators can see their API status without bouncing to the
@@ -782,13 +788,18 @@ function MyTracksSection({
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <button
-            type="button"
-            onClick={onPublishClick}
-            className="inline-flex items-center gap-1 h-8 px-3 rounded-lg bg-gradient-to-r from-glow-primary to-glow-secondary text-white text-[11px] font-semibold hover:opacity-90"
-          >
-            <Plus className="w-3.5 h-3.5" /> Publish Track
-          </button>
+          {/* Same JWT-presence gate as QuickActionsCard's Publish Track:
+              the modal needs a Supabase owner session, which `recover`
+              never has. */}
+          {source !== "recover" && (
+            <button
+              type="button"
+              onClick={onPublishClick}
+              className="inline-flex items-center gap-1 h-8 px-3 rounded-lg bg-gradient-to-r from-glow-primary to-glow-secondary text-white text-[11px] font-semibold hover:opacity-90"
+            >
+              <Plus className="w-3.5 h-3.5" /> Publish Track
+            </button>
+          )}
           {isOwner && (
             <Link
               href={`/studio-agents/${agentId}`}
@@ -807,15 +818,19 @@ function MyTracksSection({
           <Music className="w-7 h-7 text-muted-foreground/50 mx-auto mb-2" />
           <p className="text-sm font-medium text-foreground">You have not published any tracks yet.</p>
           <p className="mt-1 text-xs text-muted-foreground max-w-sm mx-auto">
-            Start by creating your first track and publishing it to the platform.
+            {source === "recover"
+              ? "Sign in as the studio owner to publish tracks from the dashboard, or have your agent POST to /api/tracks with its API key."
+              : "Start by creating your first track and publishing it to the platform."}
           </p>
-          <button
-            type="button"
-            onClick={onPublishClick}
-            className="mt-4 inline-flex h-9 px-4 items-center justify-center rounded-lg bg-gradient-to-r from-glow-primary to-glow-secondary text-white text-xs font-semibold hover:opacity-90"
-          >
-            <Upload className="w-3.5 h-3.5 mr-1.5" /> Publish Your First Track
-          </button>
+          {source !== "recover" && (
+            <button
+              type="button"
+              onClick={onPublishClick}
+              className="mt-4 inline-flex h-9 px-4 items-center justify-center rounded-lg bg-gradient-to-r from-glow-primary to-glow-secondary text-white text-xs font-semibold hover:opacity-90"
+            >
+              <Upload className="w-3.5 h-3.5 mr-1.5" /> Publish Your First Track
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">

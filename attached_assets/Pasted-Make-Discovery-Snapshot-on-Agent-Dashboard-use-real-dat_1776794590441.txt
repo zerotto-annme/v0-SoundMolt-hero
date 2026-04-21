@@ -1,0 +1,144 @@
+Make Discovery Snapshot on Agent Dashboard use real data in the existing SoundMolt project.
+
+IMPORTANT:
+- Do NOT redesign the dashboard
+- Do NOT rewrite the app
+- Reuse the existing Agent Dashboard layout
+- Keep the current working agent/recovery/dashboard flow
+- Integrate real current project data instead of weak fallback placeholders
+- Keep this minimal and production-style
+
+==================================================
+CURRENT ISSUE
+==================================================
+
+On Agent Dashboard, Discovery Snapshot still shows weak fallback states like:
+- "Some sections couldn't load right now"
+- "Quiet for now"
+
+The dashboard itself is working well now, but Discovery Snapshot still feels underpowered and partially disconnected from real platform data.
+
+==================================================
+GOAL
+==================================================
+
+Make Discovery Snapshot feel alive by powering it with real existing data.
+
+Use real data for these 3 mini-sections:
+1. Trending Tracks
+2. Latest Discussions
+3. Recent Posts
+
+If real data exists, show it.
+Only use empty states when there is truly no data.
+
+==================================================
+SECTION 1 — TRENDING TRACKS
+==================================================
+
+Use real track data from the existing project.
+
+Requirements:
+- load a small compact set of trending or recent tracks
+- if a true trending source already exists, use it
+- otherwise use the best existing fallback:
+  - most played recent tracks
+  - newest public tracks
+  - featured/public tracks
+- show 2–3 items max in Discovery Snapshot
+
+Each item should show:
+- title
+- optional cover
+- small supporting text (plays / genre / artist if already available)
+
+If there is truly no data, use a clean empty state:
+No tracks to show yet.
+
+==================================================
+SECTION 2 — LATEST DISCUSSIONS
+==================================================
+
+Use real discussion/thread data from the existing project.
+
+Requirements:
+- load 2–3 most recent discussions
+- if discussion replies / activity timestamp exists, use that
+- show:
+  - title
+  - small supporting text (last activity / replies count if available)
+
+If there is truly no data, use:
+No discussions yet.
+
+==================================================
+SECTION 3 — RECENT POSTS
+==================================================
+
+Use real post data from the existing project.
+
+Requirements:
+- load 2–3 recent posts
+- show:
+  - short content preview
+  - author if already available
+  - created_at if available
+
+If there is truly no data, use:
+No posts yet.
+
+==================================================
+DATA SOURCE RULES
+==================================================
+
+- Reuse existing loaders, endpoints, queries, or helpers already used elsewhere in the app
+- Do NOT invent fake content
+- Do NOT hardcode dummy items
+- Do NOT add a new heavy recommendation system in this task
+- If a source fails, fail gracefully per section instead of showing generic global fallback text everywhere
+
+==================================================
+UI / UX REQUIREMENTS
+==================================================
+
+Keep the current Discovery Snapshot layout and styling.
+
+Requirements:
+- compact
+- clean
+- premium dark style
+- 2–3 items max per mini-section
+- no clutter
+- no debug-looking error text
+
+If one section has data and another does not:
+- show the real data where available
+- show a small clean empty state only for the empty section
+
+Replace vague text like:
+- "Some sections couldn't load right now"
+- "Quiet for now"
+
+with more intentional section-specific states.
+
+==================================================
+DO NOT DO
+==================================================
+
+- Do not redesign the whole dashboard
+- Do not add heavy analytics
+- Do not build a full recommendation engine here
+- Do not break current dashboard/recovery flow
+- Do not hardcode fake tracks/discussions/posts
+
+==================================================
+WHAT TO SHOW AFTER IMPLEMENTATION
+==================================================
+
+Show:
+1. exact files changed
+2. what real data source powers Trending Tracks
+3. what real data source powers Latest Discussions
+4. what real data source powers Recent Posts
+5. what empty states remain and why
+6. screenshot or description of the improved Discovery Snapshot
