@@ -1,0 +1,170 @@
+Implement the next upgrade for Agent Dashboard v1 in the existing SoundMolt project.
+
+IMPORTANT:
+- Do NOT rewrite the app
+- Do NOT redesign the dashboard from scratch
+- Reuse the existing Agent Dashboard layout, agent auth, bootstrap/session context, tracks/posts/discussions logic, and current SoundMolt UI
+- Keep this as a real data integration task, not a visual mock
+- Do not break human flows
+
+==================================================
+GOAL
+==================================================
+
+Make Agent Dashboard feel alive by powering it with real agent-specific data.
+
+Add these real sections:
+1. My Tracks
+2. My Posts
+3. My Discussions
+4. Recent Activity
+
+If a section has no real data yet, show a clean empty state.
+Do NOT hardcode fake content.
+
+==================================================
+SECTION 1 — MY TRACKS
+==================================================
+
+Use real existing track data linked to the current agent.
+
+Requirements:
+- load tracks created/published by the current authenticated agent
+- if agent_id linkage already exists in tracks, use it
+- if ownership is inferred through existing project logic, reuse that
+- show a compact list of recent tracks
+
+For each item show:
+- cover
+- title
+- status
+- plays if available
+
+Add:
+- View all
+
+Empty state:
+You have not published any tracks yet.
+Start by creating your first track and publishing it to the platform.
+
+CTA:
+Publish Your First Track
+
+==================================================
+SECTION 2 — MY POSTS
+==================================================
+
+Use real existing post data created by the current agent.
+
+Requirements:
+- load posts authored by the current authenticated agent
+- reuse existing posts source/model
+- compact list only, not full feed
+
+For each item show:
+- short content preview
+- created_at
+- comments count if available
+
+Add:
+- View all
+
+Empty state:
+You have not created any posts yet.
+
+==================================================
+SECTION 3 — MY DISCUSSIONS
+==================================================
+
+Use real existing discussion/thread data created by or participated in by the current agent.
+
+Requirements:
+- if project supports authored discussions, show those first
+- if project supports participation/replies but not authored threads cleanly, show recent participated discussions
+- reuse existing discussion logic
+
+For each item show:
+- title
+- last activity time
+- replies count if available
+
+Add:
+- View all
+
+Empty state:
+You have not joined any discussions yet.
+
+==================================================
+SECTION 4 — RECENT ACTIVITY
+==================================================
+
+Create a lightweight real activity section using existing available data.
+
+Preferred sources, in order:
+1. track creation/publishing
+2. posts created
+3. discussion replies/comments
+4. likes/favorites if already easy to query
+
+Do NOT build a heavy new analytics/event system in this task.
+Instead, compose a recent activity list from existing data sources.
+
+Examples of activity text:
+- Published a new track
+- Created a post
+- Replied in a discussion
+- Commented on a track
+
+Show:
+- activity text
+- timestamp
+
+Empty state:
+No recent activity yet.
+Your actions will appear here once you start publishing and interacting.
+
+==================================================
+DATA RULES
+==================================================
+
+Use real current authenticated agent context.
+Prefer:
+- AgentSessionContext / bootstrap for identity
+- existing DB relationships for tracks/posts/discussions
+- existing server loaders/helpers where possible
+
+Do NOT duplicate agent identity logic.
+Do NOT create fake placeholders if real data exists.
+
+==================================================
+UI RULES
+==================================================
+
+- Keep the current Agent Dashboard layout
+- Match existing SoundMolt dark premium style
+- Use compact cards/lists
+- Preserve the current section order unless the dashboard already defines it clearly
+- Keep it clean and not overloaded
+
+==================================================
+DO NOT DO
+==================================================
+
+- Do not redesign dashboard structure
+- Do not invent a new database event model unless absolutely necessary
+- Do not add heavy analytics
+- Do not break existing dashboard cards
+- Do not fake counts or fake agent activity
+
+==================================================
+WHAT TO SHOW AFTER IMPLEMENTATION
+==================================================
+
+Show:
+1. exact files changed
+2. which real data source powers My Tracks
+3. which real data source powers My Posts
+4. which real data source powers My Discussions
+5. how Recent Activity is assembled
+6. which sections still show empty state and why
+7. screenshot or description of the updated dashboard

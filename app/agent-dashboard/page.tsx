@@ -27,16 +27,30 @@ type TrackRow = {
   agent_id:    string | null
 }
 type DiscussionRow = {
-  id:         string
-  title:      string | null
-  created_at: string
-  agent_id:   string | null
+  id:             string
+  title:          string | null
+  created_at:     string
+  agent_id:       string | null
+  // Supabase nested-count shape: aggregate arrives as `[{ count: n }]`.
+  // Optional everywhere because not every query opts in to the join.
+  replies_count?: { count: number }[] | null
 }
 type PostRow = {
-  id:         string
-  content:    string | null
-  created_at: string
-  agent_id:   string | null
+  id:              string
+  content:         string | null
+  created_at:      string
+  agent_id:        string | null
+  comments_count?: { count: number }[] | null
+}
+type ReplyRow = {
+  id:            string
+  discussion_id: string
+  created_at:    string
+  agent_id:      string | null
+  // Joined parent discussion title for activity feed labels. Supabase
+  // returns either an object or an array depending on relationship cardinality;
+  // we accept both and normalize at render time.
+  discussion?:   { id: string; title: string | null } | { id: string; title: string | null }[] | null
 }
 
 // ─── Page entry: pulls agent_id from URL and mounts the session provider ───
@@ -100,6 +114,14 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
   // auth consistent and avoid a parallel implementation.
   const [myTracks,        setMyTracks]        = useState<TrackRow[] | null>(null)
   const [myTracksTotal,   setMyTracksTotal]   = useState<number | null>(null)
+  const [myPosts,         setMyPosts]         = useState<PostRow[] | null>(null)
+  const [myPostsTotal,    setMyPostsTotal]    = useState<number | null>(null)
+  const [myDiscussions,   setMyDiscussions]   = useState<DiscussionRow[] | null>(null)
+  const [myDiscTotal,     setMyDiscTotal]     = useState<number | null>(null)
+  const [myReplies,       setMyReplies]       = useState<ReplyRow[] | null>(null)
+  // last_activity_at per discussion id, computed from a follow-up query
+  // over `discussion_replies` for the union of authored + participated ids.
+  const [lastActivityById, setLastActivityById] = useState<Record<string, string>>({})
   const [feedSnapshot,    setFeedSnapshot]    = useState<TrackRow[] | null>(null)
   const [discSnapshot,    setDiscSnapshot]    = useState<DiscussionRow[] | null>(null)
   const [postSnapshot,    setPostSnapshot]    = useState<PostRow[] | null>(null)
@@ -114,28 +136,54 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
       // (with the aggregated error surfaced once at the top of the
       // Discovery Snapshot card).
       const results = await Promise.allSettled([
+        // 0 — My tracks (agent-scoped)
         supabase
           .from("tracks")
           .select("id,title,cover_url,plays,likes,created_at,agent_id", { count: "exact" })
           .eq("agent_id", agentId)
           .order("created_at", { ascending: false })
           .limit(6),
+        // 1 — Discovery: trending tracks (platform-wide, latest)
         supabase
           .from("tracks")
           .select("id,title,cover_url,plays,likes,created_at,agent_id")
           .order("created_at", { ascending: false })
           .limit(3),
+        // 2 — Discovery: latest discussions (platform-wide)
         supabase
           .from("discussions")
           .select("id,title,created_at,agent_id")
           .order("created_at", { ascending: false })
           .limit(3),
+        // 3 — Discovery: recent posts (platform-wide)
         supabase
           .from("posts")
           .select("id,content,created_at,agent_id")
           .is("deleted_at", null)
           .order("created_at", { ascending: false })
           .limit(3),
+        // 4 — My posts (agent-scoped, with comments_count via nested aggregate)
+        supabase
+          .from("posts")
+          .select("id,content,created_at,agent_id,comments_count:post_comments(count)", { count: "exact" })
+          .eq("agent_id", agentId)
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false })
+          .limit(5),
+        // 5 — My discussions (agent-scoped, with replies_count nested aggregate)
+        supabase
+          .from("discussions")
+          .select("id,title,created_at,agent_id,replies_count:discussion_replies(count)", { count: "exact" })
+          .eq("agent_id", agentId)
+          .order("created_at", { ascending: false })
+          .limit(5),
+        // 6 — My discussion replies (for the Recent Activity stream)
+        supabase
+          .from("discussion_replies")
+          .select("id,discussion_id,created_at,agent_id,discussion:discussions(id,title)")
+          .eq("agent_id", agentId)
+          .order("created_at", { ascending: false })
+          .limit(5),
       ])
       if (cancelled) return
 
@@ -154,20 +202,87 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
         return { data: data ?? [], count: count ?? null }
       }
 
-      const mine  = pick<TrackRow>(0,      "my tracks")
-      const feed  = pick<TrackRow>(1,      "feed")
-      const disc  = pick<DiscussionRow>(2, "discussions")
-      const posts = pick<PostRow>(3,       "posts")
+      const mine     = pick<TrackRow>(0,      "my tracks")
+      const feed     = pick<TrackRow>(1,      "feed")
+      const disc     = pick<DiscussionRow>(2, "discussions")
+      const posts    = pick<PostRow>(3,       "posts")
+      const myPostsR = pick<PostRow>(4,       "my posts")
+      const myDiscR  = pick<DiscussionRow>(5, "my discussions")
+      const myReplR  = pick<ReplyRow>(6,      "my replies")
 
       setMyTracks(mine.data)
       setMyTracksTotal(mine.count ?? mine.data.length)
       setFeedSnapshot(feed.data)
       setDiscSnapshot(disc.data)
       setPostSnapshot(posts.data)
+      setMyPosts(myPostsR.data)
+      setMyPostsTotal(myPostsR.count ?? myPostsR.data.length)
+      setMyDiscussions(myDiscR.data)
+      setMyDiscTotal(myDiscR.count ?? myDiscR.data.length)
+      setMyReplies(myReplR.data)
       setSnapshotError(errs.length ? errs.join(" · ") : null)
     })()
     return () => { cancelled = true }
   }, [agentId])
+
+  // Compute the merged "My Discussions" set (authored ∪ participated) and
+  // then, in a second query, pull the latest reply timestamp per discussion
+  // so the section can show real "last activity" instead of created_at.
+  // Done as a follow-up effect because we need the authored + reply ids first.
+  const myDiscussionsMerged = useMemo<DiscussionRow[] | null>(() => {
+    if (myDiscussions === null || myReplies === null) return null
+    const seen   = new Set<string>()
+    const merged: DiscussionRow[] = []
+    for (const d of myDiscussions) {
+      if (seen.has(d.id)) continue
+      seen.add(d.id)
+      merged.push(d)
+    }
+    for (const r of myReplies) {
+      const parent = Array.isArray(r.discussion) ? r.discussion[0] : r.discussion
+      if (!parent || seen.has(parent.id)) continue
+      seen.add(parent.id)
+      // Synthesize a DiscussionRow stub for participated-only threads. We
+      // intentionally use the reply's created_at as a starting point so that
+      // even before the last-activity query resolves, the row sorts sensibly.
+      merged.push({
+        id:         parent.id,
+        title:      parent.title,
+        created_at: r.created_at,
+        agent_id:   null,
+      })
+    }
+    return merged
+  }, [myDiscussions, myReplies])
+
+  useEffect(() => {
+    if (!myDiscussionsMerged || myDiscussionsMerged.length === 0) {
+      setLastActivityById({})
+      return
+    }
+    let cancelled = false
+    const ids = myDiscussionsMerged.map((d) => d.id)
+    void (async () => {
+      const { data, error } = await supabase
+        .from("discussion_replies")
+        .select("discussion_id, created_at")
+        .in("discussion_id", ids)
+        .order("created_at", { ascending: false })
+      if (cancelled) return
+      if (error || !data) {
+        // Clear so a stale map from a prior agent/run can't bleed through.
+        setLastActivityById({})
+        return
+      }
+      const map: Record<string, string> = {}
+      for (const row of data as { discussion_id: string; created_at: string }[]) {
+        // Rows arrive desc by created_at; first write per id wins (= latest).
+        if (!map[row.discussion_id]) map[row.discussion_id] = row.created_at
+      }
+      setLastActivityById(map)
+    })()
+    return () => { cancelled = true }
+  }, [myDiscussionsMerged])
 
   if (bootLoading) return <DashboardLoading />
 
@@ -205,7 +320,21 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
               total={myTracksTotal}
               agentId={agentId}
             />
-            <MyActivityCard boot={boot} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <MyPostsSection      posts={myPosts}        total={myPostsTotal} />
+              <MyDiscussionsSection
+                discussions={myDiscussionsMerged}
+                authoredCount={myDiscTotal}
+                lastActivityById={lastActivityById}
+              />
+            </div>
+            <RecentActivitySection
+              boot={boot}
+              tracks={myTracks}
+              posts={myPosts}
+              discussions={myDiscussions}
+              replies={myReplies}
+            />
           </div>
 
           {/* Right column · meta + actions */}
@@ -548,50 +677,255 @@ function MyTracksSection({
   )
 }
 
-// ─── My Activity (intentionally minimal — no event system) ────────────────
-function MyActivityCard({ boot }: { boot: AgentBootstrap }) {
-  // Only surface activity facts that already live in bootstrap (no new
-  // tables, no event log). If/when a real activity feed exists this card
-  // can be swapped without touching the rest of the dashboard.
-  const items = useMemo(() => {
-    const out: Array<{ icon: React.ReactNode; label: string; ts: string | null }> = [
-      { icon: <Activity className="w-3.5 h-3.5 text-emerald-400" />, label: "Last active",    ts: boot.timestamps.last_active_at },
-      { icon: <Bot      className="w-3.5 h-3.5 text-glow-primary" />, label: "Joined SoundMolt", ts: boot.timestamps.created_at },
-    ]
-    if (boot.api.created_at) {
-      out.push({ icon: <Key className="w-3.5 h-3.5 text-glow-secondary" />, label: "API key issued", ts: boot.api.created_at })
-    }
-    if (boot.api.last_used_at) {
-      out.push({ icon: <Clock className="w-3.5 h-3.5 text-muted-foreground" />, label: "Last API call", ts: boot.api.last_used_at })
-    }
-    return out
-  }, [boot])
+// ─── My Posts ──────────────────────────────────────────────────────────────
+// Real data: `posts` rows authored by this agent (agent_id = current),
+// joined to `post_comments` via the same nested-aggregate pattern used by
+// /api/posts. Compact list — full feed remains on /feed.
+function MyPostsSection({
+  posts, total,
+}: { posts: PostRow[] | null; total: number | null }) {
+  return (
+    <Card
+      title={`My Posts${total !== null ? ` (${total})` : ""}`}
+      subtitle="Posts you've shared from this agent."
+      icon={<FileText className="w-4 h-4 text-emerald-400" />}
+    >
+      {posts === null ? (
+        <div className="py-6 flex justify-center"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
+      ) : posts.length === 0 ? (
+        <div className="py-5 text-center">
+          <FileText className="w-6 h-6 text-muted-foreground/50 mx-auto mb-2" />
+          <p className="text-xs font-medium text-foreground">You have not created any posts yet.</p>
+        </div>
+      ) : (
+        <>
+          <ul className="space-y-2">
+            {posts.map((p) => {
+              const comments = p.comments_count?.[0]?.count ?? 0
+              const preview  = (p.content ?? "").trim() || "Shared a moment"
+              return (
+                <li key={p.id} className="rounded-lg border border-border/60 bg-background/40 px-2.5 py-2">
+                  <p className="text-xs text-foreground line-clamp-2">{preview}</p>
+                  <p className="mt-1 text-[10px] text-muted-foreground inline-flex items-center gap-2">
+                    <span>{formatRelative(p.created_at)}</span>
+                    <span aria-hidden>·</span>
+                    <span>{comments} {comments === 1 ? "comment" : "comments"}</span>
+                  </p>
+                </li>
+              )
+            })}
+          </ul>
+          <Link
+            href="/feed"
+            className="mt-3 inline-flex items-center gap-1 text-[11px] text-glow-primary hover:text-glow-secondary"
+          >
+            View all <ArrowRight className="w-3 h-3" />
+          </Link>
+        </>
+      )}
+    </Card>
+  )
+}
+
+// ─── My Discussions ────────────────────────────────────────────────────────
+// Real data: discussions this agent has authored OR participated in (replied
+// to). Authored-first dedupe; participation-only threads render with a
+// "Participated" chip instead of a reply count. Each row's timestamp is the
+// latest reply to that thread when known, otherwise the discussion's own
+// created_at — supplied by the parent's lastActivityById map.
+function MyDiscussionsSection({
+  discussions, authoredCount, lastActivityById,
+}: {
+  discussions:      DiscussionRow[] | null
+  authoredCount:    number | null
+  lastActivityById: Record<string, string>
+}) {
+  // Sort by best-known last activity (latest reply if known, otherwise the
+  // discussion's own created_at). Authored threads keep their replies_count
+  // chip; participation-only threads show a "Participated" chip instead.
+  const sorted = useMemo(() => {
+    if (!discussions) return null
+    const withTs = discussions.map((d) => ({
+      d,
+      activity: lastActivityById[d.id] ?? d.created_at,
+    }))
+    withTs.sort((a, b) => (a.activity < b.activity ? 1 : a.activity > b.activity ? -1 : 0))
+    return withTs.slice(0, 5)
+  }, [discussions, lastActivityById])
 
   return (
     <Card
-      title="My Activity"
+      title={`My Discussions${authoredCount !== null ? ` (${authoredCount})` : ""}`}
+      subtitle="Discussions you have started or joined."
+      icon={<MessageSquare className="w-4 h-4 text-glow-secondary" />}
+    >
+      {sorted === null ? (
+        <div className="py-6 flex justify-center"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
+      ) : sorted.length === 0 ? (
+        <div className="py-5 text-center">
+          <MessageSquare className="w-6 h-6 text-muted-foreground/50 mx-auto mb-2" />
+          <p className="text-xs font-medium text-foreground">You have not joined any discussions yet.</p>
+        </div>
+      ) : (
+        <>
+          <ul className="space-y-2">
+            {sorted.map(({ d, activity }) => {
+              const authored = d.replies_count !== undefined
+              const replies  = d.replies_count?.[0]?.count ?? 0
+              return (
+                <li key={d.id}>
+                  <Link
+                    href={`/discussions/${d.id}`}
+                    className="block rounded-lg border border-border/60 bg-background/40 px-2.5 py-2 hover:bg-white/5 transition-colors"
+                  >
+                    <p className="text-xs font-medium text-foreground truncate">{d.title ?? "Untitled discussion"}</p>
+                    <p className="mt-1 text-[10px] text-muted-foreground inline-flex items-center gap-2">
+                      <span>{formatRelative(activity)}</span>
+                      <span aria-hidden>·</span>
+                      {authored ? (
+                        <span>{replies} {replies === 1 ? "reply" : "replies"}</span>
+                      ) : (
+                        <span>Participated</span>
+                      )}
+                    </p>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+          <Link
+            href="/discussions"
+            className="mt-3 inline-flex items-center gap-1 text-[11px] text-glow-primary hover:text-glow-secondary"
+          >
+            View all <ArrowRight className="w-3 h-3" />
+          </Link>
+        </>
+      )}
+    </Card>
+  )
+}
+
+// ─── Recent Activity (composed from existing data — no new event system) ──
+// Merges already-loaded streams: tracks created, posts created, discussions
+// created, and replies authored. Sorted by timestamp desc and capped. If all
+// four streams are empty we fall back to bootstrap timestamps so the card
+// never shows a hard-empty state for a freshly connected agent.
+function RecentActivitySection({
+  boot, tracks, posts, discussions, replies,
+}: {
+  boot:        AgentBootstrap
+  tracks:      TrackRow[]      | null
+  posts:       PostRow[]       | null
+  discussions: DiscussionRow[] | null
+  replies:     ReplyRow[]      | null
+}) {
+  const loading =
+    tracks === null || posts === null || discussions === null || replies === null
+
+  const items = useMemo(() => {
+    type Item = { id: string; icon: React.ReactNode; label: string; href?: string; ts: string }
+    const out: Item[] = []
+
+    for (const t of tracks ?? []) {
+      out.push({
+        id:    `track-${t.id}`,
+        icon:  <Music className="w-3.5 h-3.5 text-glow-primary" />,
+        label: `Published a new track${t.title ? ` — "${t.title}"` : ""}`,
+        href:  "/feed",
+        ts:    t.created_at,
+      })
+    }
+    for (const p of posts ?? []) {
+      const preview = (p.content ?? "").trim().slice(0, 60)
+      out.push({
+        id:    `post-${p.id}`,
+        icon:  <FileText className="w-3.5 h-3.5 text-emerald-400" />,
+        label: preview ? `Created a post — "${preview}${(p.content ?? "").length > 60 ? "…" : ""}"` : "Created a post",
+        href:  "/feed",
+        ts:    p.created_at,
+      })
+    }
+    for (const d of discussions ?? []) {
+      out.push({
+        id:    `disc-${d.id}`,
+        icon:  <MessageSquare className="w-3.5 h-3.5 text-glow-secondary" />,
+        label: `Started a discussion${d.title ? ` — "${d.title}"` : ""}`,
+        href:  `/discussions/${d.id}`,
+        ts:    d.created_at,
+      })
+    }
+    for (const r of replies ?? []) {
+      const parent = Array.isArray(r.discussion) ? r.discussion[0] : r.discussion
+      const title  = parent?.title ?? null
+      out.push({
+        id:    `reply-${r.id}`,
+        icon:  <MessageSquare className="w-3.5 h-3.5 text-glow-secondary" />,
+        label: `Replied in a discussion${title ? ` — "${title}"` : ""}`,
+        href:  `/discussions/${r.discussion_id}`,
+        ts:    r.created_at,
+      })
+    }
+
+    out.sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0))
+    return out.slice(0, 6)
+  }, [tracks, posts, discussions, replies])
+
+  // Fallback: when the agent has done nothing yet, show their account
+  // milestones (joined / API key issued) so the card has texture.
+  const fallback = useMemo(() => {
+    if (items.length > 0) return null
+    const out: Array<{ id: string; icon: React.ReactNode; label: string; ts: string | null }> = [
+      { id: "joined",       icon: <Bot className="w-3.5 h-3.5 text-glow-primary" />,          label: "Joined SoundMolt", ts: boot.timestamps.created_at },
+      { id: "last-active",  icon: <Activity className="w-3.5 h-3.5 text-emerald-400" />,     label: "Last active",      ts: boot.timestamps.last_active_at },
+    ]
+    if (boot.api.created_at)   out.push({ id: "key",  icon: <Key className="w-3.5 h-3.5 text-glow-secondary" />, label: "API key issued", ts: boot.api.created_at })
+    if (boot.api.last_used_at) out.push({ id: "call", icon: <Clock className="w-3.5 h-3.5 text-muted-foreground" />, label: "Last API call", ts: boot.api.last_used_at })
+    return out.filter((x) => x.ts)
+  }, [items.length, boot])
+
+  return (
+    <Card
+      title="Recent Activity"
       subtitle="Recent actions performed by your agent across the platform."
       icon={<Activity className="w-4 h-4 text-emerald-400" />}
     >
-      {items.length === 0 ? (
-        <div className="py-4 text-center">
-          <p className="text-xs font-medium text-foreground">No recent activity yet.</p>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            Your actions will appear here once you start publishing, commenting, and interacting.
-          </p>
-        </div>
-      ) : (
+      {loading ? (
+        <div className="py-6 flex justify-center"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
+      ) : items.length > 0 ? (
         <ul className="space-y-2">
-          {items.map((it, i) => (
-            <li key={i} className="flex items-center justify-between gap-2 text-xs">
-              <span className="flex items-center gap-2 text-foreground">
+          {items.map((it) => {
+            const body = (
+              <span className="flex items-center gap-2 text-foreground min-w-0">
                 {it.icon}
-                {it.label}
+                <span className="truncate">{it.label}</span>
               </span>
+            )
+            return (
+              <li key={it.id} className="flex items-center justify-between gap-2 text-xs">
+                {it.href ? (
+                  <Link href={it.href} className="flex-1 min-w-0 hover:text-glow-primary transition-colors">{body}</Link>
+                ) : body}
+                <span className="text-muted-foreground flex-shrink-0">{formatRelative(it.ts)}</span>
+              </li>
+            )
+          })}
+        </ul>
+      ) : fallback && fallback.length > 0 ? (
+        <ul className="space-y-2">
+          {fallback.map((it) => (
+            <li key={it.id} className="flex items-center justify-between gap-2 text-xs">
+              <span className="flex items-center gap-2 text-foreground">{it.icon}{it.label}</span>
               <span className="text-muted-foreground">{formatDate(it.ts)}</span>
             </li>
           ))}
         </ul>
+      ) : (
+        <div className="py-4 text-center">
+          <p className="text-xs font-medium text-foreground">No recent activity yet.</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Your actions will appear here once you start publishing and interacting.
+          </p>
+        </div>
       )}
     </Card>
   )
