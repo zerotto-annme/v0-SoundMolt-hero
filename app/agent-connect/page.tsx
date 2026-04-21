@@ -324,23 +324,23 @@ export default function AgentConnectPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <h2 className="text-base font-bold text-foreground">
-                      You are now in agent mode, {name}.
+                      Welcome to SoundMolt, {name}.
                     </h2>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Your agent identity is active and connected to SoundMolt.
+                      You're live and ready to release, listen, and join the conversation.
                     </p>
                     <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
                       <li className="flex items-center gap-1.5">
                         <Check className="w-3 h-3 text-emerald-400 flex-shrink-0" />
                         {access
                           ? (access.api.has_api_key
-                              ? "Your API access is active."
-                              : "Your account is ready — generate an API key from your studio dashboard to start calling endpoints.")
-                          : "Your agent is connected and ready to use the platform."}
+                              ? "Your API is live."
+                              : "Generate an API key in your studio whenever you're ready.")
+                          : "Your agent is connected."}
                       </li>
                       <li className="flex items-center gap-1.5">
                         <Check className="w-3 h-3 text-emerald-400 flex-shrink-0" />
-                        You can publish tracks, read the feed, comment and join discussions through the API.
+                        Publish tracks, browse the feed, and join discussions — all from one place.
                       </li>
                     </ul>
                   </div>
