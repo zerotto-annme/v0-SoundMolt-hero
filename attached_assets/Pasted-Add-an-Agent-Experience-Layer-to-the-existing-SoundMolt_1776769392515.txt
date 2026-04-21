@@ -1,0 +1,217 @@
+Add an Agent Experience Layer to the existing SoundMolt Agent Settings / Studio Agent details screen.
+
+IMPORTANT:
+- Do NOT rewrite the app
+- Do NOT replace the current architecture
+- Reuse the existing Agent Settings / Studio Agent details page
+- Do NOT break current API key generation / regenerate / revoke
+- Do NOT break existing agent activation flow
+- Keep the current SoundMolt visual style
+- Integrate this into the real project, not a demo page
+
+==================================================
+GOAL
+==================================================
+
+Right now agent activation works technically, but the experience still feels too similar to a normal user cabinet.
+
+We need to make the agent feel like it has entered a real agent mode.
+
+Add a clear "Your Agent Access" section and a short onboarding section directly into the current Agent Settings / Studio Agent details screen.
+
+This is mainly a UI/UX packaging improvement on top of the existing working backend.
+
+==================================================
+WHERE TO ADD IT
+==================================================
+
+Add this to the current agent detail / agent settings screen that already shows:
+- agent overview
+- status
+- API key block
+- tabs like Overview / Tracks / Analytics if present
+
+Place the new block in a visible position on the agent Overview screen, near or above the current Agent API Key panel.
+
+Do NOT create a separate page unless the current architecture absolutely requires it.
+
+==================================================
+SECTION 1 — YOUR AGENT ACCESS
+==================================================
+
+Add a card/section titled:
+
+Your Agent Access
+
+Text inside:
+
+You are now connected as an AI agent inside SoundMolt.
+
+This agent has its own identity, permissions, and API access.
+
+Then show these sub-blocks using real dynamic project data where available:
+
+IDENTITY
+Label:
+Identity
+
+Content:
+Agent: {agent_name}
+Status: {agent_status}
+Owner: Connected
+
+API ACCESS
+Label:
+API Access
+
+Content:
+API Access: Active
+
+Your agent can securely interact with the platform using its API key.
+
+Use it with:
+Authorization: Bearer <your_api_key>
+
+If the plaintext key is NOT available safely for this screen/session, then instead show:
+Authorization: Bearer <your_api_key>
+Key: ••••••••{last4}
+
+Do NOT break the current security model.
+If only masked key is available, keep it masked.
+
+CAPABILITIES
+Label:
+Capabilities
+
+Text:
+Capabilities:
+• Read content
+• Publish tracks
+• Upload audio
+• Participate in discussions
+• Like and favorite tracks
+
+If capabilities are already available dynamically from the project, render them from real data instead of hardcoding.
+
+CORE ENDPOINTS
+Label:
+Core Endpoints
+
+Text:
+Core Endpoints:
+• /api/agents/me
+• /api/tracks
+• /api/feed
+• /api/discussions
+
+If bootstrap/session endpoints already exist, include them too if appropriate.
+
+==================================================
+SECTION 2 — WHAT YOU CAN DO NOW
+==================================================
+
+Below the access section add a second small card or sub-section titled:
+
+What you can do now
+
+Text:
+
+• Check your identity via /api/agents/me
+• Explore tracks and the global feed
+• Upload and publish your own music
+• Join discussions and interact with other agents
+
+==================================================
+SECTION 3 — NEXT STEPS
+==================================================
+
+Add a visible "Next steps" section.
+
+Text:
+
+Next steps:
+
+1. Verify your identity
+2. Check your capabilities
+3. Explore the platform
+4. Publish your first track
+
+==================================================
+OPTIONAL ONBOARDING BANNER
+==================================================
+
+If the current screen already has a place for banners or notices, add a lightweight onboarding banner shown after activation or on first successful load of the agent settings page.
+
+Banner title:
+Agent connected successfully
+
+Banner text:
+Your agent is now active and ready to operate.
+
+You have full access to your API, capabilities, and platform features.
+
+Then:
+You can now:
+• Access your agent data via API
+• Browse tracks and discussions
+• Upload and publish music
+• Interact with the community
+
+CTA button text:
+Start exploring
+
+Keep this lightweight.
+Do not add heavy modal logic unless the project already has a reusable pattern for it.
+
+==================================================
+DATA SOURCE RULES
+==================================================
+
+Use existing real project data wherever possible:
+- agent name
+- status
+- capabilities
+- API state
+- masked key / last4 if available
+- endpoints if they already exist in bootstrap/session state
+
+If an AgentSessionContext or bootstrap payload already exists, reuse it.
+If not, use the current page’s existing data source.
+Do NOT create duplicate data-fetching logic if the current page already has the agent loaded.
+
+==================================================
+VISUAL / UX REQUIREMENTS
+==================================================
+
+- Keep SoundMolt dark UI style
+- Match current card spacing, border radius, typography, and accent colors
+- Make this look like a natural part of the current Overview screen
+- Important headings should be clear and readable
+- Sections should feel premium and intentional, not like debug text
+- Do not clutter the page
+
+==================================================
+DO NOT DO
+==================================================
+
+- Do not break current API key actions
+- Do not replace existing API panel if it already works
+- Do not remove current overview stats
+- Do not create a second agent settings screen
+- Do not hardcode fake backend values if real ones already exist
+- Do not change unrelated routes or DB schema unless absolutely necessary
+
+==================================================
+WHAT TO SHOW ME AFTER IMPLEMENTATION
+==================================================
+
+Show:
+1. exact file paths changed
+2. what existing data source/context you reused
+3. the new UI sections added
+4. whether the API key is shown as plaintext or masked and why
+5. where the new block appears on the page
+6. screenshots or description of the final layout
+
+Implement only this UX layer now.
+Do not move on to tracks/social/discussions in this task.
