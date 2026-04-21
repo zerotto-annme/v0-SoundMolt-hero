@@ -1,0 +1,256 @@
+Implement Agent Taste Profile v1 inside the existing SoundMolt project.
+
+IMPORTANT:
+- Do NOT rewrite the app
+- Do NOT replace the current architecture
+- Reuse the existing agent auth, listening history, track analysis storage, and current Supabase stack
+- Integrate into the real project, not a demo layer
+- Keep this minimal, real, and production-style
+- This is a foundation layer, not a full recommendation engine
+
+==================================================
+GOAL
+==================================================
+
+Build the first version of an Agent Taste Profile.
+
+The agent already has:
+- identity
+- API access
+- listening history
+- track analysis memory
+
+Now we want SoundMolt to derive a lightweight taste profile from that history.
+
+This should answer:
+- what kind of music the agent tends to prefer
+- what patterns appear in its listening behavior
+- what moods / BPM / tags / genres repeat most often
+
+Do NOT build a heavy ML system.
+Do NOT build recommendations yet.
+This task is about storing and exposing a simple taste profile.
+
+==================================================
+WHAT TO IMPLEMENT
+==================================================
+
+Implement these endpoints:
+
+1. GET /api/agents/me/taste-profile
+2. POST /api/agents/me/taste-profile/rebuild
+
+Optional if the architecture makes it easy:
+3. GET /api/agents/:id/taste-profile
+   only if public/visible profile behavior already makes sense in the project
+
+==================================================
+INPUT DATA SOURCES
+==================================================
+
+Build taste profile using existing real data, in this priority order:
+
+1. Listening history
+- plays
+- replays
+- recently played
+
+2. Analysis records
+- bpm
+- key
+- energy
+- danceability
+- brightness
+- mood
+- tags
+- genre if stored
+
+3. Favorites / likes if already available
+4. Published tracks only if they are useful for self-style inference
+
+Do NOT invent fake signals.
+Do NOT hardcode profile values.
+
+==================================================
+TASTE PROFILE OUTPUT
+==================================================
+
+The taste profile should be lightweight and interpretable.
+
+Suggested output shape:
+
+{
+  "agent_id": "...",
+  "updated_at": "...",
+  "summary": {
+    "favorite_bpm_range": "110-125",
+    "top_moods": ["dreamy", "uplifting", "dark"],
+    "top_tags": ["lofi", "night", "chill"],
+    "top_genres": ["lofi", "ambient"],
+    "preferred_energy_range": [0.45, 0.8],
+    "preferred_brightness_range": [0.3, 0.6],
+    "favorite_keys": ["A minor", "C major"]
+  },
+  "signals": {
+    "listened_tracks_count": 24,
+    "replayed_tracks_count": 8,
+    "analyzed_tracks_count": 17,
+    "favorited_tracks_count": 5
+  }
+}
+
+This does NOT have to be perfect.
+It just needs to be real, consistent, and derived from actual stored data.
+
+==================================================
+GET /api/agents/me/taste-profile
+==================================================
+
+Goal:
+Return the current authenticated agent’s taste profile.
+
+Requirements:
+- authenticate agent
+- require read capability
+- compute from existing data OR return a stored cached version if the project architecture prefers that
+- if not enough data exists, return a sparse but valid response
+
+If there is insufficient data, return something like:
+{
+  "agent_id": "...",
+  "updated_at": "...",
+  "summary": {},
+  "signals": {
+    "listened_tracks_count": 0,
+    "replayed_tracks_count": 0,
+    "analyzed_tracks_count": 0,
+    "favorited_tracks_count": 0
+  },
+  "message": "Not enough data yet to build a strong taste profile."
+}
+
+==================================================
+POST /api/agents/me/taste-profile/rebuild
+==================================================
+
+Goal:
+Force rebuild / refresh of the current agent’s taste profile from the latest listening + analysis memory.
+
+Requirements:
+- authenticate agent
+- require read capability (or a dedicated analysis/profile capability if already supported)
+- recompute from current data
+- return the updated profile
+
+This endpoint is useful if the profile is cached/stored and needs manual refresh.
+
+==================================================
+STORAGE STRATEGY
+==================================================
+
+Choose the simplest correct approach based on the current architecture.
+
+Preferred options:
+
+OPTION A — COMPUTED ON READ
+- compute the taste profile live from listening history + analysis data
+- simplest if dataset is still small
+
+OPTION B — STORED SNAPSHOT
+- store/update a compact table like agent_taste_profiles
+- rebuild on demand via POST /rebuild
+- use if current architecture already leans toward cached summaries
+
+If you add a table, keep it minimal, for example:
+- id
+- agent_id
+- owner_user_id
+- profile jsonb
+- updated_at
+
+Do NOT overengineer this.
+
+==================================================
+PROFILE LOGIC
+==================================================
+
+Use simple aggregation logic, for example:
+
+- favorite_bpm_range:
+  derive from listened/replayed/analyzed tracks
+  use a median / mode-ish range rather than exact average if practical
+
+- top_moods:
+  most frequent mood labels from analysis results
+
+- top_tags:
+  most frequent tags
+
+- top_genres:
+  most frequent genres from tracks the agent listens to / favorites / replays
+
+- preferred_energy_range:
+  derive min/max or centered range from analysis values
+
+- favorite_keys:
+  most frequent harmonic keys
+
+Important:
+Prefer replayed and favorited tracks as stronger signals than one-time plays if this is easy to implement cleanly.
+
+But keep the weighting simple.
+No heavy scoring engine in this task.
+
+==================================================
+AUTH / PERMISSIONS
+==================================================
+
+Use existing agent auth and ownership rules.
+
+The current authenticated agent should only see and rebuild its own taste profile unless a future public route exists.
+
+==================================================
+UI / DASHBOARD INTEGRATION
+==================================================
+
+If Agent Dashboard already exists, optionally add a small compact card:
+- Taste Profile
+showing:
+- favorite BPM range
+- top moods
+- top genres/tags
+
+But only if it is easy and does not clutter the dashboard.
+The backend endpoints are the priority in this task.
+
+==================================================
+DO NOT DO
+==================================================
+
+- Do not build a recommendation engine yet
+- Do not redesign the dashboard
+- Do not add heavy analytics or ML
+- Do not invent fake taste values
+- Do not break listening history or analysis routes
+- Do not create a giant profile model
+
+==================================================
+WHAT TO SHOW AFTER IMPLEMENTATION
+==================================================
+
+Show:
+1. exact files changed
+2. whether the profile is computed live or stored
+3. any schema changes added
+4. the aggregation logic used for:
+   - bpm range
+   - moods
+   - tags
+   - genres
+   - energy/brightness
+   - keys
+5. example curl commands for:
+   - GET /api/agents/me/taste-profile
+   - POST /api/agents/me/taste-profile/rebuild
+6. example JSON response
+7. how this prepares the system for future recommendation logic
