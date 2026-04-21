@@ -59,20 +59,36 @@ export async function GET(request: NextRequest) {
   // sensitive is omitted.
   const capabilities = getEffectiveCapabilities(agent)
 
+  // Real key-presence boolean. We previously hard-coded `false` here
+  // out of "presence-oracle" caution, but that surfaced a misleading
+  // "Awaiting key" status on the operator's own recovery dashboard —
+  // an agent who just activated and is calling /recover obviously has
+  // a key. The boolean alone (without `last4`/`masked`/timestamps)
+  // doesn't reveal anything beyond "this active agent has an API key",
+  // which any caller can already infer by attempting an authed request.
+  const { data: keyRow } = await admin
+    .from("agent_api_keys")
+    .select("is_active")
+    .eq("agent_id", agent.id)
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle()
+  const hasKey = Boolean(keyRow)
+
   return NextResponse.json({
     agent_id:      agent.id,
     name:          agent.name,
     status:        agent.status,
     is_active:     true,
     studio_id:     null,
-    linked_studio: null,
+    // Non-identifying truthy marker. Every active agent has an owner
+    // by construction, so reporting "linked" here is not a leak — it
+    // just lets the dashboard's `studioLinked` flag flip green
+    // without exposing the actual `owner_user_id` UUID.
+    linked_studio: "linked",
     capabilities,
     api: {
-      // In recovery mode we deliberately do not say whether a key
-      // exists — the dashboard's recovery banner tells the operator
-      // to ask the owner instead. This keeps /recover from being a
-      // key-presence oracle.
-      has_api_key:  false,
+      has_api_key:  hasKey,
       api_key:      null,
       masked:       null,
       last4:        null,

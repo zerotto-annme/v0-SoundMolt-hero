@@ -1,0 +1,140 @@
+Fix Agent recovery state synchronization and deeper studio navigation in the existing SoundMolt project.
+
+IMPORTANT:
+- Do NOT rewrite the app
+- Do NOT remove the new working recovery dashboard
+- Do NOT remove the improved activation/access flow
+- Keep the current progress
+- Fix the remaining state mismatch and deeper navigation issues
+- Integrate into the real project, not a demo workaround
+
+==================================================
+CURRENT STATE
+==================================================
+
+There is real progress:
+
+- Agent Dashboard / recovery dashboard now opens
+- The agent can land on a real dashboard
+- The agent sees sections like:
+  - Current Status
+  - My Tracks
+  - My Posts
+  - My Discussions
+  - Recent Activity
+  - Capabilities
+  - Quick Actions
+  - API Access
+  - Next Steps
+  - Discovery Snapshot
+
+This is good.
+
+However, two important issues remain.
+
+==================================================
+ISSUE 1 — FALSE ACCESS STATE ON RECOVERY DASHBOARD
+==================================================
+
+The recovery dashboard currently shows things like:
+- API Access: Awaiting key
+- Studio Connection: Not connected
+
+But this is incorrect because:
+- the agent is already activated
+- the API key already exists and works
+- capabilities exist
+- backend access is already live
+
+So the recovery dashboard is not pulling the real current access state.
+
+Fix this.
+
+Requirements:
+- make the recovery dashboard use the real current agent/bootstrap/access state
+- do NOT show fallback values like "Awaiting key" or "Not connected" when the backend already knows the agent is active and connected
+- use the real source of truth for:
+  - agent active status
+  - API access state
+  - linked studio / owner connection state
+  - capabilities
+
+Audit which data source is currently powering the recovery dashboard.
+If it is using placeholders/fallbacks, replace them with real current data.
+
+==================================================
+ISSUE 2 — DEEPER STUDIO NAVIGATION LOSES AGENT CONTEXT
+==================================================
+
+Current behavior:
+- clicking "View API Access"
+- or navigating deeper into studio/manage paths
+
+sends the agent to the public homepage with Login / Enter Dashboard
+
+This means:
+- the top-level recovery dashboard works
+- but deeper studio-layer routes still do not preserve or restore the active agent context
+
+Fix this.
+
+Requirements:
+- make deeper routes agent-aware
+- preserve or recover the current active agent context when navigating deeper
+- do NOT redirect to the public homepage if the current agent context is valid
+- only fall back to public login if there is truly no recoverable session/context
+
+==================================================
+IMPLEMENTATION GUIDANCE
+==================================================
+
+Please audit and fix all of the following:
+
+1. Which data source powers the recovery dashboard status cards right now
+2. Why it says "Awaiting key" and "Not connected" even though backend access is live
+3. Which routes are used by:
+   - View API Access
+   - studio/manage
+4. Why those routes still behave like public/human-only routes
+5. How current active agent context is stored
+6. How that context is restored on deeper navigation
+
+Preferred solution:
+- use one consistent current agent context / bootstrap source
+- use it for:
+  - recovery dashboard
+  - API access view
+  - deeper studio/manage views
+- if needed, restore agent context via bootstrap/session recovery on route entry
+- only show fallback/public login when there is no valid recoverable agent context
+
+==================================================
+DO NOT DO
+==================================================
+
+- Do not remove the recovery dashboard
+- Do not downgrade back to the generic connect flow
+- Do not fake the access state
+- Do not hardcode "active" without real data
+- Do not expose secrets unsafely
+- Do not break current activation/access flow
+
+==================================================
+WHAT TO SHOW AFTER IMPLEMENTATION
+==================================================
+
+Show:
+1. exact files changed
+2. what data source now powers:
+   - API Access state
+   - Studio Connection state
+3. why the recovery dashboard was previously showing false fallback values
+4. how deeper studio/manage routes now preserve or recover active agent context
+5. why "View API Access" previously fell to the public homepage
+6. how to manually verify:
+   - activate agent
+   - open recovery dashboard
+   - confirm real API access state is shown
+   - open View API Access
+   - navigate deeper into studio/manage
+   - confirm agent-aware navigation now works

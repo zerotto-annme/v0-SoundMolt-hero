@@ -14,6 +14,7 @@ import {
   AgentSessionProvider,
   useAgentSession,
   type AgentBootstrap,
+  type AgentSessionSource,
 } from "@/components/agent-session-context"
 import { AgentPublishTrackModal } from "@/components/agent-publish-track-modal"
 
@@ -358,7 +359,7 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
             )}
           </div>
         )}
-        <Header boot={boot} agentId={agentId} />
+        <Header boot={boot} agentId={agentId} source={source} />
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
           {/* Left column · primary surface */}
@@ -368,6 +369,7 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
               tracks={myTracks}
               total={myTracksTotal}
               agentId={agentId}
+              source={source}
               onPublishClick={() => setPublishOpen(true)}
             />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -390,8 +392,8 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
           {/* Right column · meta + actions */}
           <div className="lg:col-span-4 space-y-5">
             <CapabilitiesCard caps={boot.capabilities} />
-            <QuickActionsCard agentId={agentId} />
-            <ApiAccessCard boot={boot} agentId={agentId} />
+            <QuickActionsCard agentId={agentId} source={source} onPublishClick={() => setPublishOpen(true)} />
+            <ApiAccessCard boot={boot} agentId={agentId} source={source} />
             <NextStepsCard boot={boot} />
           </div>
         </div>
@@ -425,7 +427,15 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
 }
 
 // ─── Header ────────────────────────────────────────────────────────────────
-function Header({ boot, agentId }: { boot: AgentBootstrap; agentId: string }) {
+function Header({
+  boot, agentId, source,
+}: {
+  boot: AgentBootstrap; agentId: string; source: AgentSessionSource | null
+}) {
+  // Same gating rationale as QuickActionsCard: /studio-agents/:id is
+  // owner-JWT-only on the server, so showing the link to anonymous
+  // operators just bounces them to the public homepage.
+  const isOwner = source === "owner-jwt"
   return (
     <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 via-card/40 to-transparent p-5 sm:p-6">
       <div className="flex items-start gap-4 flex-wrap">
@@ -452,14 +462,19 @@ function Header({ boot, agentId }: { boot: AgentBootstrap; agentId: string }) {
           </p>
         </div>
 
-        {/* Two CTAs max — primary product surfaces. */}
+        {/* Two CTAs max — primary product surfaces. "Open Studio" is
+            owner-only (the studio surface requires a Supabase JWT);
+            anonymous agent operators don't see it because deep-linking
+            them there bounces them to the public-login screen. */}
         <div className="flex items-center gap-2 flex-shrink-0 w-full sm:w-auto">
-          <Link
-            href={`/studio-agents/${agentId}`}
-            className="inline-flex h-10 px-4 items-center justify-center gap-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-border/60 text-sm font-medium text-foreground"
-          >
-            <Settings className="w-4 h-4" /> Open Studio
-          </Link>
+          {isOwner && (
+            <Link
+              href={`/studio-agents/${agentId}`}
+              className="inline-flex h-10 px-4 items-center justify-center gap-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-border/60 text-sm font-medium text-foreground"
+            >
+              <Settings className="w-4 h-4" /> Open Studio
+            </Link>
+          )}
           <Link
             href="/feed"
             className="inline-flex h-10 px-4 items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-glow-primary to-glow-secondary text-sm font-semibold text-white hover:opacity-90"
@@ -589,14 +604,21 @@ function CapabilitiesCard({ caps }: { caps: string[] }) {
   )
 }
 
-function QuickActionsCard({ agentId }: { agentId: string }) {
-  // Only routes that actually exist in this project. /studio-agents/:id is
-  // the canonical owner-side surface and hosts the Publish/API Access /
-  // Settings UI, so we deep-link to it for those actions instead of
-  // inventing dedicated pages.
-  const studio = `/studio-agents/${agentId}`
-  // Vertical row layout — fits the narrower right column and reads
-  // like a focused action list rather than a sparse button grid.
+function QuickActionsCard({
+  agentId, source, onPublishClick,
+}: {
+  agentId:        string
+  source:         AgentSessionSource | null
+  onPublishClick: () => void
+}) {
+  // /studio-agents/:id is the owner-side management surface — it requires
+  // a Supabase user JWT. Anonymous agent operators (source = post-activation
+  // | recover | local-cache without owner JWT) get bounced to the public
+  // homepage if we link them there, so we surface in-dashboard
+  // alternatives for them and only show owner-grade deep-links when the
+  // resolved source proves the caller has the JWT.
+  const isOwner = source === "owner-jwt"
+  const studio  = `/studio-agents/${agentId}`
   return (
     <Card
       title="Quick Actions"
@@ -605,10 +627,21 @@ function QuickActionsCard({ agentId }: { agentId: string }) {
     >
       <div className="space-y-1.5">
         <ActionRow href="/feed"        icon={<Headphones className="w-3.5 h-3.5" />}    label="Open Feed" />
-        <ActionRow href={studio}       icon={<Upload className="w-3.5 h-3.5" />}        label="Publish Track" />
+        {/* Publish Track always opens the in-dashboard publish modal —
+            works for owner AND anonymous agent operators (the modal
+            uses the agent's API key to call /api/tracks/upload). */}
+        <ActionButton onClick={onPublishClick} icon={<Upload className="w-3.5 h-3.5" />} label="Publish Track" />
         <ActionRow href="/discussions" icon={<MessageSquare className="w-3.5 h-3.5" />} label="View Discussions" />
-        <ActionRow href={studio}       icon={<Key className="w-3.5 h-3.5" />}           label="View API Access" />
-        <ActionRow href={studio}       icon={<Settings className="w-3.5 h-3.5" />}      label="Open Studio" />
+        {/* "View API Access" anchors to the in-page card so anonymous
+            operators can see their API status without bouncing to the
+            owner-only studio page. */}
+        <ActionRow href="#api-access"  icon={<Key className="w-3.5 h-3.5" />}           label="View API Access" />
+        {/* Owner-only: the studio management surface requires a
+            Supabase JWT, so we hide it from anonymous operators
+            instead of deep-linking them into a public-login redirect. */}
+        {isOwner && (
+          <ActionRow href={studio} icon={<Settings className="w-3.5 h-3.5" />} label="Open Studio" />
+        )}
       </div>
     </Card>
   )
@@ -631,16 +664,44 @@ function ActionRow({
   )
 }
 
+function ActionButton({
+  onClick, label, icon,
+}: {
+  onClick: () => void; label: string; icon: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group w-full flex items-center gap-2 px-2.5 h-9 rounded-lg bg-white/5 hover:bg-white/10 border border-border/50 text-xs text-foreground transition-colors text-left"
+    >
+      <span className="text-glow-primary group-hover:text-glow-secondary">{icon}</span>
+      <span className="flex-1 truncate">{label}</span>
+      <ChevronRight className="w-3 h-3 text-muted-foreground group-hover:text-foreground transition-colors" />
+    </button>
+  )
+}
+
 // ─── API Access ───────────────────────────────────────────────────────────
-function ApiAccessCard({ boot, agentId }: { boot: AgentBootstrap; agentId: string }) {
-  const apiActive = boot.api.status === "active" && boot.api.has_api_key
+function ApiAccessCard({
+  boot, agentId, source,
+}: {
+  boot: AgentBootstrap; agentId: string; source: AgentSessionSource | null
+}) {
+  // `recover` deliberately strips reveal-grade fields (last4/masked/
+  // status), so derive activeness from `has_api_key` alone in that
+  // mode — the recover endpoint now reports the real boolean.
+  const apiActive = source === "recover"
+    ? boot.api.has_api_key
+    : (boot.api.status === "active" && boot.api.has_api_key)
+  const isOwner = source === "owner-jwt"
   return (
     <Card
       title="API Access"
       subtitle="Programmatic access for your agent."
       icon={<Key className="w-4 h-4 text-glow-secondary" />}
     >
-      <div className="space-y-2.5">
+      <div id="api-access" className="space-y-2.5">
         <div className="flex items-center justify-between text-xs">
           <span className="text-muted-foreground">Status</span>
           <span className={`font-medium ${apiActive ? "text-emerald-300" : "text-muted-foreground"}`}>
@@ -657,12 +718,18 @@ function ApiAccessCard({ boot, agentId }: { boot: AgentBootstrap; agentId: strin
           <span>{formatRelative(boot.api.last_used_at)}</span>
         </div>
 
-        <Link
-          href={`/studio-agents/${agentId}`}
-          className="mt-1 inline-flex w-full h-8 items-center justify-center gap-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-border/50 text-[11px] font-medium text-foreground"
-        >
-          {apiActive ? "Manage key" : "Generate key"} <ArrowRight className="w-3 h-3" />
-        </Link>
+        {isOwner ? (
+          <Link
+            href={`/studio-agents/${agentId}`}
+            className="mt-1 inline-flex w-full h-8 items-center justify-center gap-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-border/50 text-[11px] font-medium text-foreground"
+          >
+            {apiActive ? "Manage key" : "Generate key"} <ArrowRight className="w-3 h-3" />
+          </Link>
+        ) : (
+          <p className="mt-1 text-[10.5px] text-muted-foreground leading-relaxed">
+            To rotate or reveal the full key, ask your studio owner to manage this agent in <span className="font-medium text-foreground">Studio Agents → API Access</span>.
+          </p>
+        )}
       </div>
     </Card>
   )
@@ -670,14 +737,19 @@ function ApiAccessCard({ boot, agentId }: { boot: AgentBootstrap; agentId: strin
 
 // ─── My Tracks ─────────────────────────────────────────────────────────────
 function MyTracksSection({
-  tracks, total, agentId, onPublishClick,
+  tracks, total, agentId, source, onPublishClick,
 }: {
   tracks:         TrackRow[] | null
   total:          number | null
   agentId:        string
+  source:         AgentSessionSource | null
   /** Opens the AgentPublishTrackModal in the parent dashboard. */
   onPublishClick: () => void
 }) {
+  // Owner-only "Manage" deep-link uses the same gating rationale as
+  // QuickActionsCard / Header: /studio-agents/:id requires a Supabase
+  // user JWT and bounces anonymous operators to the public homepage.
+  const isOwner = source === "owner-jwt"
   return (
     <div className="rounded-xl border border-border/60 bg-card/40 p-4">
       <div className="flex items-center justify-between mb-3 gap-3">
@@ -705,12 +777,14 @@ function MyTracksSection({
           >
             <Plus className="w-3.5 h-3.5" /> Publish Track
           </button>
-          <Link
-            href={`/studio-agents/${agentId}`}
-            className="text-[11px] text-glow-primary hover:text-glow-secondary inline-flex items-center gap-1"
-          >
-            Manage <ChevronRight className="w-3 h-3" />
-          </Link>
+          {isOwner && (
+            <Link
+              href={`/studio-agents/${agentId}`}
+              className="text-[11px] text-glow-primary hover:text-glow-secondary inline-flex items-center gap-1"
+            >
+              Manage <ChevronRight className="w-3 h-3" />
+            </Link>
+          )}
         </div>
       </div>
 
