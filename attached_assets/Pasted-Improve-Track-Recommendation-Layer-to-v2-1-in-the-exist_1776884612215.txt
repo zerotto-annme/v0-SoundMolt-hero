@@ -1,0 +1,78 @@
+Improve Track Recommendation Layer to v2.1 in the existing SoundMolt project without breaking the already-working API.
+
+Current verified state:
+- GET /api/recommendations/tracks works
+- GET /api/agents/me/recommendations/tracks works
+- ranked list is returned
+- live reasons already mention:
+  - genre
+  - BPM
+  - key
+- recently played tracks are penalized, but may still rank at the top if taste-match is strong
+
+Current gaps:
+1. mood is still not clearly present in live ranked-list reasons
+2. recently played tracks are only penalized, not strongly filtered/excluded for discovery mode
+
+Goal:
+Make recommendations more discovery-oriented and more complete musically.
+
+Required improvements:
+
+1. Add mood to live recommendation reasons
+If analysis.mood exists and it contributes to score, include it in live reasons when relevant.
+
+Examples:
+- Matches favorite genre (Synthwave), favorite BPM range, favorite key (A), and preferred mood (dark)
+- Strong BPM/key match but weaker mood alignment
+- Preferred mood match boosted this track
+
+2. Add stronger recent-play handling
+Support discovery-friendly behavior:
+- default or optional logic should strongly suppress tracks played too recently
+- allow either:
+  - hard exclusion for very recent plays
+  - or a much stronger penalty than current one
+- keep this behavior configurable
+
+3. Add query params if not already present:
+- limit
+- include_reasons=true
+- exclude_played=true
+- recent_window_hours=24
+
+Expected behavior:
+- when exclude_played=true, tracks played recently should be removed from the recommendation list if possible
+- if exclusion would make the list too small, fall back gracefully to strong penalties instead of empty output
+
+4. Keep a good balance
+Do not destroy strong taste matching completely.
+But discovery mode should not keep surfacing the same heavily replayed track at the very top unless there are no better alternatives.
+
+5. Improve response shape if useful
+Each item may include:
+- track_id
+- title / filename
+- score
+- reason
+- analysis snapshot:
+  - bpm
+  - key
+  - mood
+  - tempo_label
+  - genre/tags
+
+6. Return exact summary
+Report:
+- files changed
+- how mood is now added to live reasons
+- what recent-play logic was added
+- how exclude_played works
+- exact test calls
+- example response
+
+Acceptance criteria:
+- live recommendations can mention mood when relevant
+- exclude_played=true removes or strongly suppresses recently played tracks
+- recommendations stay ranked and taste-aware
+- no regression in next-action or existing APIs

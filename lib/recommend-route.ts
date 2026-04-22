@@ -28,6 +28,10 @@ const MAX_LIMIT     = 50
 // We over-fetch from the engine when exclude_played is on, so we still
 // return ~`limit` items after post-filter. 3× is plenty in practice.
 const OVERFETCH_FACTOR = 3
+// v2.1: discovery default — only suppress plays from the last day
+// unless the caller passes a different window.
+const DEFAULT_RECENT_WINDOW_HOURS = 24
+const MAX_RECENT_WINDOW_HOURS     = 24 * 30   // 30 days
 
 export interface AnalysisSnapshot {
   bpm:         number | null
@@ -70,21 +74,44 @@ export async function handleTrackRecommendations(request: NextRequest): Promise<
   const limit          = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : DEFAULT_LIMIT, 1), MAX_LIMIT)
   const includeReasons = (searchParams.get("include_reasons") ?? "true").toLowerCase() !== "false"
   const excludePlayed  = (searchParams.get("exclude_played")  ?? "false").toLowerCase() === "true"
+  const rawWindow      = Number(searchParams.get("recent_window_hours") ?? DEFAULT_RECENT_WINDOW_HOURS)
+  const recentWindowHours = Math.min(
+    Math.max(Number.isFinite(rawWindow) ? rawWindow : DEFAULT_RECENT_WINDOW_HOURS, 1),
+    MAX_RECENT_WINDOW_HOURS,
+  )
 
-  // Engine call — over-fetch when we'll be hard-filtering.
+  // Engine call — over-fetch when we'll be hard-filtering so we still
+  // return ~`limit` items after post-filter.
   const fetchLimit = excludePlayed ? Math.min(MAX_LIMIT * OVERFETCH_FACTOR, limit * OVERFETCH_FACTOR) : limit
   const rec = await recommendTracks(auth.agent.id, fetchLimit)
   const admin = getAdminClient()
 
-  // Optional hard exclusion: drop any track this agent's owner has played.
+  // v2.1: hard exclusion now honours `recent_window_hours`. Older replays
+  // are still surfaced (just down-weighted by the engine's repetition
+  // penalty), so heavy listeners don't end up with empty discovery feeds.
   let items = rec.items
+  let appliedFallback = false
+  let recentlyPlayedExcluded = 0
   if (excludePlayed && items.length) {
+    const cutoffIso = new Date(Date.now() - recentWindowHours * 3_600_000).toISOString()
     const { data: plays } = await admin
       .from("track_plays")
       .select("track_id")
       .eq("owner_user_id", auth.agent.user_id)
-    const playedIds = new Set((plays ?? []).map((p) => p.track_id as string))
-    items = items.filter((it) => !playedIds.has(it.track_id))
+      .gte("created_at", cutoffIso)
+    const recentIds = new Set((plays ?? []).map((p) => p.track_id as string))
+    const filtered  = items.filter((it) => !recentIds.has(it.track_id))
+    recentlyPlayedExcluded = items.length - filtered.length
+
+    // Graceful fallback: if hard exclusion would strip everything, fall
+    // back to the engine ranking (which already penalises replays).
+    // The caller still gets a list, just relying on penalty rather than
+    // hard removal.
+    if (filtered.length === 0 && items.length > 0) {
+      appliedFallback = true
+    } else {
+      items = filtered
+    }
   }
   items = items.slice(0, limit)
 
@@ -104,8 +131,29 @@ export async function handleTrackRecommendations(request: NextRequest): Promise<
     }
   }
 
+  const profileMoods = (rec.profile.summary.top_moods ?? []).map((m) => m.toLowerCase())
+
   const responseItems = items.map((it) => {
     const snap = analysisByTrack.get(it.track_id) ?? null
+    // v2.1: mood-reason augmentation. The engine already emits a mood
+    // reason when the profile's top_moods overlap with the candidate's.
+    // For callers whose profile hasn't accumulated top_moods yet (common
+    // before Essentia analyses pile up), this surfaces the candidate's
+    // mood in reasons informationally — making mood visible in the live
+    // ranked list without changing scoring.
+    const reason = [...it.reason]
+    // Skip augmentation only if a *real* mood reason exists (not the
+    // multi-facet bonus blurb that merely lists "mood" as a category).
+    const hasRealMoodReason = reason.some((r) => /preferred mood|mood differs|candidate mood/i.test(r))
+    if (snap?.mood?.length && !hasRealMoodReason) {
+      const candMoodsLc = snap.mood.map((m) => m.toLowerCase())
+      const overlap = candMoodsLc.filter((m) => profileMoods.includes(m))
+      if (overlap.length) {
+        reason.push(`matches preferred mood (${overlap.slice(0, 3).join(", ")})`)
+      } else {
+        reason.push(`candidate mood: ${snap.mood.slice(0, 3).join(", ")}`)
+      }
+    }
     const out: Record<string, unknown> = {
       track_id: it.track_id,
       title:    it.title,
@@ -115,7 +163,7 @@ export async function handleTrackRecommendations(request: NextRequest): Promise<
       analysis: snap,
       factors:  it.factors,
     }
-    if (includeReasons) out.reason = it.reason
+    if (includeReasons) out.reason = reason
     return out
   })
 
@@ -127,7 +175,14 @@ export async function handleTrackRecommendations(request: NextRequest): Promise<
     pagination: {
       limit,
       returned: responseItems.length,
-      filters: { include_reasons: includeReasons, exclude_played: excludePlayed },
+      filters: {
+        include_reasons:     includeReasons,
+        exclude_played:      excludePlayed,
+        recent_window_hours: recentWindowHours,
+      },
+      // v2.1 transparency about exclusion behaviour.
+      recently_played_excluded: recentlyPlayedExcluded,
+      applied_fallback:         appliedFallback,
     },
   })
 }
