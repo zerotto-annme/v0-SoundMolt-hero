@@ -14,9 +14,14 @@
  *
  * Query params:
  *   limit             default 10, max 50
- *   include_reasons   default true; pass "false" to omit reason arrays
+ *   include_reasons   default true; pass "false" to omit the reason field
  *   exclude_played    default false; if "true" hard-filters tracks the
  *                     agent's owner has ever played (track_plays)
+ *   include_debug     default false; when "true" each item also gets
+ *                     `factors` (raw scoring weights) and `reason_codes`
+ *                     (the engine's pre-prose reason array). Use this on
+ *                     debug surfaces only — UI endpoints should leave it
+ *                     off so payloads stay compact and clean.
  */
 import { NextRequest, NextResponse } from "next/server"
 import { requireAgent } from "./agent-api"
@@ -77,6 +82,7 @@ export async function buildTrackRecommendations(
   const limit          = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : DEFAULT_LIMIT, 1), MAX_LIMIT)
   const includeReasons = (searchParams.get("include_reasons") ?? "true").toLowerCase() !== "false"
   const excludePlayed  = (searchParams.get("exclude_played")  ?? "false").toLowerCase() === "true"
+  const includeDebug   = (searchParams.get("include_debug")   ?? "false").toLowerCase() === "true"
   const rawWindow      = Number(searchParams.get("recent_window_hours") ?? DEFAULT_RECENT_WINDOW_HOURS)
   const recentWindowHours = Math.min(
     Math.max(Number.isFinite(rawWindow) ? rawWindow : DEFAULT_RECENT_WINDOW_HOURS, 1),
@@ -158,21 +164,28 @@ export async function buildTrackRecommendations(
       }
     }
     const out: Record<string, unknown> = {
-      track_id: it.track_id,
-      title:    it.title,
-      score:    it.score,
-      genre:    it.genre,
+      track_id:  it.track_id,
+      title:     it.title,
+      score:     Math.round(it.score * 100) / 100,
+      genre:     it.genre,
       cover_url: it.cover_url,
-      analysis: snap,
-      factors:  it.factors,
+      analysis:  snap,
     }
-    if (includeReasons) out.reason = reason
+    if (includeReasons) {
+      // Production payload: a single human-readable sentence with the
+      // positive signals only. Raw codes (incl. negatives like the
+      // replay penalty) stay behind include_debug.
+      out.reason = prettifyReason(reason)
+    }
+    if (includeDebug) {
+      out.factors      = it.factors
+      out.reason_codes = reason
+    }
     return out
   })
 
-  return {
+  const payload: Record<string, unknown> = {
     items: responseItems,
-    profile_summary: rec.profile.summary,
     fallback: rec.fallback,
     message:  rec.message,
     pagination: {
@@ -188,6 +201,45 @@ export async function buildTrackRecommendations(
       applied_fallback:         appliedFallback,
     },
   }
+  // profile_summary is the deepest debug surface — it leaks the agent's
+  // full taste vector. Keep it behind include_debug for production UI.
+  if (includeDebug) payload.profile_summary = rec.profile.summary
+  return payload
+}
+
+/**
+ * Convert the engine's raw reason codes into one human-readable
+ * sentence. Drops entries that are negative-signal noise (the replay
+ * penalty line) or pure scoring blurbs (multi-facet bonus); keeps the
+ * positive "matches X" / "candidate mood: Y" lines, normalises them
+ * into clean clauses, and joins with an Oxford comma.
+ */
+function prettifyReason(codes: readonly string[]): string {
+  const positive = codes.filter((c) => {
+    const t = c.trim()
+    if (!t) return false
+    if (t.startsWith("-")) return false
+    if (/already played|repetition|penalty/i.test(t)) return false
+    if (/multi-facet|multi facet/i.test(t))           return false
+    return true
+  })
+  if (!positive.length) return "Matches your listening profile."
+
+  const clauses = positive.map((c) => {
+    let s = c.trim()
+    s = s.replace(/^matches\s+/i, "")
+    s = s.replace(/^candidate\s+/i, "")
+    return s
+  })
+
+  let sentence: string
+  if (clauses.length === 1) sentence = `Matches ${clauses[0]}.`
+  else if (clauses.length === 2) sentence = `Matches ${clauses[0]} and ${clauses[1]}.`
+  else {
+    const head = clauses.slice(0, -1).join(", ")
+    sentence = `Matches ${head}, and ${clauses[clauses.length - 1]}.`
+  }
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1)
 }
 
 /**

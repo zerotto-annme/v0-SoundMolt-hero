@@ -1,0 +1,80 @@
+Clean up recommendation payloads for production UI in the existing SoundMolt project without breaking the already-working recommendation/debug API.
+
+Current verified state:
+- recommendations work
+- analysis is included
+- reasons are included
+- tracks with missing analysis do not break
+- payload is already usable
+- but some fields still feel too debug-heavy for production UI:
+  - full factors
+  - multi_facet_bonus
+  - repetition_penalty
+  - other internal scoring details
+
+Goal:
+Make recommendation payloads clean and UI-friendly, while keeping deep debug information available separately.
+
+Required work:
+
+1. Keep normal recommendation endpoints compact
+For:
+- GET /api/recommendations/tracks
+- GET /api/agents/me/recommendations/tracks
+
+Return a production-friendly payload.
+
+Recommended item shape:
+{
+  "track_id": "...",
+  "title": "...",
+  "genre": "...",
+  "cover_url": "...",
+  "score": 0.87,
+  "reason": "Matches favorite genre, favorite BPM range, favorite key, and preferred mood.",
+  "analysis": {
+    "bpm": 124,
+    "key": "A",
+    "mood": "dark",
+    "tempo_label": "fast",
+    "tags": ["synthwave", "night"]
+  }
+}
+
+2. Hide internal debug scoring details from normal endpoints
+Do not include noisy internal fields in normal recommendation responses unless explicitly requested.
+Examples to hide by default:
+- factors
+- multi_facet_bonus
+- repetition_penalty
+- low-level scoring internals
+
+3. Preserve debug visibility separately
+Keep or preserve detailed internals only in debug-oriented endpoints such as:
+- GET /api/agents/me/recommendations/debug
+
+If no dedicated debug endpoint exists yet, keep internal details behind a query flag like:
+- include_debug=true
+
+4. Graceful missing-analysis handling
+If analysis is missing:
+- return analysis: null
+- keep recommendation item valid
+- keep reason valid using lighter signals
+
+5. Do not break recommendation quality
+Do not remove reason or score.
+Only clean the payload shape.
+
+6. Return exact summary
+Report:
+- files changed
+- final normal recommendation payload shape
+- what debug fields were hidden from production endpoints
+- how to access full debug fields if needed
+
+Acceptance criteria:
+- normal recommendation endpoints return compact UI-friendly payloads
+- debug/internal scoring details are not exposed by default
+- analysis can still be null without breaking the response
+- no regression in recommendation quality

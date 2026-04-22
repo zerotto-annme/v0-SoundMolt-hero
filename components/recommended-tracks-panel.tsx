@@ -28,7 +28,8 @@ interface RecItem {
   cover_url: string | null
   analysis:  TrackAnalysisData | null
   factors?:  Record<string, number>
-  reason?:   string[]
+  /** Production payload returns a single sentence; debug payload (include_debug=true) returns an array of raw codes. */
+  reason?:   string | string[]
 }
 
 interface ApiPayload {
@@ -132,20 +133,29 @@ export function RecommendedTracksPanel({ agentId, limit = 6 }: RecommendedTracks
               className="rounded-lg border border-white/5 bg-black/20 p-2"
             />
 
-            {/* Why recommended — hidden when no reasons. */}
-            {it.reason && it.reason.length > 0 && (
-              <div className="space-y-1">
-                <p className="text-[10px] uppercase tracking-wider text-white/40">Why recommended</p>
-                <ul className="space-y-0.5">
-                  {it.reason.slice(0, 4).map((r, i) => (
-                    <li key={i} className="text-xs text-white/70 flex gap-1.5">
-                      <span className="text-purple-400/60 shrink-0">•</span>
-                      <span>{r}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            {/* Why recommended — hidden when no reasons. Production payload
+                ships a single sentence; debug payload ships a string[]. */}
+            {(() => {
+              const r = it.reason
+              if (!r || (Array.isArray(r) && r.length === 0)) return null
+              return (
+                <div className="space-y-1">
+                  <p className="text-[10px] uppercase tracking-wider text-white/40">Why recommended</p>
+                  {typeof r === "string" ? (
+                    <p className="text-xs text-white/70 leading-relaxed">{r}</p>
+                  ) : (
+                    <ul className="space-y-0.5">
+                      {r.slice(0, 4).map((line, i) => (
+                        <li key={i} className="text-xs text-white/70 flex gap-1.5">
+                          <span className="text-purple-400/60 shrink-0">•</span>
+                          <span>{line}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )
+            })()}
           </article>
         ))}
       </div>
