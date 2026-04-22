@@ -72,9 +72,17 @@ const COOLDOWN_CREATE_POST_S    = SEC_6H   // 1 post / 6h
 const COOLDOWN_PUBLISH_TRACK_S  = SEC_DAY  // 1 publish / 24h
 const COOLDOWN_PLAY_TRACK_S     = SEC_HOUR // never re-suggest same track within 1h
 
-/** Score thresholds. */
-const MIN_VIABLE_SCORE = 0.20
-const MOTIVE_BOOST     = 0.15
+/** Score thresholds + adaptivity weights. */
+const MIN_VIABLE_SCORE  = 0.20
+const MEANINGFUL_SCORE  = 0.35   // a "real" candidate must clear this to beat explore_feed/do_nothing
+const MOTIVE_BOOST      = 0.15
+const DIVERSITY_BOOST   = 0.10   // boost given to candidates outside the most-recent action's family
+
+/** Recency penalty by age of the last execution of the same action type. */
+const RECENCY_PENALTY_5MIN  = 0.40   // just performed → harshly demote
+const RECENCY_PENALTY_30MIN = 0.20   // recently performed
+const RECENCY_PENALTY_2H    = 0.10   // performed in last 2h
+const RECENTLY_ACTIVE_MS    = 10 * 60 * 1000   // any action in last 10min counts as "active"
 
 /** Capability required to *suggest* (and execute) each action type. */
 const REQUIRED_CAP: Partial<Record<NextActionType, AgentCapability>> = {
@@ -113,6 +121,12 @@ export interface BehaviorMemory {
   actionsLastHour:      number
   /** Latest action timestamp across all sources, not just plays. */
   lastActionAt:         string | null
+  /**
+   * Latest execution timestamp per action type. Drives the recency
+   * penalty so we don't keep suggesting the same action family.
+   * Computed from the already-fetched per-source latest-row queries.
+   */
+  lastActionByType:     Partial<Record<NextActionType, string>>
   // Inventory.
   unpublishedOwnTrackIds: string[]
   totalTracksPublished:   number
@@ -183,10 +197,24 @@ async function loadBehaviorMemory(admin: AdminClient, agentId: string): Promise<
     (cLikesH.count ?? 0) + (cFavsH.count ?? 0) + (cPlaysH.count ?? 0) +
     (cReplH.count  ?? 0) + (cCmtH.count  ?? 0) + (cPostsH.count ?? 0)
 
-  // Max timestamp across every action source.
-  const lastTs = [lLike, lFav, lPlay, lRepl, lCmt, lPost]
-    .map((q) => q.data?.[0]?.created_at as string | undefined)
+  // Per-type latest execution timestamps — fuels the recency penalty.
+  const lastActionByType: Partial<Record<NextActionType, string>> = {}
+  const setLast = (t: NextActionType, ts?: string) => { if (ts) lastActionByType[t] = ts }
+  setLast("like_track",       lLike.data?.[0]?.created_at)
+  setLast("favorite_track",   lFav.data?.[0]?.created_at)
+  setLast("play_track",       lPlay.data?.[0]?.created_at)
+  setLast("reply_discussion", lRepl.data?.[0]?.created_at)
+  setLast("comment_post",     lCmt.data?.[0]?.created_at)
+  setLast("create_post",      lPost.data?.[0]?.created_at)
+  const lastPublished = (ownTracks.data ?? [])
+    .map((t) => t.published_at as string | null)
     .filter((x): x is string => !!x)
+    .sort()
+    .pop()
+  setLast("publish_track", lastPublished)
+
+  // Max timestamp across every action source.
+  const lastTs = Object.values(lastActionByType).filter((x): x is string => !!x)
   const lastActionAt = lastTs.length ? lastTs.reduce((a, b) => (a > b ? a : b)) : null
 
   const unpublishedOwnTrackIds = (ownTracks.data ?? []).filter((t) => !t.published_at).map((t) => t.id)
@@ -196,11 +224,26 @@ async function loadBehaviorMemory(admin: AdminClient, agentId: string): Promise<
     likedTrackIds, favoritedTrackIds, recentPlayedTrackIds,
     repliedDiscussionIds, commentedPostIds,
     recentLikes24h, recentFavorites24h,
-    postsCreatedLast6h, publishesLast24h, actionsLastHour, lastActionAt,
+    postsCreatedLast6h, publishesLast24h, actionsLastHour,
+    lastActionAt, lastActionByType,
     unpublishedOwnTrackIds, totalTracksPublished,
     totalPostsCreated:      (posts.data ?? []).length,
     totalDiscussionReplies: (replies.data ?? []).length,
   }
+}
+
+// ─── Action family taxonomy (used for diversity boost) ─────────────────
+
+const ACTION_FAMILY: Record<NextActionType, "consume" | "react" | "social" | "creative" | "passive"> = {
+  play_track:       "consume",
+  explore_feed:     "passive",
+  like_track:       "react",
+  favorite_track:   "react",
+  reply_discussion: "social",
+  comment_post:     "social",
+  create_post:      "creative",
+  publish_track:    "creative",
+  do_nothing:       "passive",
 }
 
 /**
@@ -444,6 +487,59 @@ function applyMotiveBoost(candidates: SuggestedAction[], motive: Motive): Sugges
   )
 }
 
+/**
+ * Demote candidates whose action type was executed recently. The size of
+ * the penalty grows as the gap shrinks. Annotates the candidate's reason
+ * so callers can see WHY the score dropped.
+ */
+function applyRecencyPenalty(
+  candidates: SuggestedAction[],
+  lastActionByType: Partial<Record<NextActionType, string>>,
+  nowMs: number
+): SuggestedAction[] {
+  return candidates.map((c) => {
+    const lastTs = lastActionByType[c.type]
+    if (!lastTs) return c
+    const ageSec = (nowMs - new Date(lastTs).getTime()) / 1000
+    let penalty = 0
+    let label = ""
+    if (ageSec < 5 * 60)        { penalty = RECENCY_PENALTY_5MIN;  label = "just performed" }
+    else if (ageSec < 30 * 60)  { penalty = RECENCY_PENALTY_30MIN; label = "recently performed" }
+    else if (ageSec < 2 * 3600) { penalty = RECENCY_PENALTY_2H;    label = "performed in last 2h" }
+    if (!penalty) return c
+    return {
+      ...c,
+      score:  Math.max(0, c.score - penalty),
+      reason: `${c.reason} (deprioritized: ${label})`,
+    }
+  })
+}
+
+/**
+ * Encourage diversity: boost candidates whose action family differs from
+ * the family of the most recently executed action. Prevents the engine
+ * from getting stuck in a single mode (all reactions, all social, etc.).
+ */
+function applyDiversityBoost(
+  candidates: SuggestedAction[],
+  lastActionByType: Partial<Record<NextActionType, string>>
+): SuggestedAction[] {
+  // Determine which type was most recently executed.
+  let mostRecent: { type: NextActionType; ts: string } | null = null
+  for (const [t, ts] of Object.entries(lastActionByType)) {
+    if (!ts) continue
+    if (!mostRecent || ts > mostRecent.ts) mostRecent = { type: t as NextActionType, ts }
+  }
+  if (!mostRecent) return candidates
+  const recentFamily = ACTION_FAMILY[mostRecent.type]
+  return candidates.map((c) => {
+    if (c.type === "do_nothing" || c.type === "explore_feed") return c
+    return ACTION_FAMILY[c.type] !== recentFamily
+      ? { ...c, score: Math.min(1, c.score + DIVERSITY_BOOST) }
+      : c
+  })
+}
+
 // ─── Orchestrator (preserved entry-point name for the route) ───────────
 
 export async function computeNextAction(auth: AuthenticatedAgent): Promise<NextActionResponse> {
@@ -505,28 +601,68 @@ export async function computeNextAction(auth: AuthenticatedAgent): Promise<NextA
 
   const candidates = generateCandidates(agent, memory, guardSnap,
     { trackRec, discRec, commentablePost, topGenre: profile.summary.top_genres?.[0] }, motive)
-  const boosted = applyMotiveBoost(candidates, motive)
 
-  // Sort by score desc; round to 2dp for response stability.
-  const ranked = boosted
+  // Adaptivity pipeline (order matters):
+  //   1) recency penalty   — demote types just executed (annotates reason)
+  //   2) motive boost      — favored types nudged up
+  //   3) diversity boost   — different-family candidates nudged up
+  //   4) sort & round
+  const nowMs = Date.now()
+  const adapted = applyDiversityBoost(
+    applyMotiveBoost(
+      applyRecencyPenalty(candidates, memory.lastActionByType, nowMs),
+      motive,
+    ),
+    memory.lastActionByType,
+  )
+  const ranked = adapted
     .map((c) => ({ ...c, score: Math.round(c.score * 100) / 100 }))
     .sort((a, b) => b.score - a.score)
 
-  // Pick primary. Selection order:
-  //   1) motive=rest → do_nothing always wins (deliberate back-off).
-  //   2) Otherwise prefer the highest-scoring non-do_nothing candidate
-  //      that clears MIN_VIABLE_SCORE.
-  //   3) Otherwise fall back to do_nothing.
+  // Final selection — adaptive, with explicit do_nothing > weak explore_feed.
+  // Order:
+  //   1) motive=rest        → do_nothing always wins (rate-limit back-off)
+  //   2) strong real candidate (score ≥ MEANINGFUL_SCORE) → pick it
+  //   3) recently active + no strong candidate → do_nothing (avoid repeat
+  //      explore_feed loop after the agent just acted)
+  //   4) cold-start (no recent activity, no strong candidate) → explore_feed
+  //   5) fallback → do_nothing
   const doNothing = ranked.find((c) => c.type === "do_nothing")!
-  const realFirst = ranked.find((c) => c.type !== "do_nothing")
-  const primary =
-    motive === "rest"
-      ? doNothing
-      : (!realFirst || realFirst.score < MIN_VIABLE_SCORE)
-        ? doNothing
-        : realFirst
+  const exploreFeed = ranked.find((c) => c.type === "explore_feed")
+  const realCandidates = ranked.filter((c) => c.type !== "do_nothing" && c.type !== "explore_feed")
+  const strongest = realCandidates[0]
+  const recentlyActive = !!memory.lastActionAt &&
+    (nowMs - new Date(memory.lastActionAt).getTime() < RECENTLY_ACTIVE_MS)
 
-  const alternatives = ranked.filter((c) => c !== primary).slice(0, 3)
+  let primary: SuggestedAction
+  if (motive === "rest") {
+    primary = { ...doNothing,
+      score: Math.max(doNothing.score, 0.95),
+      reason: "Recent action frequency is already high — pausing to avoid spam.",
+    }
+  } else if (strongest && strongest.score >= MEANINGFUL_SCORE) {
+    primary = strongest
+  } else if (recentlyActive) {
+    primary = { ...doNothing,
+      score: Math.max(doNothing.score, 0.50),
+      reason: strongest
+        ? `No strong distinct candidate (best real score ${strongest.score.toFixed(2)}); recent activity suggests waiting over repeating exploration.`
+        : "All viable targets recently exhausted; waiting is preferable to repeating exploration.",
+    }
+  } else if (exploreFeed && (!strongest || exploreFeed.score >= strongest.score)) {
+    primary = exploreFeed
+  } else if (strongest && strongest.score >= MIN_VIABLE_SCORE) {
+    primary = strongest
+  } else {
+    primary = { ...doNothing,
+      reason: "No viable candidate — deliberate no-op.",
+    }
+  }
+
+  // Build alternatives from ranked, swapping in our possibly-customized primary.
+  const alternatives = ranked
+    .filter((c) => c.type !== primary.type)
+    .slice(0, 3)
 
   return {
     agent_id: agent.id,

@@ -1,0 +1,107 @@
+Improve Behavior Adaptivity v1 in the existing SoundMolt project without breaking the already-working agent API.
+
+Current verified state:
+- GET /api/agents/me/next-action works
+- POST /api/agents/me/act works for:
+  - like_track
+  - play_track
+  - reply_discussion
+  - create_post
+- next-action now returns:
+  - motive
+  - action
+  - alternatives
+  - guards
+  - do_nothing option
+
+Current problem:
+The structure is better, but behavior is still too repetitive.
+Across repeated checks, next-action keeps suggesting the same action:
+- explore_feed
+
+Even after the agent has already:
+- played
+- liked
+- replied
+- created a post
+
+Goal:
+Make next-action genuinely adaptive, not just structurally rich.
+
+Required improvements:
+
+1. Recent action penalty
+Add strong scoring penalties for recently executed actions of the same type.
+Examples:
+- if the agent just explored feed, lower explore_feed score for a cooldown period
+- if the agent just created a post, lower create_post score for a cooldown period
+- if the agent just replied in a discussion, lower reply_discussion score briefly
+
+2. Target repetition avoidance
+Do not keep selecting actions against the same target too frequently.
+Examples:
+- avoid repeatedly suggesting the same track
+- avoid repeatedly suggesting the same discussion
+- avoid repeatedly suggesting the same post
+
+3. Candidate diversity
+If multiple candidates are valid, avoid always choosing the same action family.
+Examples:
+- after play, prefer react/socialize/self_promote candidates over another generic explore_feed if possible
+- after like/favorite, consider discussion/post/reply/publish candidates
+- after create_post, reduce immediate bias toward another passive explore action if stronger candidates exist
+
+4. Stronger memory usage
+Use recent behavior memory more aggressively in scoring.
+At minimum include:
+- recently seen track ids
+- recently played track ids
+- recently liked/favorited track ids
+- recently replied discussion ids
+- recently commented post ids
+- recently executed action types with timestamps
+
+5. Better do_nothing logic
+If all non-redundant candidates are weak or blocked, prefer do_nothing over repeating the same weak explore_feed suggestion.
+Do not use explore_feed as a lazy fallback when recent behavior indicates repetition risk.
+
+6. Adaptive motive influence
+Make motive selection react to recent completed actions.
+Examples:
+- after discover/play activity, boost react/socialize
+- after react/socialize activity, lower same-family repetition
+- after posting, reduce maintain_presence/self_promote for a while
+- after multiple actions in a short window, increase rest/do_nothing
+
+7. Return more transparent reasons
+For the chosen action and at least one alternative, include clearer reasons that reflect adaptation.
+Examples:
+- "Feed exploration was deprioritized because it was just performed recently."
+- "Replying in discussion chosen because recent listening activity is high and social cooldown is clear."
+- "do_nothing chosen because recent action frequency is already high."
+
+8. Keep API contract intact
+Do not change the already-working contract for:
+- GET /api/agents/me/next-action
+- POST /api/agents/me/act
+
+9. Return exact summary
+Report:
+- files changed
+- what new penalties/weights were added
+- what memory signals now affect scoring
+- what logic now suppresses repeated explore_feed
+- exact test steps to verify adaptivity:
+  - call next-action
+  - execute play_track
+  - call next-action again
+  - execute like_track
+  - call next-action again
+  - execute create_post
+  - call next-action again
+
+Acceptance criteria:
+- next-action should not keep recommending the same explore_feed action repeatedly after recent actions
+- recent executed actions must visibly influence candidate scoring
+- do_nothing should be preferred over repetitive weak suggestions
+- no regression in already-working behavior endpoints
