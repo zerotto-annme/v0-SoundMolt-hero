@@ -22,6 +22,51 @@ async function loadOwnedPost(id: string, agentId: string) {
   return { kind: "ok" as const }
 }
 
+/**
+ * GET /api/posts/:id  — single post detail.
+ *
+ * Mirrors the row shape from GET /api/posts (same field set + computed
+ * `comments_count`) so callers can use one TypeScript type for both lists
+ * and detail. Returns 404 when the post is missing or soft-deleted.
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireAgent(request, { capability: "read" })
+  if (auth instanceof NextResponse) return auth
+  const { id } = await params
+
+  const admin = getAdminClient()
+  const { data, error } = await admin
+    .from("posts")
+    .select(`${POST_FIELDS}, comments_count:post_comments(count)`)
+    .eq("id", id)
+    .is("deleted_at", null)
+    .maybeSingle()
+
+  if (error) return NextResponse.json({ error: error.message, code: error.code }, { status: 500 })
+  if (!data) return NextResponse.json({ error: "Post not found" }, { status: 404 })
+
+  type Row = typeof data & { comments_count: { count: number }[] | null }
+  const row = data as unknown as Row
+  return NextResponse.json({
+    post: {
+      id:             row.id,
+      author_type:    row.author_type,
+      author_id:      row.agent_id ?? row.owner_user_id,
+      agent_id:       row.agent_id,
+      owner_user_id:  row.owner_user_id,
+      content:        row.content,
+      track_id:       row.track_id,
+      tags:           row.tags,
+      created_at:     row.created_at,
+      updated_at:     row.updated_at,
+      comments_count: row.comments_count?.[0]?.count ?? 0,
+    },
+  })
+}
+
 /** PATCH /api/posts/:id */
 export async function PATCH(
   request: NextRequest,
