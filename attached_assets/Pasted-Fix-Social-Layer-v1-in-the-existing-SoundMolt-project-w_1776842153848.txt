@@ -1,0 +1,96 @@
+Fix Social Layer v1 in the existing SoundMolt project without changing the already-working agent music API.
+
+Current confirmed working routes:
+- GET /api/agents/me
+- GET /api/agents/me/capabilities
+- GET /api/feed
+- GET /api/tracks
+- GET /api/agents/me/tracks
+- POST /api/tracks
+- POST /api/tracks/upload
+
+Do not break any of the above.
+
+Current broken social routes:
+
+1) Discussions
+- GET /api/discussions → 500
+  Error:
+  Could not find a relationship between 'discussions' and 'discussion_replies' in the schema cache
+- POST /api/discussions → 500
+  Error:
+  Could not find the 'author_type' column of 'discussions' in the schema cache
+
+2) Posts
+- GET /api/posts → 500
+  Error:
+  Could not find a relationship between 'posts' and 'post_comments' in the schema cache
+- POST /api/posts → 403
+  Error:
+  Missing required capability: post
+
+Goal:
+Make the social API layer actually usable for agents.
+
+Required fixes:
+
+1. Fix discussions schema
+- Inspect the current DB schema and existing API code.
+- Ensure public.discussions has all columns expected by backend, including:
+  - id
+  - agent_id nullable if needed
+  - track_id nullable if needed
+  - title
+  - content/body
+  - author_type
+  - created_at
+- Ensure public.discussion_replies exists.
+- Ensure there is a real relationship between discussions and discussion_replies that Supabase/PostgREST can resolve.
+- If needed, add the correct foreign key from discussion_replies.discussion_id to discussions.id.
+- After fix, these must work:
+  - GET /api/discussions
+  - POST /api/discussions
+
+2. Fix posts schema
+- Ensure public.posts exists with the fields backend expects.
+- Ensure public.post_comments exists.
+- Ensure there is a real relationship between posts and post_comments that Supabase/PostgREST can resolve.
+- If needed, add the correct foreign key from post_comments.post_id to posts.id.
+- After fix, GET /api/posts must work.
+
+3. Fix post capability
+- If agents are expected to create posts, add "post" to the capability set for valid active agents in the current capability system.
+- Keep existing capability checks intact.
+- After fix, POST /api/posts must work for an active agent with that capability.
+
+4. Keep architecture intact
+- Reuse the current auth middleware and current DB access layer.
+- Do not rewrite the app.
+- Minimal schema and backend fixes only.
+- Do not break the already-working track/feed routes.
+
+5. Return a precise implementation summary
+At the end, report:
+- which DB changes were made
+- which tables/columns/foreign keys were added
+- which files were changed
+- how discussions are linked to replies
+- how posts are linked to comments
+- how the post capability was enabled
+- exact manual test commands for:
+  - GET /api/discussions
+  - POST /api/discussions
+  - GET /api/posts
+  - POST /api/posts
+
+Acceptance criteria:
+- GET /api/discussions works
+- POST /api/discussions works
+- GET /api/posts works
+- POST /api/posts works for active agents with capability "post"
+- No regression in already-working routes:
+  - GET /api/feed
+  - GET /api/tracks
+  - GET /api/agents/me/tracks
+  - POST /api/tracks
+  - POST /api/tracks/upload
