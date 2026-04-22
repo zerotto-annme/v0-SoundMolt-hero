@@ -1,7 +1,7 @@
 import { getAdminClient } from "./supabase-admin"
 import { agentHasCapability, type AgentCapability } from "./agent-api"
 import { computeTasteProfile, type TasteProfile } from "./agent-taste-profile"
-import { recommendTracks, recommendDiscussions } from "./agent-recommend"
+import { recommendTracks, recommendDiscussions, recommendPosts } from "./agent-recommend"
 import type { AuthenticatedAgent } from "./agent-auth"
 
 /**
@@ -246,30 +246,6 @@ const ACTION_FAMILY: Record<NextActionType, "consume" | "react" | "social" | "cr
   do_nothing:       "passive",
 }
 
-/**
- * Pick a single recent post the agent could comment on:
- *   - not authored by this agent
- *   - not already commented on (within the last 7d window)
- *   - not soft-deleted
- * Returns null when nothing suitable exists.
- */
-async function pickCommentablePost(
-  admin: AdminClient,
-  agentId: string,
-  excludeIds: Set<string>
-): Promise<{ id: string; preview: string } | null> {
-  const { data } = await admin.from("posts")
-    .select("id, content, agent_id")
-    .neq("agent_id", agentId)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false })
-    .limit(20)
-  if (!data?.length) return null
-  const pick = data.find((p) => !excludeIds.has(p.id))
-  if (!pick) return null
-  const preview = (pick.content ?? "").trim().slice(0, 60)
-  return { id: pick.id, preview }
-}
 
 // ─── Guardrails ────────────────────────────────────────────────────────
 
@@ -358,8 +334,17 @@ const MOTIVE_FAVORS: Record<Motive, NextActionType[]> = {
 interface CandidateInputs {
   trackRec: { id: string; title: string; score: number; reason: string[] } | null
   discRec:  { id: string; title: string; score: number; reason: string[] } | null
-  commentablePost: { id: string; preview: string } | null
+  /**
+   * Best uncommented post (top recommendPosts hit not in commentedPostIds).
+   * `score`/`reason` flow straight through from the recommend lib so
+   * tag/genre matches are visible.
+   */
+  postRec: { id: string; preview: string; score: number; reason: string[] } | null
   topGenre: string | undefined
+  topMood:  string | undefined
+  topTag:   string | undefined
+  /** Best unpublished own track (with whether analysis is available). */
+  publishCandidate: { id: string; hasAnalysis: boolean } | null
 }
 
 function generateCandidates(
@@ -372,13 +357,16 @@ function generateCandidates(
   const out: SuggestedAction[] = []
   const cap = (t: NextActionType) => REQUIRED_CAP[t] ? agentHasCapability(agent, REQUIRED_CAP[t]!) : true
 
+  // Helper: format up to N recommendation reasons inline.
+  const fmt = (rs: string[], n = 3) => rs.slice(0, n).join(", ")
+
   // play_track — top track rec the agent hasn't played in the last hour.
   if (cap("play_track") && inputs.trackRec && !memory.recentPlayedTrackIds.has(inputs.trackRec.id)) {
     out.push({
       type: "play_track",
       label: `Listen to "${inputs.trackRec.title}"`,
       target_id: inputs.trackRec.id,
-      reason: `Recommended for you (${inputs.trackRec.reason.slice(0, 2).join(", ")}).`,
+      reason: `Recommended (${fmt(inputs.trackRec.reason)}).`,
       score: 0.4 + 0.5 * inputs.trackRec.score,
     })
   }
@@ -389,7 +377,7 @@ function generateCandidates(
       type: "like_track",
       label: `Like "${inputs.trackRec.title}"`,
       target_id: inputs.trackRec.id,
-      reason: `Matches your taste (${inputs.trackRec.reason.slice(0, 2).join(", ")}); not previously liked.`,
+      reason: `Matches your taste (${fmt(inputs.trackRec.reason)}); not previously liked.`,
       score: 0.45 + 0.45 * inputs.trackRec.score,
     })
   }
@@ -401,7 +389,7 @@ function generateCandidates(
       type: "favorite_track",
       label: `Favorite "${inputs.trackRec.title}"`,
       target_id: inputs.trackRec.id,
-      reason: `Strong match (score ${inputs.trackRec.score.toFixed(2)}) and not previously favorited.`,
+      reason: `Strong match (score ${inputs.trackRec.score.toFixed(2)}: ${fmt(inputs.trackRec.reason)}); not previously favorited.`,
       score: 0.50 + 0.40 * inputs.trackRec.score,
     })
   }
@@ -412,46 +400,57 @@ function generateCandidates(
       type: "reply_discussion",
       label: `Join discussion: "${inputs.discRec.title}"`,
       target_id: inputs.discRec.id,
-      reason: `Matches your taste (${inputs.discRec.reason.slice(0, 2).join(", ")}); no recent reply from you.`,
+      reason: `Relevant discussion (${fmt(inputs.discRec.reason)}); no recent reply from you.`,
       score: 0.40 + 0.45 * inputs.discRec.score,
     })
   }
 
-  // comment_post — recent commentable post NOT already commented on (7d).
-  if (cap("comment_post") && inputs.commentablePost) {
+  // comment_post — top recommendPosts hit not in commentedPostIds.
+  // Score now flows from recommend lib, so tag/genre matches are visible.
+  if (cap("comment_post") && inputs.postRec) {
+    const hasReasons = inputs.postRec.reason.some((r) => r !== "recent fallback")
     out.push({
       type: "comment_post",
-      label: `Comment on a recent post`,
-      target_id: inputs.commentablePost.id,
-      reason: inputs.commentablePost.preview
-        ? `Engage with a recent community post: "${inputs.commentablePost.preview}…"`
-        : "Engage with a recent community post.",
-      score: 0.35,
+      label: "Comment on a relevant post",
+      target_id: inputs.postRec.id,
+      reason: hasReasons
+        ? `Relevant post (${fmt(inputs.postRec.reason)}); preview: "${inputs.postRec.preview}".`
+        : `Engage with a recent community post: "${inputs.postRec.preview}".`,
+      score: 0.30 + 0.45 * inputs.postRec.score,
     })
   }
 
-  // create_post — gated by 6h cooldown.
+  // create_post — gated by 6h cooldown. Reason now mentions concrete
+  // taste signals (genre + mood + tag) when available.
   if (cap("create_post") && !guards.cooldownsActive.create_post) {
-    const hasGenre = !!inputs.topGenre
+    const bits: string[] = []
+    if (inputs.topGenre) bits.push(`genre ${inputs.topGenre}`)
+    if (inputs.topMood)  bits.push(`mood ${inputs.topMood}`)
+    if (inputs.topTag)   bits.push(`tag ${inputs.topTag}`)
+    const hasSignal = bits.length > 0
     out.push({
       type: "create_post",
-      label: hasGenre ? `Share what you're listening to (${inputs.topGenre})` : "Share an update",
-      reason: hasGenre
-        ? `Top genre is ${inputs.topGenre} — share what you're exploring.`
+      label: inputs.topGenre ? `Share what you're exploring (${inputs.topGenre})` : "Share an update",
+      reason: hasSignal
+        ? `Share a post anchored in your current taste (${bits.join(", ")}).`
         : "Maintain presence with a short update.",
-      score: hasGenre ? 0.45 : 0.30,
+      score: hasSignal ? 0.40 + Math.min(0.10, bits.length * 0.04) : 0.30,
     })
   }
 
-  // publish_track — only if there's an unpublished own track AND publish cooldown ok.
-  if (cap("publish_track") && memory.unpublishedOwnTrackIds.length > 0 &&
+  // publish_track — pick best unpublished own track (analysis-ready preferred)
+  // and surface that reason explicitly.
+  if (cap("publish_track") && inputs.publishCandidate &&
       !guards.cooldownsActive.publish_track) {
+    const total = memory.unpublishedOwnTrackIds.length
     out.push({
       type: "publish_track",
       label: "Publish a draft track",
-      target_id: memory.unpublishedOwnTrackIds[0],
-      reason: `${memory.unpublishedOwnTrackIds.length} unpublished track(s) available.`,
-      score: 0.55,
+      target_id: inputs.publishCandidate.id,
+      reason: inputs.publishCandidate.hasAnalysis
+        ? `Own draft track is analysis-ready and waiting (${total} unpublished total).`
+        : `Own draft track ready to publish (${total} unpublished total).`,
+      score: inputs.publishCandidate.hasAnalysis ? 0.65 : 0.55,
     })
   }
 
@@ -562,22 +561,25 @@ export async function computeNextAction(auth: AuthenticatedAgent): Promise<NextA
     }
   }
 
-  // Gather inputs in parallel.
-  const [memory, profile, trackRecs, discRecs] = await Promise.all([
+  // Gather inputs in parallel — including recommendPosts so comment_post
+  // scoring is taste-aware (was previously raw recency).
+  const [memory, profile, trackRecs, discRecs, postRecs] = await Promise.all([
     loadBehaviorMemory(admin, agent.id),
     computeTasteProfile(agent.id),
-    recommendTracks(agent.id, 1),
-    recommendDiscussions(agent.id, 1),
+    recommendTracks(agent.id, 5),
+    recommendDiscussions(agent.id, 5),
+    agentHasCapability(agent, "comment")
+      ? recommendPosts(agent.id, 10)
+      : Promise.resolve({ items: [] as Awaited<ReturnType<typeof recommendPosts>>["items"], profile: undefined as unknown as TasteProfile, fallback: true }),
   ])
-  // commentablePost depends on memory.commentedPostIds, so it follows.
-  const commentablePost = agentHasCapability(agent, "comment")
-    ? await pickCommentablePost(admin, agent.id, memory.commentedPostIds)
-    : null
 
   const guardSnap = computeGuards(memory)
 
-  const topRecTrack = trackRecs.items[0] ?? null
-  const topRecDisc  = discRecs.items[0]  ?? null
+  // Pick top hit per source, skipping ones already acted on.
+  const topRecTrack = trackRecs.items.find((t) => !memory.recentPlayedTrackIds.has(t.track_id)) ?? trackRecs.items[0] ?? null
+  const topRecDisc  = discRecs.items.find((d) => !memory.repliedDiscussionIds.has(d.discussion_id)) ?? discRecs.items[0] ?? null
+  const topRecPost  = postRecs.items.find((p) => !memory.commentedPostIds.has(p.post_id)) ?? null
+
   const trackRec = topRecTrack ? {
     id: topRecTrack.track_id, title: topRecTrack.title ?? "",
     score: topRecTrack.score, reason: topRecTrack.reason,
@@ -586,6 +588,24 @@ export async function computeNextAction(auth: AuthenticatedAgent): Promise<NextA
     id: topRecDisc.discussion_id, title: topRecDisc.title,
     score: topRecDisc.score, reason: topRecDisc.reason,
   } : null
+  const postRec = topRecPost ? {
+    id: topRecPost.post_id, preview: topRecPost.content_preview,
+    score: topRecPost.score, reason: topRecPost.reason,
+  } : null
+
+  // Pick best unpublished own track for publish_track candidate.
+  // Prefer one with analysis available (signals "ready to publish").
+  let publishCandidate: { id: string; hasAnalysis: boolean } | null = null
+  if (memory.unpublishedOwnTrackIds.length > 0) {
+    const { data: analyzed } = await admin.from("track_analysis")
+      .select("track_id")
+      .in("track_id", memory.unpublishedOwnTrackIds)
+    const analyzedSet = new Set((analyzed ?? []).map((r) => r.track_id))
+    const withAnalysis = memory.unpublishedOwnTrackIds.find((id) => analyzedSet.has(id))
+    publishCandidate = withAnalysis
+      ? { id: withAnalysis, hasAnalysis: true }
+      : { id: memory.unpublishedOwnTrackIds[0], hasAnalysis: false }
+  }
 
   const listened           = profile.signals.listened_tracks_count + profile.signals.replayed_tracks_count
   const recentReactions24h = memory.recentLikes24h + memory.recentFavorites24h
@@ -599,8 +619,12 @@ export async function computeNextAction(auth: AuthenticatedAgent): Promise<NextA
   }
   const motive = selectMotive(memory, motiveCtx, guardSnap.guards.rate_limit_ok)
 
-  const candidates = generateCandidates(agent, memory, guardSnap,
-    { trackRec, discRec, commentablePost, topGenre: profile.summary.top_genres?.[0] }, motive)
+  const candidates = generateCandidates(agent, memory, guardSnap, {
+    trackRec, discRec, postRec, publishCandidate,
+    topGenre: profile.summary.top_genres?.[0],
+    topMood:  profile.summary.top_moods?.[0],
+    topTag:   profile.summary.top_tags?.[0],
+  }, motive)
 
   // Adaptivity pipeline (order matters):
   //   1) recency penalty   — demote types just executed (annotates reason)

@@ -400,6 +400,7 @@ export async function recommendPosts(
     .from("posts")
     .select("id, content, tags, track_id, created_at, deleted_at, tracks(style)")
     .is("deleted_at", null)
+    .neq("agent_id", agentId)
     .order("created_at", { ascending: false })
     .limit(200)
   if (error) throw new Error(`recommend: failed to read posts: ${error.message}`)

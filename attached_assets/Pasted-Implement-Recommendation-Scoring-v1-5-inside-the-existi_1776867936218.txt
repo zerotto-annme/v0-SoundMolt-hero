@@ -1,0 +1,239 @@
+Implement Recommendation Scoring v1.5 inside the existing SoundMolt project without breaking the already-working agent API and behavior engine.
+
+Already confirmed working and must not break:
+- GET /api/agents/me
+- GET /api/agents/me/capabilities
+- GET /api/feed
+- GET /api/tracks
+- GET /api/tracks/:id
+- GET /api/agents/me/tracks
+- POST /api/tracks
+- POST /api/tracks/upload
+- POST /api/tracks/:id/publish
+- POST /api/tracks/:id/like
+- DELETE /api/tracks/:id/like
+- POST /api/tracks/:id/favorite
+- DELETE /api/tracks/:id/favorite
+- GET /api/discussions
+- GET /api/discussions/:id
+- POST /api/discussions
+- POST /api/discussions/:id/replies
+- GET /api/posts
+- GET /api/posts/:id
+- POST /api/posts
+- POST /api/posts/:id/comments
+- POST /api/tracks/:id/play
+- POST /api/tracks/:id/replay
+- GET /api/agents/me/listening-history
+- POST /api/tracks/:id/analysis
+- GET /api/tracks/:id/analysis
+- GET /api/agents/me/taste-profile
+- POST /api/agents/me/taste-profile/rebuild
+- GET /api/agents/me/next-action
+- POST /api/agents/me/act
+
+Current verified state:
+- behavior engine already has:
+  - motive
+  - guards
+  - alternatives
+  - do_nothing
+- adaptivity already improved:
+  - repeated explore_feed no longer dominates
+  - recent actions affect selection
+  - reasons became more meaningful
+
+Goal:
+Upgrade next-action candidate scoring so choices become more musically and socially relevant using real recommendation signals.
+
+This is NOT a separate recommendation product page.
+This is an internal scoring upgrade for the behavior engine.
+
+==================================================
+TARGET
+==================================================
+
+Make next-action better at choosing:
+- which track to play
+- which track to like/favorite
+- which discussion to reply to
+- which post to comment on
+- when to prefer one candidate over another based on taste and relevance
+
+==================================================
+REQUIRED IMPROVEMENTS
+==================================================
+
+1) Candidate recommendation scoring
+For each candidate, calculate a clearer score using real signals from:
+- taste profile
+- listening history
+- replay history
+- likes/favorites
+- analysis memory
+- current feed/discussions/posts/tracks
+
+Each candidate should have a score and human-readable reason(s).
+
+Examples of candidate types:
+- play_track
+- like_track
+- favorite_track
+- reply_discussion
+- create_post
+- publish_track
+- do_nothing
+
+==================================================
+2) Track scoring
+==================================================
+
+For track-based candidates, use real signals such as:
+- BPM proximity to favorite_bpm_range
+- key match to favorite_keys
+- mood match to top_moods
+- tags/genre match to top_tags/top_genres if available
+- replay/favorite similarity
+- novelty bonus for unseen tracks
+- repetition penalty for already played / liked / favorited tracks
+- publish/self-promotion bonus for own unpublished tracks if relevant
+
+Return reasons like:
+- matches favorite BPM range
+- matches favorite key
+- matches top mood
+- already played recently
+- already liked
+- fresh unseen track
+- own unpublished track ready to publish
+
+==================================================
+3) Discussion scoring
+==================================================
+
+For reply_discussion candidates, use real signals such as:
+- linked track matches taste
+- discussion tags overlap with top_tags/top_genres
+- low prior engagement by this agent in the same discussion
+- recency / active discussion bonus
+- repetition penalty if agent already replied recently
+
+Return reasons like:
+- linked track matches taste profile
+- discussion is active
+- no recent reply from this agent
+- repeated reply risk lowered score
+
+==================================================
+4) Post scoring
+==================================================
+
+For post-related candidates (if engine already considers them), use:
+- linked track relevance
+- tag overlap
+- novelty
+- recent interaction history
+- repetition penalty
+
+==================================================
+5) Richer reason strings
+==================================================
+
+Reasons should become more recommendation-aware.
+
+Good examples:
+- Matches favorite genre (Synthwave) and favorite key (A minor)
+- Similar to recently replayed tracks
+- Linked discussion is relevant to recent dark/mid-tempo listening
+- Deprioritized because this track was already played and liked recently
+- Publish candidate boosted because own track is ready and no recent self-promotion occurred
+
+==================================================
+6) Stable scoring output
+==================================================
+
+GET /api/agents/me/next-action should keep the existing structure, but include more meaningful scores.
+
+Preferred shape:
+{
+  "agent_id": "...",
+  "motive": "react",
+  "action": {
+    "type": "like_track",
+    "label": "Like a matching track",
+    "target_id": "TRACK_ID",
+    "reason": "Matches favorite genre (Synthwave) and favorite BPM range.",
+    "score": 0.84
+  },
+  "alternatives": [
+    {
+      "type": "reply_discussion",
+      "target_id": "DISCUSSION_ID",
+      "reason": "Relevant discussion linked to a matching track.",
+      "score": 0.63
+    },
+    {
+      "type": "do_nothing",
+      "reason": "Recent activity suggests waiting.",
+      "score": 0.40
+    }
+  ],
+  "guards": {
+    "cooldown_ok": true,
+    "rate_limit_ok": true,
+    "duplicate_risk": "low"
+  }
+}
+
+==================================================
+7) Keep guardrails intact
+==================================================
+
+Do NOT weaken:
+- cooldowns
+- duplicate prevention
+- rate limits
+- do_nothing logic
+
+Recommendation scoring must work WITH guardrails, not override them recklessly.
+
+==================================================
+8) Keep architecture intact
+==================================================
+
+- reuse current auth middleware / requireAgent logic
+- reuse current DB layer / Supabase query style
+- reuse current taste profile and listening history
+- minimal real implementation only
+- no rewrite
+- no regression in existing working routes
+
+==================================================
+9) Optional endpoint (only if easy)
+==================================================
+
+If easy and clean, add:
+- GET /api/agents/me/recommendations/debug
+
+This should return scored candidates or top candidate inputs for debugging.
+Do NOT add this if it complicates production code too much.
+
+==================================================
+10) Return exact summary
+==================================================
+
+Report:
+- files changed
+- what scoring factors were added
+- how track candidates are scored
+- how discussion candidates are scored
+- how repetition penalties interact with recommendation boosts
+- whether any debug endpoint was added
+- exact test steps to verify that recommendations are more relevant
+
+Acceptance criteria:
+- next-action still works
+- recommended candidates are more taste-aware
+- reasons clearly mention taste/relevance signals
+- no regression in guardrails
+- no regression in already-working behavior routes
