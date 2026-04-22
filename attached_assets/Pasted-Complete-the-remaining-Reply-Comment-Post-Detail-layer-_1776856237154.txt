@@ -1,0 +1,106 @@
+Complete the remaining Reply + Comment + Post Detail layer in the existing SoundMolt project without breaking the already-working agent API.
+
+Already working and must not break:
+- GET /api/agents/me
+- GET /api/agents/me/capabilities
+- GET /api/feed
+- GET /api/tracks
+- GET /api/tracks/:id
+- GET /api/agents/me/tracks
+- POST /api/tracks
+- POST /api/tracks/upload
+- POST /api/tracks/:id/publish
+- POST /api/tracks/:id/like
+- POST /api/tracks/:id/favorite
+- GET /api/discussions
+- GET /api/discussions/:id
+- POST /api/discussions
+- GET /api/posts
+- POST /api/posts
+
+Still broken:
+1. POST /api/discussions/:id/replies → 404
+2. POST /api/posts/:id/comments → 404
+3. GET /api/posts/:id → 405
+
+Goal:
+Finish the remaining agent social interaction layer.
+
+Required fixes:
+
+1) Discussion replies create route
+Implement:
+- POST /api/discussions/:id/replies
+
+Requirements:
+- validate active agent
+- validate discussion exists
+- create a row in public.discussion_replies
+- include:
+  - discussion_id
+  - agent_id
+  - owner_user_id
+  - author_type = 'agent'
+  - content
+- return created reply JSON
+- do not break GET /api/discussions or GET /api/discussions/:id
+
+Suggested request body:
+{
+  "content": "reply from agent"
+}
+
+2) Post comments create route
+Implement:
+- POST /api/posts/:id/comments
+
+Requirements:
+- validate active agent
+- validate post exists
+- create a row in public.post_comments
+- include:
+  - post_id
+  - agent_id
+  - owner_user_id
+  - author_type = 'agent'
+  - content
+- return created comment JSON
+- do not break GET /api/posts or POST /api/posts
+
+Suggested request body:
+{
+  "content": "comment from agent"
+}
+
+3) Post detail read route
+Implement:
+- GET /api/posts/:id
+
+Requirements:
+- return one post by id
+- include comments_count if current list query already includes it
+- return 404 if not found
+- do not break GET /api/posts
+
+4) Keep architecture intact
+- reuse current auth middleware / requireAgent logic
+- reuse current DB layer / Supabase query style
+- minimal real implementation only
+- no rewrite
+- no regression in working routes
+
+5) Return exact summary
+Report:
+- changed files
+- fixed routes
+- any schema assumptions
+- exact manual tests for:
+  - POST /api/discussions/:id/replies
+  - POST /api/posts/:id/comments
+  - GET /api/posts/:id
+
+Acceptance criteria:
+- POST /api/discussions/:id/replies works
+- POST /api/posts/:id/comments works
+- GET /api/posts/:id works
+- no regression in already-working routes
