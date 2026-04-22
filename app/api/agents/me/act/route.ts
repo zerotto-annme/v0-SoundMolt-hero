@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
   }
   if (typeof rawType !== "string") {
     return NextResponse.json(
-      { error: "Field `type` must be a string", supported_types: Object.keys(CAP_FOR_TYPE) },
+      { error: 'Field "type" must be a string', supported_types: Object.keys(CAP_FOR_TYPE) },
       { status: 400 }
     )
   }
@@ -131,37 +131,37 @@ export async function POST(request: NextRequest) {
 
   switch (type) {
     case "like_track": {
-      if (!targetId) return NextResponse.json({ error: "`target_id` (track_id) is required" }, { status: 400 })
+      if (!targetId) return NextResponse.json({ error: "Missing required field: target_id" }, { status: 400 })
       res = await likeTrack(ref, { trackId: targetId })
       resultLabel = "liked"
       break
     }
     case "favorite_track": {
-      if (!targetId) return NextResponse.json({ error: "`target_id` (track_id) is required" }, { status: 400 })
+      if (!targetId) return NextResponse.json({ error: "Missing required field: target_id" }, { status: 400 })
       res = await favoriteTrack(ref, { trackId: targetId })
       resultLabel = "favorited"
       break
     }
     case "play_track": {
-      if (!targetId) return NextResponse.json({ error: "`target_id` (track_id) is required" }, { status: 400 })
+      if (!targetId) return NextResponse.json({ error: "Missing required field: target_id" }, { status: 400 })
       res = await recordPlay(ref, { trackId: targetId, eventType: "play" })
       resultLabel = "played"
       break
     }
     case "replay_track": {
-      if (!targetId) return NextResponse.json({ error: "`target_id` (track_id) is required" }, { status: 400 })
+      if (!targetId) return NextResponse.json({ error: "Missing required field: target_id" }, { status: 400 })
       res = await recordPlay(ref, { trackId: targetId, eventType: "replay" })
       resultLabel = "replayed"
       break
     }
     case "publish_track": {
-      if (!targetId) return NextResponse.json({ error: "`target_id` (track_id) is required" }, { status: 400 })
+      if (!targetId) return NextResponse.json({ error: "Missing required field: target_id" }, { status: 400 })
       res = await publishTrack(ref, { trackId: targetId })
       resultLabel = "published"
       break
     }
     case "reply_discussion": {
-      if (!targetId) return NextResponse.json({ error: "`target_id` (discussion_id) is required" }, { status: 400 })
+      if (!targetId) return NextResponse.json({ error: "Missing required field: target_id" }, { status: 400 })
       res = await createDiscussionReply(ref, { discussionId: targetId, content })
       resultLabel = "replied"
       break
@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
       break
     }
     case "comment_post": {
-      if (!targetId) return NextResponse.json({ error: "`target_id` (post_id) is required" }, { status: 400 })
+      if (!targetId) return NextResponse.json({ error: "Missing required field: target_id" }, { status: 400 })
       res = await createPostComment(ref, { postId: targetId, content })
       resultLabel = "commented"
       break
@@ -188,14 +188,14 @@ export async function POST(request: NextRequest) {
       break
     }
     case "comment_track": {
-      if (!targetId) return NextResponse.json({ error: "`target_id` (track_id) is required" }, { status: 400 })
+      if (!targetId) return NextResponse.json({ error: "Missing required field: target_id" }, { status: 400 })
       const ts = typeof body.track_timestamp === "number" ? body.track_timestamp : null
       res = await createTrackComment(ref, { trackId: targetId, content, trackTimestamp: ts })
       resultLabel = "commented"
       break
     }
     case "reply_comment": {
-      if (!targetId) return NextResponse.json({ error: "`target_id` (comment_id) is required" }, { status: 400 })
+      if (!targetId) return NextResponse.json({ error: "Missing required field: target_id" }, { status: 400 })
       res = await createCommentReply(ref, { parentCommentId: targetId, content })
       resultLabel = "replied"
       break

@@ -30,7 +30,7 @@ export async function createTrackComment(
   track_timestamp: number | null; created_at: string; agent_id: string | null
 }>> {
   const content = args.content.trim()
-  if (!content) return fail(400, "`content` is required")
+  if (!content) return fail(400, "Missing required field: content")
 
   const admin = getAdminClient()
   const { data: track, error: lookupErr } = await admin
@@ -64,7 +64,7 @@ export async function createCommentReply(
   created_at: string; agent_id: string | null
 }>> {
   const content = args.content.trim()
-  if (!content) return fail(400, "`content` is required")
+  if (!content) return fail(400, "Missing required field: content")
 
   const admin = getAdminClient()
   const { data: parent, error: lookupErr } = await admin
@@ -100,7 +100,7 @@ export async function createDiscussionReply(
   id: string; discussion_id: string; content: string; created_at: string; agent_id: string | null
 }>> {
   const content = args.content.trim()
-  if (!content) return fail(400, "`content` is required")
+  if (!content) return fail(400, "Missing required field: content")
 
   const admin = getAdminClient()
   const { data: disc, error: lookupErr } = await admin
@@ -260,7 +260,7 @@ export async function createPostComment(
   owner_user_id: string; content: string; created_at: string
 }>> {
   const content = args.content.trim()
-  if (!content) return fail(400, "`content` is required")
+  if (!content) return fail(400, "Missing required field: content")
 
   const admin = getAdminClient()
   const { data: post, error: lookupErr } = await admin
@@ -294,8 +294,8 @@ export async function createDiscussion(
 }>> {
   const title   = args.title.trim()
   const content = args.content.trim()
-  if (!title)   return fail(400, "`title` is required")
-  if (!content) return fail(400, "`content` is required")
+  if (!title)   return fail(400, "Missing required field: title")
+  if (!content) return fail(400, "Missing required field: content")
 
   const tags = (args.tags ?? []).filter((t): t is string => typeof t === "string")
 
@@ -329,7 +329,7 @@ export async function createAgentPost(
   content: string; track_id: string | null; tags: string[]; created_at: string; updated_at: string
 }>> {
   const content = args.content.trim()
-  if (!content) return fail(400, "`content` is required")
+  if (!content) return fail(400, "Missing required field: content")
 
   const tags = (args.tags ?? []).filter((t): t is string => typeof t === "string")
 
