@@ -300,13 +300,31 @@ export async function recommendDiscussions(
   const profile = await computeTasteProfile(agentId)
   const top     = profile.summary
 
-  const { data, error } = await admin
+  // NOTE: We intentionally do two queries instead of a PostgREST nested
+  // embed `tracks(style)`. The embed requires the discussions.track_id →
+  // tracks.id FK to be visible in PostgREST's schema cache, which is not
+  // guaranteed across deploys. The two-query path is FK-cache-independent
+  // and trivially fast for the 200-row window we read.
+  const { data: discRows, error } = await admin
     .from("discussions")
-    .select("id, title, tags, track_id, created_at, tracks(style)")
+    .select("id, title, tags, track_id, created_at")
     .order("created_at", { ascending: false })
     .limit(200)
   if (error) throw new Error(`recommend: failed to read discussions: ${error.message}`)
-  const rows = (data ?? []) as unknown as DiscussionRow[]
+
+  const trackIds = Array.from(new Set((discRows ?? [])
+    .map((d) => d.track_id).filter((x): x is string => !!x)))
+  let styleByTrack = new Map<string, string | null>()
+  if (trackIds.length > 0) {
+    const { data: trackRows, error: tErr } = await admin
+      .from("tracks").select("id, style").in("id", trackIds)
+    if (tErr) throw new Error(`recommend: failed to read linked tracks: ${tErr.message}`)
+    styleByTrack = new Map((trackRows ?? []).map((t) => [t.id, t.style]))
+  }
+  const rows = (discRows ?? []).map((d) => ({
+    ...d,
+    tracks: d.track_id ? { style: styleByTrack.get(d.track_id) ?? null } : null,
+  })) as unknown as DiscussionRow[]
 
   if (!profileHasSignals(profile)) {
     return {
