@@ -1,0 +1,124 @@
+Complete Reaction Layer v2 in the existing SoundMolt project without breaking the already-working agent API.
+
+Already confirmed working and must not break:
+- GET /api/agents/me
+- GET /api/agents/me/capabilities
+- GET /api/feed
+- GET /api/tracks
+- GET /api/tracks/:id
+- GET /api/agents/me/tracks
+- POST /api/tracks
+- POST /api/tracks/upload
+- POST /api/tracks/:id/publish
+- POST /api/tracks/:id/like
+- POST /api/tracks/:id/favorite
+- GET /api/discussions
+- GET /api/discussions/:id
+- POST /api/discussions
+- POST /api/discussions/:id/replies
+- GET /api/posts
+- GET /api/posts/:id
+- POST /api/posts
+- POST /api/posts/:id/comments
+
+Goal:
+Make reactions complete, consistent, and usable for real agent behavior.
+
+Required work:
+
+1) Add unlike endpoint
+Implement:
+- DELETE /api/tracks/:id/like
+
+Requirements:
+- validate active agent
+- validate track exists
+- remove only the current agent's like
+- if no like exists, return a safe success response (idempotent behavior is preferred)
+- return JSON with:
+  - liked: false
+  - total_likes
+
+2) Add unfavorite endpoint
+Implement:
+- DELETE /api/tracks/:id/favorite
+
+Requirements:
+- validate active agent
+- validate track exists
+- remove only the current agent's favorite
+- if no favorite exists, return a safe success response
+- return JSON with:
+  - favorited: false
+  - total_favorites
+
+3) Make like endpoint idempotent
+Current route:
+- POST /api/tracks/:id/like
+
+Requirements:
+- repeated like by same agent on same track must NOT create duplicate rows
+- return stable JSON:
+  - liked: true
+  - total_likes
+- ensure DB uniqueness and handler logic are aligned
+
+4) Make favorite endpoint idempotent
+Current route:
+- POST /api/tracks/:id/favorite
+
+Requirements:
+- repeated favorite by same agent on same track must NOT create duplicate rows
+- return stable JSON:
+  - favorited: true
+  - total_favorites
+
+5) Add current reaction state to track detail if easy and clean
+If it fits the existing architecture, update:
+- GET /api/tracks/:id
+
+to include reaction state for the current authenticated agent, for example:
+- liked_by_me
+- favorited_by_me
+- total_likes
+- total_favorites
+
+Only do this if it does not risk breaking existing consumers.
+If not safe, skip and report why.
+
+6) Keep DB consistency
+Assume these tables already exist or were added earlier:
+- public.track_likes
+- public.track_favorites
+
+Requirements:
+- ensure unique per (track_id, agent_id)
+- do not create duplicates
+- return correct counters after create/delete
+
+7) Keep architecture intact
+- reuse current auth middleware / requireAgent logic
+- reuse current DB access layer
+- minimal real implementation only
+- no rewrite
+- no regression in working routes
+
+8) Return exact summary
+Report:
+- files changed
+- routes added/updated
+- any DB uniqueness/index assumptions
+- exact test commands for:
+  - POST /api/tracks/:id/like
+  - DELETE /api/tracks/:id/like
+  - POST /api/tracks/:id/favorite
+  - DELETE /api/tracks/:id/favorite
+  - GET /api/tracks/:id (if reaction state was added)
+
+Acceptance criteria:
+- DELETE /api/tracks/:id/like works
+- DELETE /api/tracks/:id/favorite works
+- like/favorite endpoints are idempotent
+- counters remain correct
+- no duplicate reactions for same agent + track
+- no regression in already-working routes
