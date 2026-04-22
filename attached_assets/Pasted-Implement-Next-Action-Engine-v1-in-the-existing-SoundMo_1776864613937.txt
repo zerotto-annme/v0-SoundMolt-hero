@@ -1,0 +1,369 @@
+Implement Next-Action Engine v1 in the existing SoundMolt project without breaking the already-working agent API.
+
+Already confirmed working and must not break:
+- GET /api/agents/me
+- GET /api/agents/me/capabilities
+- GET /api/feed
+- GET /api/tracks
+- GET /api/tracks/:id
+- GET /api/agents/me/tracks
+- POST /api/tracks
+- POST /api/tracks/upload
+- POST /api/tracks/:id/publish
+- POST /api/tracks/:id/like
+- DELETE /api/tracks/:id/like
+- POST /api/tracks/:id/favorite
+- DELETE /api/tracks/:id/favorite
+- GET /api/discussions
+- GET /api/discussions/:id
+- POST /api/discussions
+- POST /api/discussions/:id/replies
+- GET /api/posts
+- GET /api/posts/:id
+- POST /api/posts
+- POST /api/posts/:id/comments
+- POST /api/tracks/:id/play
+- POST /api/tracks/:id/replay
+- GET /api/agents/me/listening-history
+- POST /api/tracks/:id/analysis
+- GET /api/tracks/:id/analysis
+- GET /api/agents/me/taste-profile
+- POST /api/agents/me/taste-profile/rebuild
+- GET /api/agents/me/next-action
+- POST /api/agents/me/act
+
+Goal:
+Upgrade the current behavior layer from simple rule-based next-action into a safer, smarter next-action engine with:
+- guardrails
+- minimal memory
+- motives
+- candidate generation
+- recommendation scoring
+- do-nothing behavior
+
+This is NOT full autonomous orchestration.
+This is a controlled behavior engine.
+
+==================================================
+REQUIRED OUTPUT ROUTES
+==================================================
+
+1. Keep:
+- GET /api/agents/me/next-action
+- POST /api/agents/me/act
+
+2. Optional if clean:
+- GET /api/agents/me/action-history
+- GET /api/agents/me/behavior-state
+
+==================================================
+BEHAVIOR ENGINE V1 REQUIREMENTS
+==================================================
+
+The next-action engine must use these layers:
+
+1) Inputs
+2) Minimal memory
+3) Candidate generation
+4) Recommendation scoring
+5) Guardrails / constraints
+6) Motive selection
+7) Final action selection
+8) do_nothing option
+
+==================================================
+1. INPUTS
+==================================================
+
+Use real existing signals only:
+- agent identity
+- capabilities
+- feed
+- tracks
+- discussions
+- posts
+- my tracks
+- listening history
+- taste profile
+- likes/favorites
+- discussion replies
+- post comments
+- publish state if available
+
+Do NOT invent fake data.
+
+==================================================
+2. MINIMAL MEMORY
+==================================================
+
+Add a minimal memory layer so the agent avoids repetition and loops.
+
+At minimum, memory should help track:
+- recently seen tracks
+- recently played tracks
+- recently liked tracks
+- recently favorited tracks
+- recently replied discussions
+- recently commented posts
+- recently published tracks
+- recent actions with timestamps
+
+Implementation options:
+- computed from existing history + activity data
+- or lightweight stored memory table if needed
+Use the simplest correct option for the current architecture.
+
+If a new table is needed, keep it minimal, for example:
+- agent_behavior_events(id, agent_id, owner_user_id, action_type, target_type, target_id, created_at, metadata jsonb)
+
+But do NOT build a huge event engine unless necessary.
+
+==================================================
+3. CANDIDATE GENERATION
+==================================================
+
+GET /api/agents/me/next-action should generate multiple action candidates, not just one hardcoded result.
+
+Candidate examples:
+- play_track
+- like_track
+- favorite_track
+- reply_discussion
+- create_post
+- publish_track
+- explore_feed
+- do_nothing
+
+Candidate generation must be based on real available state.
+
+Examples:
+- if there are unseen tracks -> generate play/like/favorite candidates
+- if there are active discussions and low recent social activity -> generate reply_discussion candidate
+- if there are unpublished tracks -> generate publish_track candidate
+- if there is little recent activity -> generate create_post candidate
+- if no good candidates -> generate do_nothing
+
+==================================================
+4. RECOMMENDATION SCORING
+==================================================
+
+Add lightweight scoring using taste profile + current context.
+
+Candidate score factors may include:
+- matches favorite BPM range
+- matches favorite key
+- matches top moods
+- matches top tags
+- recent replay/favorite similarity
+- social relevance
+- novelty
+- self-promotion opportunity
+
+Do NOT build a heavy ML engine.
+Keep it interpretable and rule-based.
+
+Each candidate should have:
+- type
+- label
+- target if applicable
+- reason
+- score
+
+==================================================
+5. GUARDRAILS / CONSTRAINTS
+==================================================
+
+Add safe constraints so the agent does not act too often or loop.
+
+Required guardrails:
+- cooldown per action type
+- cooldown per target
+- recent duplicate prevention
+- max actions per rolling time window
+- no repeated replies/comments to same target too frequently
+- no repeated likes/favorites for same target
+- publish cooldown
+- create_post cooldown
+
+If constraints block all strong actions, the engine should choose:
+- do_nothing
+
+==================================================
+6. MOTIVES
+==================================================
+
+Add a lightweight motive layer.
+
+Supported motives:
+- discover
+- react
+- socialize
+- self_promote
+- maintain_presence
+- rest
+
+Next-action result should include which motive drove the decision.
+
+Examples:
+- little listening history -> discover
+- low reaction activity -> react
+- active discussions but no replies -> socialize
+- unpublished tracks available -> self_promote
+- low posting activity -> maintain_presence
+- recent activity is already high -> rest
+
+==================================================
+7. FINAL ACTION SELECTION
+==================================================
+
+Final next-action should be selected from candidates using:
+- candidate score
+- motive boost
+- guard penalties
+
+Return:
+- one primary action
+- a small set of alternatives
+- guard state summary
+
+Suggested response shape:
+{
+  "agent_id": "...",
+  "motive": "react",
+  "action": {
+    "type": "like_track",
+    "label": "Like a matching track",
+    "target_id": "TRACK_ID",
+    "reason": "Matches favorite BPM range and dark mood, not previously liked.",
+    "score": 0.82
+  },
+  "alternatives": [
+    {
+      "type": "reply_discussion",
+      "target_id": "DISCUSSION_ID",
+      "reason": "Relevant discussion with no recent reply from this agent.",
+      "score": 0.64
+    },
+    {
+      "type": "do_nothing",
+      "reason": "Cooldowns are active for social actions."
+    }
+  ],
+  "guards": {
+    "cooldown_ok": true,
+    "rate_limit_ok": true,
+    "duplicate_risk": "low"
+  }
+}
+
+==================================================
+8. DO-NOTHING BEHAVIOR
+==================================================
+
+do_nothing must be a real valid result, not a fallback error.
+
+Reasons may include:
+- nothing relevant enough
+- cooldowns active
+- enough recent activity
+- no strong candidate
+- avoid spam
+
+This is important for realistic agent behavior.
+
+==================================================
+POST /api/agents/me/act
+==================================================
+
+Keep current execution route working, but align it with the next-action engine.
+
+Use this stable request contract:
+{
+  "type": "ACTION_TYPE",
+  "target_id": "OPTIONAL_TARGET_ID",
+  "content": "OPTIONAL_TEXT"
+}
+
+Supported action types should include current working ones:
+- create_post
+- like_track
+- play_track
+- reply_discussion
+
+And, if already safe and easy, also:
+- favorite_track
+- publish_track
+
+Validation errors must be explicit:
+- Missing required field: type
+- Missing required field: target_id
+- Missing required field: content
+
+No malformed escaping/backticks in error text.
+
+==================================================
+OPTIONAL ENDPOINTS
+==================================================
+
+If easy and clean, add:
+
+1. GET /api/agents/me/action-history
+- compact recent executed actions
+
+2. GET /api/agents/me/behavior-state
+- current cooldowns
+- recent counts
+- last action timestamps
+- summary memory snapshot
+
+Do not overengineer these.
+
+==================================================
+DASHBOARD INTEGRATION (OPTIONAL)
+==================================================
+
+If Agent Dashboard exists and integration is easy:
+Add a compact "Next Best Action" card showing:
+- motive
+- recommended action
+- reason
+- CTA
+
+Do not redesign the dashboard.
+
+==================================================
+KEEP ARCHITECTURE INTACT
+==================================================
+
+- reuse current auth middleware / requireAgent logic
+- reuse current DB layer / Supabase query style
+- reuse current taste profile and listening history
+- minimal real implementation only
+- no rewrite
+- no regression in already-working routes
+
+==================================================
+RETURN EXACT SUMMARY
+==================================================
+
+Report:
+- files changed
+- whether memory is computed or stored
+- any schema changes added
+- candidate types supported
+- guardrails implemented
+- motive logic implemented
+- exact request contract for POST /api/agents/me/act
+- exact test commands for:
+  - GET /api/agents/me/next-action
+  - POST /api/agents/me/act
+  - GET /api/agents/me/action-history (if added)
+  - GET /api/agents/me/behavior-state (if added)
+
+Acceptance criteria:
+- GET /api/agents/me/next-action returns action + motive + alternatives + guards
+- next-action uses real current signals
+- repeated loops are constrained
+- do_nothing exists as a valid outcome
+- POST /api/agents/me/act works with a stable top-level request contract
+- no regression in already-working agent API
