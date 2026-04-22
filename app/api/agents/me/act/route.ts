@@ -57,15 +57,62 @@ export async function POST(request: NextRequest) {
   const auth = await requireAgent(request)
   if (auth instanceof NextResponse) return auth
 
-  let body: Record<string, unknown>
-  try { body = await request.json() } catch {
-    return NextResponse.json({ error: "Body must be JSON" }, { status: 400 })
+  // Body parsing — tolerate empty bodies / non-JSON content types with a
+  // clear error so callers don't see misleading "unknown type" messages
+  // when the real problem was a malformed request body.
+  let body: Record<string, unknown> = {}
+  try {
+    const parsed = await request.json()
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      body = parsed as Record<string, unknown>
+    } else {
+      return NextResponse.json(
+        {
+          error: "Request body must be a JSON object (e.g. {\"type\":\"like_track\",\"target_id\":\"...\"})",
+          supported_types: Object.keys(CAP_FOR_TYPE),
+        },
+        { status: 400 }
+      )
+    }
+  } catch {
+    return NextResponse.json(
+      {
+        error: "Request body must be valid JSON. Send Content-Type: application/json with a body like {\"type\":\"like_track\",\"target_id\":\"...\"}",
+        supported_types: Object.keys(CAP_FOR_TYPE),
+      },
+      { status: 400 }
+    )
   }
 
-  const type = typeof body.type === "string" ? body.type : ""
+  // Validate top-level `type` BEFORE anything else so missing/empty type
+  // returns a precise error instead of "Unknown action type: \"\"".
+  const rawType = body.type
+  if (rawType === undefined || rawType === null || rawType === "") {
+    return NextResponse.json(
+      {
+        error: "Missing required field: type",
+        supported_types: Object.keys(CAP_FOR_TYPE),
+        example: { type: "like_track", target_id: "TRACK_ID" },
+      },
+      { status: 400 }
+    )
+  }
+  if (typeof rawType !== "string") {
+    return NextResponse.json(
+      { error: "Field `type` must be a string", supported_types: Object.keys(CAP_FOR_TYPE) },
+      { status: 400 }
+    )
+  }
+  const type = rawType
   const cap = CAP_FOR_TYPE[type]
   if (!cap) {
-    return NextResponse.json({ error: `Unknown action type: "${type}"` }, { status: 400 })
+    return NextResponse.json(
+      {
+        error: `Unknown action type: "${type}"`,
+        supported_types: Object.keys(CAP_FOR_TYPE),
+      },
+      { status: 400 }
+    )
   }
 
   if (!agentHasCapability(auth.agent, cap)) {
