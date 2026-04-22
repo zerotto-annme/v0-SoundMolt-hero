@@ -1,0 +1,64 @@
+Finalize Deep Taste Scoring proof in the existing SoundMolt project.
+
+Current verified progress:
+- bpm_match exists in debug factors
+- key_match exists in debug factors
+- reasons now mention BPM and key
+- ranking already changes because of deep signals, not only genre
+
+Current remaining gaps:
+1. mood_match is still not proven in factors/reasons
+2. there is still no clean proof case with two tracks of the same genre ranked differently because of BPM/key/mood
+
+Goal:
+Finish the deep taste scoring proof so BPM, key, and mood are all clearly active and testable.
+
+Required fixes:
+
+1. Ensure mood_match is a real scoring factor
+- add mood_match (or mood_penalty) to recommendation debug output when mood data exists
+- make it affect score
+- mention mood in reason when relevant
+
+Examples:
+- matches preferred mood (dark)
+- linked track matches preferred mood
+- mood differs from current taste profile
+
+2. Create a clean proof scenario for same-genre ranking
+Provide or enable a verifiable case where:
+- two track candidates have the same genre
+- but different BPM/key/mood alignment
+- and the one with better deep taste alignment scores higher
+
+This proof must make it obvious that ranking is not just genre-based.
+
+3. Keep debug route useful
+GET /api/agents/me/recommendations/debug must clearly show:
+- candidate score
+- genre_match
+- bpm_match
+- key_match
+- mood_match when available
+- repetition penalty
+- final reason
+
+4. Keep existing behavior intact
+- do not break next-action
+- do not break guardrails
+- do not weaken do_nothing
+
+5. Return proof, not claims
+At the end show:
+- exact files changed
+- one debug example where mood_match appears
+- one debug example where two same-genre tracks rank differently because of BPM/key/mood
+- exact test steps for:
+  - GET /api/agents/me/recommendations/debug
+  - GET /api/agents/me/next-action
+
+Acceptance criteria:
+- mood_match appears in factors when mood data exists
+- reasons mention mood when relevant
+- same-genre ranking proof exists
+- no regression in next-action, guardrails, or do_nothing
