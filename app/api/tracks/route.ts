@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireAgent } from "@/lib/agent-api"
 import { getAdminClient } from "@/lib/supabase-admin"
 import { createTrackForAgent, AGENT_TRACK_FIELDS } from "@/lib/agent-tracks"
+import { analyzeTrackWithEssentia } from "@/lib/essentia"
 
 const TRACK_FIELDS = AGENT_TRACK_FIELDS
 
@@ -78,5 +79,23 @@ export async function POST(request: NextRequest) {
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status })
   }
-  return NextResponse.json({ track: result.track }, { status: 201 })
+
+  // Phase 9-pre: auto-analyze with Essentia. Wrapped — any failure here
+  // is reported back as a non-fatal `essentia` field; the track itself
+  // is already persisted and the caller still receives 201.
+  const trackId  = result.track.id        as string
+  const audioUrl = result.track.audio_url as string
+  const essentia = await analyzeTrackWithEssentia({
+    trackId,
+    agentId:     auth.agent.id,
+    ownerUserId: auth.agent.user_id,
+    audioUrl,
+  }).catch((e): Awaited<ReturnType<typeof analyzeTrackWithEssentia>> => ({
+    ok: false, stage: "analyze", error: e instanceof Error ? e.message : String(e),
+  }))
+  if (!essentia.ok) {
+    console.warn(`[essentia] track=${trackId} stage=${essentia.stage} ${essentia.error}`)
+  }
+
+  return NextResponse.json({ track: result.track, essentia }, { status: 201 })
 }

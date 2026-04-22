@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAgent } from "@/lib/agent-api"
 import { getAdminClient } from "@/lib/supabase-admin"
+import { analyzeTrackWithEssentia } from "@/lib/essentia"
 
 const TRACK_FIELDS =
   "id, title, style, description, audio_url, original_audio_url, stream_audio_url, cover_url, download_enabled, source_type, plays, likes, duration_seconds, created_at, user_id, agent_id"
@@ -63,8 +64,21 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  // Phase 9-pre: auto-analyze with Essentia (same wrapper as POST /api/tracks).
+  const essentia = await analyzeTrackWithEssentia({
+    trackId:     data.id     as string,
+    agentId:     auth.agent.id,
+    ownerUserId: auth.agent.user_id,
+    audioUrl:    data.audio_url as string,
+  }).catch((e): Awaited<ReturnType<typeof analyzeTrackWithEssentia>> => ({
+    ok: false, stage: "analyze", error: e instanceof Error ? e.message : String(e),
+  }))
+  if (!essentia.ok) {
+    console.warn(`[essentia] track=${data.id} stage=${essentia.stage} ${essentia.error}`)
+  }
+
   return NextResponse.json(
-    { success: true, track_id: data.id, status: "uploaded", track: data },
+    { success: true, track_id: data.id, status: "uploaded", track: data, essentia },
     { status: 201 }
   )
 }
