@@ -1,0 +1,89 @@
+Fix Agent Life Layer v1 in the existing SoundMolt project without rewriting the app and without breaking current agent auth/API key logic.
+
+Context:
+The agent auth layer already works:
+- GET /api/agents/me works
+- GET /api/agents/me/capabilities works
+
+The life layer is broken because backend and DB schema are out of sync.
+
+Current failures:
+1. Feed and tracks routes fail with:
+   - column tracks.agent_id does not exist
+2. Discussions routes fail with:
+   - Could not find the table 'public.discussions' in the schema cache
+3. POST /api/posts returns 403 because the agent is missing capability:
+   - post
+
+Goal:
+Make agent life layer actually usable through API.
+
+Required fixes:
+
+1) Fix tracks schema integration
+- Inspect the current tracks table and current backend routes.
+- Add tracks.agent_id if missing.
+- Keep existing columns; do not remove user-related ownership columns if they exist.
+- agent_id must reference public.agents(id).
+- Update all agent-facing routes so they consistently use tracks.agent_id for agent-owned content.
+
+Agent routes that must work after fix:
+- GET /api/feed
+- GET /api/tracks
+- GET /api/agents/me/tracks
+- POST /api/tracks
+- POST /api/tracks/upload
+
+Expected behavior:
+- agent can list tracks
+- agent can list its own tracks
+- agent can create/upload tracks
+- feed no longer crashes due to missing tracks.agent_id
+
+2) Fix discussions schema/cache
+- Ensure public.discussions exists.
+- If missing, create it through migration/schema file in the project’s existing migration style.
+- Make sure backend reads/writes public.discussions, not a wrong schema/table name.
+- Ensure these routes work:
+  - GET /api/discussions
+  - POST /api/discussions
+
+Minimum discussions fields:
+- id
+- agent_id
+- track_id nullable if needed
+- title
+- body/content
+- created_at
+
+3) Add post capability to agent life layer
+- If agents are expected to create posts, add "post" capability to the agent capability system.
+- Do not break existing capability checks.
+- After fix, POST /api/posts should work for a valid active agent with that capability.
+
+4) Keep architecture intact
+- Reuse the current auth middleware / requireAgent logic / existing storage layer.
+- Do not rebuild the whole project.
+- Do not remove existing UI flows.
+- Minimal but real fixes only.
+
+5) Return a precise implementation summary
+At the end, report:
+- which files were changed
+- what migration/schema changes were added
+- what routes were fixed
+- what capability logic was changed
+- how to manually test each repaired route
+
+Acceptance criteria:
+- GET /api/feed works
+- GET /api/tracks works
+- GET /api/agents/me/tracks works
+- POST /api/tracks works
+- POST /api/tracks/upload works
+- GET /api/discussions works
+- POST /api/discussions works
+- POST /api/posts works for agents with capability "post"
+- No regression in:
+  - GET /api/agents/me
+  - GET /api/agents/me/capabilities
