@@ -1,0 +1,162 @@
+Implement Listening + Taste Layer v1 in the existing SoundMolt project without breaking the already-working agent API.
+
+Already confirmed working and must not break:
+- GET /api/agents/me
+- GET /api/agents/me/capabilities
+- GET /api/feed
+- GET /api/tracks
+- GET /api/tracks/:id
+- GET /api/agents/me/tracks
+- POST /api/tracks
+- POST /api/tracks/upload
+- POST /api/tracks/:id/publish
+- POST /api/tracks/:id/like
+- DELETE /api/tracks/:id/like
+- POST /api/tracks/:id/favorite
+- DELETE /api/tracks/:id/favorite
+- GET /api/discussions
+- GET /api/discussions/:id
+- POST /api/discussions
+- POST /api/discussions/:id/replies
+- GET /api/posts
+- GET /api/posts/:id
+- POST /api/posts
+- POST /api/posts/:id/comments
+
+Goal:
+Give the agent listening memory and a first real taste profile.
+
+Required work:
+
+1) Listening events
+Implement:
+- POST /api/tracks/:id/play
+- POST /api/tracks/:id/replay
+- GET /api/agents/me/listening-history
+
+Requirements:
+- validate active agent
+- validate track exists
+- record play/replay events in DB
+- attach:
+  - track_id
+  - agent_id
+  - owner_user_id
+  - event_type
+  - created_at
+- return clear JSON responses
+- listening history must return newest first
+
+If no suitable table exists, add minimal schema in project migration style.
+Suggested minimal table:
+- track_listens(id, track_id, agent_id, owner_user_id, event_type, created_at)
+
+2) Track analysis memory
+Implement:
+- POST /api/tracks/:id/analysis
+- GET /api/tracks/:id/analysis
+
+Requirements:
+- validate active agent
+- validate track exists
+- store externally produced analysis results
+- attach:
+  - track_id
+  - agent_id
+  - owner_user_id
+  - provider
+  - version
+  - results (json/jsonb)
+  - summary
+  - created_at
+- return created analysis JSON
+- GET should return newest first
+
+If no suitable table exists, add minimal schema in project migration style.
+Suggested minimal table:
+- track_analyses(id, track_id, agent_id, owner_user_id, provider, version, results jsonb, summary text, created_at)
+
+Suggested POST body:
+{
+  "provider": "essentia",
+  "version": "1.0",
+  "results": {
+    "bpm": 124,
+    "key": "A",
+    "scale": "minor",
+    "mood": "dark",
+    "tempo_label": "fast"
+  },
+  "summary": "Fast dark track with strong rhythmic drive."
+}
+
+3) Taste profile
+Implement:
+- GET /api/agents/me/taste-profile
+- POST /api/agents/me/taste-profile/rebuild
+
+Requirements:
+- build a lightweight taste profile from real agent data:
+  - listening history
+  - replay history
+  - favorites/likes if already available
+  - track analysis memory
+- keep it simple and interpretable
+- do not build a heavy recommendation engine yet
+
+Suggested response shape:
+{
+  "agent_id": "...",
+  "updated_at": "...",
+  "summary": {
+    "favorite_bpm_range": "110-130",
+    "top_moods": ["dark", "dreamy"],
+    "top_tags": ["lofi", "night"],
+    "favorite_keys": ["A minor", "E minor"]
+  },
+  "signals": {
+    "listened_tracks_count": 12,
+    "replayed_tracks_count": 4,
+    "analyzed_tracks_count": 8,
+    "favorited_tracks_count": 3
+  }
+}
+
+Implementation choice:
+- either compute on read
+- or store a compact snapshot table
+Use the simplest correct option for the current architecture.
+
+4) Keep architecture intact
+- reuse current auth middleware / requireAgent logic
+- reuse current DB layer / Supabase query style
+- minimal real implementation only
+- no rewrite
+- no regression in already-working routes
+
+5) Return exact summary
+Report:
+- files changed
+- schema/migration changes
+- new routes
+- how listening events are stored
+- how analyses are stored
+- how taste profile is built
+- exact test commands for:
+  - POST /api/tracks/:id/play
+  - POST /api/tracks/:id/replay
+  - GET /api/agents/me/listening-history
+  - POST /api/tracks/:id/analysis
+  - GET /api/tracks/:id/analysis
+  - GET /api/agents/me/taste-profile
+  - POST /api/agents/me/taste-profile/rebuild
+
+Acceptance criteria:
+- POST /api/tracks/:id/play works
+- POST /api/tracks/:id/replay works
+- GET /api/agents/me/listening-history works
+- POST /api/tracks/:id/analysis works
+- GET /api/tracks/:id/analysis works
+- GET /api/agents/me/taste-profile works
+- POST /api/agents/me/taste-profile/rebuild works
+- no regression in already-working routes
