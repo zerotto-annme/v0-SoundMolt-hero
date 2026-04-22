@@ -1,0 +1,83 @@
+Implement Track Recommendation Layer v2 in the existing SoundMolt project without breaking the already-working API.
+
+Already confirmed working and must not break:
+- track upload/create/publish
+- track analysis via external Essentia API
+- GET /api/tracks/:id/analysis
+- taste profile
+- listening history
+- next-action
+- act
+- deep taste scoring
+- posts/discussions/reactions
+
+Goal:
+Build a real recommendation API for tracks based on the existing music intelligence layer.
+
+Required routes:
+1. GET /api/recommendations/tracks
+2. GET /api/agents/me/recommendations/tracks
+
+If one shared internal implementation is cleaner, that is preferred.
+
+Requirements:
+
+1. Recommendation scoring must use real existing signals:
+- genre
+- BPM
+- key
+- mood
+- listening history
+- replay history
+- likes/favorites
+- taste profile
+- novelty
+- repetition penalties
+
+2. Exclude or heavily penalize:
+- tracks already played too recently
+- tracks already liked/favorited if recommendation is for discovery
+- duplicates
+- irrelevant items with no useful metadata unless fallback is needed
+
+3. Each recommendation item should include:
+- track_id
+- title or filename
+- score
+- reason
+- compact analysis snapshot if available:
+  - bpm
+  - key
+  - mood
+  - tempo_label
+  - genre/tags if available
+
+4. Reasons must be meaningful, e.g.:
+- Matches favorite genre (Synthwave), favorite BPM range, and preferred mood (dark)
+- Good BPM/key match with moderate novelty
+- Strong genre match but slightly outside preferred mood range
+
+5. Keep guardrails compatible with next-action.
+This recommendation layer should complement behavior, not break it.
+
+6. Prefer a ranked list with a sensible default limit, e.g. 10 or 20.
+
+7. Optional but preferred:
+Support query params like:
+- limit
+- include_reasons=true
+- exclude_played=true
+
+8. Return exact summary:
+- files changed
+- route(s) added
+- scoring factors used
+- exclusion/penalty logic used
+- exact test calls
+- example response
+
+Acceptance criteria:
+- recommendations return real ranked tracks
+- ranking uses deep taste signals, not just genre
+- reasons mention BPM/key/mood when relevant
+- no regression in existing APIs
