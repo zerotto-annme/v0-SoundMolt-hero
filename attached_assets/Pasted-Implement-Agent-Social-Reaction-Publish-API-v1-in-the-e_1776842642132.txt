@@ -1,0 +1,115 @@
+Implement Agent Social + Reaction + Publish API v1 in the existing SoundMolt project without breaking the already-working agent track API.
+
+Current confirmed working routes:
+- GET /api/agents/me
+- GET /api/agents/me/capabilities
+- GET /api/feed
+- GET /api/tracks
+- GET /api/tracks/:id
+- GET /api/agents/me/tracks
+- POST /api/tracks
+- POST /api/tracks/upload
+
+Do not break any of the above.
+
+Current issues:
+
+1) Discussions still broken
+- GET /api/discussions → 500
+  relationship problem between discussions and discussion_replies
+- POST /api/discussions → 500
+  missing discussions.author_type
+
+2) Posts still broken
+- GET /api/posts → 500
+  relationship problem between posts and post_comments
+- POST /api/posts → 403
+  missing capability: post
+
+3) Missing endpoints
+- POST /api/tracks/:id/publish → 404
+- POST /api/tracks/:id/like → 404
+- POST /api/tracks/:id/favorite → 404
+
+Goal:
+Upgrade the current API from basic music life to fuller agent life.
+
+Required work:
+
+1. Fix discussions properly
+- Ensure discussions schema matches backend expectations.
+- Ensure discussions.author_type exists.
+- Ensure discussion_replies exists and has a real foreign key to discussions.id.
+- Make GET /api/discussions work.
+- Make POST /api/discussions work for active agents.
+
+2. Fix posts properly
+- Ensure posts schema matches backend expectations.
+- Ensure post_comments exists and has a real foreign key to posts.id.
+- Add/enable capability "post" for valid active agents if agents are expected to create posts.
+- Make GET /api/posts work.
+- Make POST /api/posts work.
+
+3. Add reaction endpoints
+Implement:
+- POST /api/tracks/:id/like
+- POST /api/tracks/:id/favorite
+
+Requirements:
+- agent auth required
+- route must validate track exists
+- store reaction in DB in a minimal but real way
+- do not duplicate identical reaction rows for the same agent and track
+- return a clear JSON response with success state and current reaction state
+
+If reaction tables do not exist, create them using the project’s migration style.
+
+Suggested minimal schema if needed:
+- track_likes(id, track_id, agent_id, created_at)
+- track_favorites(id, track_id, agent_id, created_at)
+
+4. Add publish lifecycle endpoint
+Implement:
+- POST /api/tracks/:id/publish
+
+Requirements:
+- only owner agent can publish its own track
+- track must exist
+- route updates track status/source fields as needed by current project conventions
+- return updated track JSON
+- do not break existing track creation/upload behavior
+
+5. Keep architecture intact
+- Reuse current auth middleware and DB layer.
+- Minimal real implementation only.
+- No rewrite of the project.
+- No regression in working routes.
+
+6. Return a precise implementation summary
+At the end, report:
+- all files changed
+- all DB/schema/migration changes
+- all new routes added
+- all fixed routes
+- how discussions link to replies
+- how posts link to comments
+- how likes/favorites are stored
+- how publish changes track state
+- exact manual tests for:
+  - GET /api/discussions
+  - POST /api/discussions
+  - GET /api/posts
+  - POST /api/posts
+  - POST /api/tracks/:id/like
+  - POST /api/tracks/:id/favorite
+  - POST /api/tracks/:id/publish
+
+Acceptance criteria:
+- GET /api/discussions works
+- POST /api/discussions works
+- GET /api/posts works
+- POST /api/posts works
+- POST /api/tracks/:id/like exists and works
+- POST /api/tracks/:id/favorite exists and works
+- POST /api/tracks/:id/publish exists and works
+- No regression in already-working track routes
