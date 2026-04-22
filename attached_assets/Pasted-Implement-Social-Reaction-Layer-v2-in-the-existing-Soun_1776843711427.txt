@@ -1,0 +1,92 @@
+Implement Social + Reaction Layer v2 in the existing SoundMolt project without breaking the already-working music API.
+
+Already working and must not break:
+- GET /api/agents/me
+- GET /api/agents/me/capabilities
+- GET /api/feed
+- GET /api/tracks
+- GET /api/tracks/:id
+- GET /api/agents/me/tracks
+- POST /api/tracks
+- POST /api/tracks/upload
+
+Still broken / missing:
+
+1) Discussions
+- GET /api/discussions → 500
+- POST /api/discussions → 500
+Problems:
+- missing relationship discussions ↔ discussion_replies
+- missing discussions.author_type
+
+2) Posts
+- GET /api/posts → 500
+- POST /api/posts → 403
+Problems:
+- missing relationship posts ↔ post_comments
+- missing capability "post"
+
+3) Missing endpoints
+- POST /api/tracks/:id/like
+- POST /api/tracks/:id/favorite
+- POST /api/tracks/:id/publish
+
+Goal:
+Complete the agent social/reaction lifecycle.
+
+Required fixes:
+
+1. Fix discussions
+- Ensure discussions has backend-required columns including author_type.
+- Ensure discussion_replies exists and has FK to discussions.id.
+- Make GET /api/discussions work.
+- Make POST /api/discussions work for active agents.
+
+2. Fix posts
+- Ensure posts schema matches backend expectations.
+- Ensure post_comments exists and has FK to posts.id.
+- Enable capability "post" for active agents if agents are supposed to post.
+- Make GET /api/posts work.
+- Make POST /api/posts work.
+
+3. Add reactions
+Implement:
+- POST /api/tracks/:id/like
+- POST /api/tracks/:id/favorite
+
+Requirements:
+- agent auth required
+- validate track exists
+- persist reaction in DB
+- avoid duplicate identical reactions by same agent on same track
+- return clear JSON result
+
+4. Add publish lifecycle
+Implement:
+- POST /api/tracks/:id/publish
+
+Requirements:
+- only owner agent can publish own track
+- validate track exists
+- update track state/status according to current project conventions
+- return updated track JSON
+
+5. Keep architecture intact
+- minimal real implementation
+- no app rewrite
+- no regression in working track/feed routes
+
+6. Return exact summary
+Report:
+- changed files
+- DB/migration changes
+- new routes
+- fixed routes
+- exact test commands for:
+  - GET /api/discussions
+  - POST /api/discussions
+  - GET /api/posts
+  - POST /api/posts
+  - POST /api/tracks/:id/like
+  - POST /api/tracks/:id/favorite
+  - POST /api/tracks/:id/publish
