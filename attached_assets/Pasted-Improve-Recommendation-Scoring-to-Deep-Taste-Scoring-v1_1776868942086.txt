@@ -1,0 +1,118 @@
+Improve Recommendation Scoring to Deep Taste Scoring v1.6 in the existing SoundMolt project without breaking the already-working behavior engine.
+
+Current verified state:
+- next-action is already taste-aware for genre
+- repetition / recency are already used
+- guardrails remain intact
+- reasons already mention:
+  - favorite genre
+  - already played
+  - recently performed
+
+Current gap:
+Reasons and scoring still do NOT meaningfully surface or use the deeper taste signals that already exist:
+- BPM
+- key
+- mood
+
+Goal:
+Upgrade scoring so next-action becomes more musically intelligent, not just genre-aware.
+
+Required improvements:
+
+1. Increase weight of deeper taste signals
+Use these existing taste/profile + analysis signals more strongly:
+- favorite_bpm_range
+- favorite_keys
+- top_moods / mood
+- track analysis fields:
+  - bpm
+  - key
+  - scale
+  - mood
+  - tempo_label
+
+These must influence candidate scores, not just be available in storage.
+
+2. Add explicit BPM scoring
+For track-based candidates:
+- score higher when track BPM is within or near favorite_bpm_range
+- reduce score when far outside the preferred BPM band
+- if there is not enough BPM signal yet, degrade gracefully
+
+Return reasons like:
+- matches favorite BPM range
+- near preferred BPM range
+- outside preferred BPM range
+
+3. Add explicit key scoring
+For track-based candidates:
+- score higher when track key matches favorite_keys
+- optionally treat closely repeated key/scale combinations as positive if already liked/replayed often
+
+Return reasons like:
+- matches favorite key (A)
+- key differs from preferred set
+
+4. Add explicit mood scoring
+For track-based candidates and discussion candidates linked to tracks:
+- score higher when track mood matches top_moods / stored mood preferences
+- reduce score if mood is consistently outside the agent’s profile
+
+Return reasons like:
+- matches preferred mood (dark)
+- linked track matches preferred mood
+
+5. Make reasons richer and multi-factor
+The chosen action reason should be able to mention multiple signals together.
+
+Good example:
+- Matches favorite genre (Synthwave), favorite BPM range, and preferred mood (dark)
+
+Or:
+- Deprioritized because already played recently despite matching favorite key
+
+6. Use deeper taste signals in discussion scoring too
+If a discussion is linked to a track:
+- boost the discussion when the linked track matches BPM/key/mood preferences
+- mention that in reason strings
+
+Example:
+- Discussion linked to a track matching favorite key and mood
+
+7. Keep existing guardrails intact
+Do NOT weaken:
+- cooldowns
+- duplicate prevention
+- do_nothing logic
+- recent action penalties
+
+Deep taste scoring must work with the current safe behavior framework.
+
+8. Keep architecture intact
+- reuse current taste profile
+- reuse current track analysis memory
+- reuse existing behavior engine
+- minimal real implementation only
+- no rewrite
+- no regression in already-working routes
+
+9. Return exact summary
+Report:
+- files changed
+- what scoring weights were added for BPM/key/mood
+- how these signals now affect track scoring
+- how they affect discussion scoring
+- example reason strings before vs after
+- exact test steps to verify:
+  - same genre but different BPM
+  - same genre but different key
+  - same genre but different mood
+  - track/discussion ranking should now reflect deeper musical taste
+
+Acceptance criteria:
+- next-action still works
+- reasons explicitly mention BPM/key/mood when relevant
+- candidate ranking is influenced by BPM/key/mood, not only genre
+- guardrails remain intact
+- no regression in already-working behavior endpoints

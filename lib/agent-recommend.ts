@@ -22,15 +22,31 @@ import { computeTasteProfile, type TasteProfile } from "./agent-taste-profile"
  */
 
 // ─── tunables (kept tiny so output stays interpretable) ────────────────
+// v1.6 Deep Taste Scoring: deeper musical signals (BPM/key/mood) carry
+// more weight and contribute through tiered rather than binary scoring.
 const W_GENRE      = 1.0
 const W_TAGS       = 1.0  // weighted by overlap fraction
 const W_MOOD       = 1.0  // weighted by overlap fraction
-const W_BPM        = 0.5
+const W_BPM        = 0.75 // ↑ from 0.5 (v1.6)
 const W_ENERGY     = 0.25
 const W_BRIGHTNESS = 0.25
-const W_KEY        = 0.25
+const W_KEY        = 0.5  // ↑ from 0.25 (v1.6)
 const PLAY_PENALTY = 0.15 // per prior play, capped
 const PLAY_PENALTY_CAP = 0.6
+
+// BPM tier thresholds (v1.6): "in range" → full W_BPM,
+// within ±BPM_NEAR_TOL of band → W_BPM_NEAR (partial credit),
+// further than BPM_FAR_TOL → mild penalty W_BPM_FAR_PENALTY.
+const W_BPM_NEAR        = 0.35
+const W_BPM_FAR_PENALTY = 0.15
+const BPM_NEAR_TOL      = 10
+const BPM_FAR_TOL       = 20
+
+// Discussion linked-track signals (v1.6) — smaller than direct track
+// weights because the discussion is one degree removed from the music.
+const W_DISC_LINK_BPM  = 0.4
+const W_DISC_LINK_KEY  = 0.3
+const W_DISC_LINK_MOOD = 0.5
 
 // Round score to 2 dp so responses are stable & readable.
 const round = (n: number) => Math.round(n * 100) / 100
@@ -225,28 +241,50 @@ export async function recommendTracks(
           reason.push(`matching tags (${o.matches.slice(0, 3).join(", ")})`)
         }
       }
-      // Mood overlap
+      // Mood overlap (v1.6: annotate "differs" when profile has moods
+      // but candidate doesn't match any — pure reason transparency, no penalty).
       if (top.top_moods?.length && ana.moods.length) {
         const o = overlapRatio(ana.moods, top.top_moods)
         if (o.ratio > 0) {
           raw += W_MOOD * Math.min(1, o.ratio)
-          reason.push(`matching mood (${o.matches.slice(0, 3).join(", ")})`)
+          reason.push(`matches preferred mood (${o.matches.slice(0, 3).join(", ")})`)
+        } else {
+          reason.push(`mood differs from preferred set`)
         }
       }
-      // BPM in range
+      // BPM tiered scoring (v1.6): in range / near / far.
       if (top.favorite_bpm_range && ana.bpm != null) {
         const m = top.favorite_bpm_range.match(/^(\d+)-(\d+)$/)
         if (m) {
           const lo = +m[1], hi = +m[2]
+          const bpm = Math.round(ana.bpm)
           if (ana.bpm >= lo && ana.bpm <= hi) {
             raw += W_BPM
-            reason.push(`BPM in your range (${Math.round(ana.bpm)})`)
+            reason.push(`matches favorite BPM range (${bpm})`)
+          } else {
+            const dist = ana.bpm < lo ? lo - ana.bpm : ana.bpm - hi
+            if (dist <= BPM_NEAR_TOL) {
+              raw += W_BPM_NEAR
+              reason.push(`near preferred BPM range (${bpm})`)
+            } else if (dist > BPM_FAR_TOL) {
+              raw -= W_BPM_FAR_PENALTY
+              reason.push(`outside preferred BPM range (${bpm}, -${W_BPM_FAR_PENALTY.toFixed(2)})`)
+            }
           }
         }
       }
       if (inRange(ana.energy,     top.preferred_energy_range))     { raw += W_ENERGY;     reason.push("matching energy") }
       if (inRange(ana.brightness, top.preferred_brightness_range)) { raw += W_BRIGHTNESS; reason.push("matching brightness") }
-      if (ana.key && top.favorite_keys?.includes(ana.key))         { raw += W_KEY;        reason.push(`familiar key (${ana.key})`) }
+      // Key scoring (v1.6: explicit "differs" annotation when profile has
+      // favorite_keys but candidate key is not in the set).
+      if (ana.key) {
+        if (top.favorite_keys?.includes(ana.key)) {
+          raw += W_KEY
+          reason.push(`matches favorite key (${ana.key})`)
+        } else if (top.favorite_keys?.length) {
+          reason.push(`key differs from preferred set (${ana.key})`)
+        }
+      }
     }
 
     // Penalty: already played a lot. Capped so heavy plays still surface
@@ -315,11 +353,34 @@ export async function recommendDiscussions(
   const trackIds = Array.from(new Set((discRows ?? [])
     .map((d) => d.track_id).filter((x): x is string => !!x)))
   let styleByTrack = new Map<string, string | null>()
+  // v1.6: also fetch BPM/key/mood for linked tracks so discussions can
+  // inherit deep taste matching from their linked track.
+  const linkedAnaByTrack = new Map<string, { bpm: number | null; key: string | null; moods: string[] }>()
   if (trackIds.length > 0) {
-    const { data: trackRows, error: tErr } = await admin
-      .from("tracks").select("id, style").in("id", trackIds)
+    const [{ data: trackRows, error: tErr }, { data: anaRows, error: aErr }] = await Promise.all([
+      admin.from("tracks").select("id, style").in("id", trackIds),
+      // track_analysis stores facets in JSONB `results`, NOT flat columns.
+      admin.from("track_analysis").select("track_id, results").in("track_id", trackIds),
+    ])
     if (tErr) throw new Error(`recommend: failed to read linked tracks: ${tErr.message}`)
+    if (aErr) throw new Error(`recommend: failed to read linked analyses: ${aErr.message}`)
     styleByTrack = new Map((trackRows ?? []).map((t) => [t.id, t.style]))
+    // First analysis row per track is sufficient for discussion scoring.
+    for (const a of (anaRows ?? []) as { track_id: string; results: Record<string, unknown> | null }[]) {
+      if (linkedAnaByTrack.has(a.track_id)) continue
+      const r = a.results ?? {}
+      const rawBpm  = r.bpm
+      const rawKey  = r.key
+      const rawMood = r.mood
+      const bpm = typeof rawBpm === "number" && Number.isFinite(rawBpm) ? rawBpm
+                : typeof rawBpm === "string" && Number.isFinite(Number(rawBpm)) ? Number(rawBpm)
+                : null
+      const key = typeof rawKey === "string" ? rawKey : null
+      const moods = Array.isArray(rawMood)
+        ? (rawMood as unknown[]).filter((x): x is string => typeof x === "string")
+        : (typeof rawMood === "string" ? [rawMood] : [])
+      linkedAnaByTrack.set(a.track_id, { bpm, key, moods })
+    }
   }
   const rows = (discRows ?? []).map((d) => ({
     ...d,
@@ -338,7 +399,8 @@ export async function recommendDiscussions(
 
   // Tag pool = top_tags ∪ top_genres (genres often appear as tags in practice).
   const tagPool = [...(top.top_tags ?? []), ...(top.top_genres ?? [])]
-  const maxScore = W_TAGS + W_GENRE
+  // v1.6: maxScore now accounts for linked-track BPM/key/mood contributions.
+  const maxScore = W_TAGS + W_GENRE + W_DISC_LINK_BPM + W_DISC_LINK_KEY + W_DISC_LINK_MOOD
 
   const scored: DiscussionRecommendation[] = []
   for (const d of rows) {
@@ -355,6 +417,32 @@ export async function recommendDiscussions(
     if (d.tracks?.style && top.top_genres?.some((g) => g.toLowerCase() === d.tracks!.style!.toLowerCase())) {
       raw += W_GENRE
       reason.push(`linked track in favorite genre (${d.tracks.style})`)
+    }
+
+    // v1.6: linked-track BPM/key/mood pass-through.
+    const linkedAna = d.track_id ? linkedAnaByTrack.get(d.track_id) : undefined
+    if (linkedAna) {
+      // Linked-track BPM in favorite range
+      if (top.favorite_bpm_range && linkedAna.bpm != null) {
+        const m = top.favorite_bpm_range.match(/^(\d+)-(\d+)$/)
+        if (m && linkedAna.bpm >= +m[1] && linkedAna.bpm <= +m[2]) {
+          raw += W_DISC_LINK_BPM
+          reason.push(`linked track in favorite BPM range (${Math.round(linkedAna.bpm)})`)
+        }
+      }
+      // Linked-track key match
+      if (linkedAna.key && top.favorite_keys?.includes(linkedAna.key)) {
+        raw += W_DISC_LINK_KEY
+        reason.push(`linked track matches favorite key (${linkedAna.key})`)
+      }
+      // Linked-track mood overlap
+      if (top.top_moods?.length && linkedAna.moods.length) {
+        const o = overlapRatio(linkedAna.moods, top.top_moods)
+        if (o.ratio > 0) {
+          raw += W_DISC_LINK_MOOD * Math.min(1, o.ratio)
+          reason.push(`linked track matches preferred mood (${o.matches.slice(0, 3).join(", ")})`)
+        }
+      }
     }
 
     const score = clamp01(raw / maxScore)
