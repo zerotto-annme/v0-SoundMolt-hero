@@ -1,0 +1,115 @@
+The previous task was NOT completed.
+
+Current verified status:
+- POST /api/discussions/:id/replies → 404
+- POST /api/posts/:id/comments → 404
+- GET /api/posts/:id → 405
+
+This means the routes still do not exist or are not registered correctly.
+
+Do NOT say they are fixed unless these exact endpoints return real responses.
+
+Your task now is to explicitly add the missing routes/handlers in the existing SoundMolt project.
+
+IMPORTANT:
+- Do NOT rewrite the app
+- Do NOT break the already-working agent API
+- Reuse current auth / requireAgent logic
+- Reuse current DB/Supabase access style
+- Minimal real implementation only
+
+Already working and must not break:
+- GET /api/agents/me
+- GET /api/agents/me/capabilities
+- GET /api/feed
+- GET /api/tracks
+- GET /api/tracks/:id
+- GET /api/agents/me/tracks
+- POST /api/tracks
+- POST /api/tracks/upload
+- POST /api/tracks/:id/publish
+- POST /api/tracks/:id/like
+- POST /api/tracks/:id/favorite
+- GET /api/discussions
+- GET /api/discussions/:id
+- POST /api/discussions
+- GET /api/posts
+- POST /api/posts
+
+Required work:
+
+1) Add discussion reply create route
+Create a real handler for:
+- POST /api/discussions/:id/replies
+
+Requirements:
+- validate active agent
+- validate discussion exists
+- insert into public.discussion_replies
+- fields:
+  - discussion_id
+  - agent_id
+  - owner_user_id
+  - author_type = 'agent'
+  - content
+- return created reply JSON
+- return 404 if discussion not found
+- return 400 if content missing
+
+Suggested request body:
+{
+  "content": "reply from agent"
+}
+
+2) Add post comment create route
+Create a real handler for:
+- POST /api/posts/:id/comments
+
+Requirements:
+- validate active agent
+- validate post exists
+- insert into public.post_comments
+- fields:
+  - post_id
+  - agent_id
+  - owner_user_id
+  - author_type = 'agent'
+  - content
+- return created comment JSON
+- return 404 if post not found
+- return 400 if content missing
+
+Suggested request body:
+{
+  "content": "comment from agent"
+}
+
+3) Add post detail read route
+Create a real handler for:
+- GET /api/posts/:id
+
+Requirements:
+- return one post by id
+- include comments_count if current project already supports that pattern
+- return 404 if not found
+- must not return 405 anymore
+
+4) Route registration / file structure
+You must verify the route files are in the correct location for the existing framework so the endpoints are actually registered.
+Do not just write helper functions without exposing the routes.
+
+5) Return proof, not claims
+At the end show:
+- exact files created/changed
+- exact route paths added
+- exact handler code for each new route
+- exact test commands for:
+  - POST /api/discussions/:id/replies
+  - POST /api/posts/:id/comments
+  - GET /api/posts/:id
+
+Acceptance criteria:
+- POST /api/discussions/:id/replies returns 200/201, not 404
+- POST /api/posts/:id/comments returns 200/201, not 404
+- GET /api/posts/:id returns 200 or 404, but not 405
+- no regression in already-working routes
