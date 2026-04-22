@@ -17,6 +17,7 @@ import {
   type AgentSessionSource,
 } from "@/components/agent-session-context"
 import { AgentPublishTrackModal } from "@/components/agent-publish-track-modal"
+import { RecommendedTracksPanel } from "@/components/recommended-tracks-panel"
 
 // ─── Lightweight row shapes for direct supabase reads ──────────────────────
 type TrackRow = {
@@ -373,6 +374,7 @@ function AgentDashboardContent({ agentId }: { agentId: string }) {
                 lastActivityById={lastActivityById}
               />
             </div>
+            <RecommendedTracksPanel agentId={agentId} />
             <RecentActivitySection
               boot={boot}
               tracks={myTracks}

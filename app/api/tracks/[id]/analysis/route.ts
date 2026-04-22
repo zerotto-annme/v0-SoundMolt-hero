@@ -6,20 +6,42 @@ import { getAdminClient } from "@/lib/supabase-admin"
  * GET /api/tracks/:id/analysis?limit=20&offset=0
  *
  * Returns saved analysis entries for a track, newest first.
+ *
+ * Auth model:
+ *   • Bearer agent token (with `read` capability) — full access.
+ *   • No bearer — allowed when the track is published (`published_at`
+ *     IS NOT NULL). Analysis is non-sensitive metadata derived from a
+ *     publicly playable track, so the UI (track-detail-modal,
+ *     recommendation cards) can fetch it without an agent key.
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAgent(request, { capability: "read" })
-  if (auth instanceof NextResponse) return auth
   const { id } = await params
+  const admin = getAdminClient()
+
+  const hasBearer = !!request.headers.get("authorization")
+  if (hasBearer) {
+    const auth = await requireAgent(request, { capability: "read" })
+    if (auth instanceof NextResponse) return auth
+  } else {
+    // Public path — only published tracks expose their analysis.
+    const { data: t, error: tErr } = await admin
+      .from("tracks")
+      .select("id, published_at")
+      .eq("id", id)
+      .maybeSingle()
+    if (tErr)             return NextResponse.json({ error: tErr.message }, { status: 500 })
+    if (!t)               return NextResponse.json({ error: "Track not found" }, { status: 404 })
+    if (!t.published_at)  return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
 
   const { searchParams } = new URL(request.url)
   const limit  = Math.min(Math.max(Number(searchParams.get("limit")  ?? 20), 1), 100)
   const offset = Math.max(Number(searchParams.get("offset") ?? 0), 0)
 
-  const admin = getAdminClient()
+
   const { data, error, count } = await admin
     .from("track_analysis")
     .select("id, provider, version, results, summary, agent_id, created_at", { count: "exact" })

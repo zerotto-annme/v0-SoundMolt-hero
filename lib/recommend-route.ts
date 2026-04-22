@@ -62,14 +62,17 @@ function pickSnapshot(results: unknown): AnalysisSnapshot {
 }
 
 /**
- * Build the response. Exposed as a single function so both route files
- * collapse to two lines each.
+ * Pure business-logic builder. Takes a resolved identity (agentId +
+ * ownerUserId) plus the raw URL search params and returns the JSON
+ * payload. Used by:
+ *   • Bearer-authed agent route   → handleTrackRecommendations
+ *   • Owner-JWT-authed dashboard route → /api/agents/[id]/recommendations/tracks
  */
-export async function handleTrackRecommendations(request: NextRequest): Promise<NextResponse> {
-  const auth = await requireAgent(request, { capability: "read" })
-  if (auth instanceof NextResponse) return auth
-
-  const { searchParams } = new URL(request.url)
+export async function buildTrackRecommendations(
+  agentId: string,
+  ownerUserId: string,
+  searchParams: URLSearchParams,
+): Promise<Record<string, unknown>> {
   const rawLimit       = Number(searchParams.get("limit") ?? DEFAULT_LIMIT)
   const limit          = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : DEFAULT_LIMIT, 1), MAX_LIMIT)
   const includeReasons = (searchParams.get("include_reasons") ?? "true").toLowerCase() !== "false"
@@ -83,7 +86,7 @@ export async function handleTrackRecommendations(request: NextRequest): Promise<
   // Engine call — over-fetch when we'll be hard-filtering so we still
   // return ~`limit` items after post-filter.
   const fetchLimit = excludePlayed ? Math.min(MAX_LIMIT * OVERFETCH_FACTOR, limit * OVERFETCH_FACTOR) : limit
-  const rec = await recommendTracks(auth.agent.id, fetchLimit)
+  const rec = await recommendTracks(agentId, fetchLimit)
   const admin = getAdminClient()
 
   // v2.1: hard exclusion now honours `recent_window_hours`. Older replays
@@ -97,7 +100,7 @@ export async function handleTrackRecommendations(request: NextRequest): Promise<
     const { data: plays } = await admin
       .from("track_plays")
       .select("track_id")
-      .eq("owner_user_id", auth.agent.user_id)
+      .eq("owner_user_id", ownerUserId)
       .gte("created_at", cutoffIso)
     const recentIds = new Set((plays ?? []).map((p) => p.track_id as string))
     const filtered  = items.filter((it) => !recentIds.has(it.track_id))
@@ -167,7 +170,7 @@ export async function handleTrackRecommendations(request: NextRequest): Promise<
     return out
   })
 
-  return NextResponse.json({
+  return {
     items: responseItems,
     profile_summary: rec.profile.summary,
     fallback: rec.fallback,
@@ -184,5 +187,17 @@ export async function handleTrackRecommendations(request: NextRequest): Promise<
       recently_played_excluded: recentlyPlayedExcluded,
       applied_fallback:         appliedFallback,
     },
-  })
+  }
+}
+
+/**
+ * Bearer-authed wrapper used by the public agent-API routes. Thin —
+ * defers to buildTrackRecommendations after auth.
+ */
+export async function handleTrackRecommendations(request: NextRequest): Promise<NextResponse> {
+  const auth = await requireAgent(request, { capability: "read" })
+  if (auth instanceof NextResponse) return auth
+  const { searchParams } = new URL(request.url)
+  const payload = await buildTrackRecommendations(auth.agent.id, auth.agent.user_id, searchParams)
+  return NextResponse.json(payload)
 }

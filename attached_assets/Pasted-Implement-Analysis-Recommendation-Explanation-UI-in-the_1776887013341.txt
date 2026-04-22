@@ -1,0 +1,78 @@
+Implement Analysis + Recommendation Explanation UI in the existing SoundMolt project without breaking the already-working backend.
+
+Already confirmed working:
+- GET /api/tracks/:id/analysis
+- GET /api/recommendations/tracks
+- GET /api/agents/me/recommendations/tracks
+- recommendations already include ranked items and live reasons
+- analysis already includes bpm, key, scale, mood, tempo_label, interpretation
+
+Goal:
+Expose the music intelligence layer in the UI so users can actually see track analysis and recommendation reasons.
+
+Required UI work:
+
+1. Track detail / track card analysis display
+Wherever track detail is shown, add a compact analysis block using GET /api/tracks/:id/analysis.
+
+Display these fields when available:
+- BPM
+- Key
+- Scale
+- Mood
+- Tempo label
+- Interpretation
+
+Suggested compact labels:
+- BPM: 124
+- Key: A minor
+- Mood: dark
+- Tempo: mid-tempo
+
+Interpretation can be shown as a short paragraph below.
+
+2. Recommendation explanation UI
+Wherever recommendations are shown, display:
+- recommendation reason
+- optional score if already available
+- small analysis snapshot if available
+
+For example on each recommended track card:
+- Why recommended: Matches favorite genre, favorite BPM range, favorite key, candidate mood: dark
+- BPM: 124
+- Key: A minor
+- Mood: dark
+
+3. Keep UI compact and clean
+Do not clutter cards.
+Use a simple visual block/chips/subtext style.
+This should look premium, not debug-heavy.
+
+4. Graceful fallback
+If analysis is missing:
+- hide the analysis block
+- do not show empty placeholders
+
+If recommendation reason is missing:
+- hide that sub-section cleanly
+
+5. No backend regression
+Do not break existing:
+- upload
+- playback
+- recommendations
+- agent flows
+
+6. Return exact summary
+Report:
+- files changed
+- where analysis is shown
+- where recommendation reasons are shown
+- what happens when analysis is missing
+- screenshots or exact UI description
+
+Acceptance criteria:
+- track pages/cards visibly show music analysis
+- recommendation cards visibly show why a track was recommended
+- UI remains clean and readable
+- no regression in existing flows
