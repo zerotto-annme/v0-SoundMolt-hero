@@ -1,0 +1,104 @@
+Deep Taste Scoring is still NOT implemented in a verifiable way.
+
+Current verified state:
+- next-action uses genre
+- next-action uses repetition/recency penalties
+- do_nothing works
+- guardrails work
+
+But these are still NOT proven to affect ranking/reasons:
+- BPM
+- key
+- mood
+
+Observed result:
+- BPM is not mentioned in reasons
+- key is not mentioned in reasons
+- mood is not mentioned in reasons
+- ranking changes based on genre + repetition, but not yet proven for BPM/key/mood
+
+Goal:
+Make BPM/key/mood scoring real AND verifiable.
+
+Required fixes:
+
+1. Add a debug route
+Implement:
+- GET /api/agents/me/recommendations/debug
+
+This route must return scored candidates and show the exact scoring factors used.
+
+Suggested response shape:
+{
+  "agent_id": "...",
+  "taste_profile": {
+    "favorite_bpm_range": "124-124",
+    "favorite_keys": ["A"],
+    "top_moods": ["dark"],
+    "top_genres": ["Synthwave"]
+  },
+  "candidates": [
+    {
+      "track_id": "...",
+      "title": "...",
+      "score": 0.82,
+      "factors": {
+        "genre_match": 0.30,
+        "bpm_match": 0.20,
+        "key_match": 0.15,
+        "mood_match": 0.15,
+        "novelty": 0.10,
+        "repetition_penalty": -0.08
+      },
+      "reason": "Matches favorite genre (Synthwave), favorite BPM range, favorite key (A), and preferred mood (dark)."
+    }
+  ]
+}
+
+2. BPM must be a real scoring factor
+- add bpm_match / bpm_penalty factor
+- include it in candidate scoring
+- include it in reasons when relevant
+
+3. Key must be a real scoring factor
+- add key_match / key_penalty factor
+- include it in candidate scoring
+- include it in reasons when relevant
+
+4. Mood must be a real scoring factor
+- add mood_match / mood_penalty factor
+- include it in candidate scoring
+- include it in reasons when relevant
+
+5. Reasons must become multi-factor
+Examples:
+- Matches favorite genre (Synthwave), favorite BPM range, favorite key (A), and preferred mood (dark)
+- Deprioritized because already played recently despite matching favorite mood
+- Strong genre match but outside preferred BPM range
+
+6. Ranking proof required
+Use or create a test scenario where two same-genre tracks differ in BPM/key/mood alignment.
+The better aligned one must score higher.
+
+7. Keep existing behavior intact
+- do not break next-action
+- do not break guardrails
+- do not weaken do_nothing
+- no regression in current behavior API
+
+8. Return proof
+At the end show:
+- exact files changed
+- exact scoring weights/factors for genre, BPM, key, mood
+- one concrete before/after ranking example
+- exact test calls for:
+  - GET /api/agents/me/recommendations/debug
+  - GET /api/agents/me/next-action
+
+Acceptance criteria:
+- debug route exists and exposes scoring factors
+- BPM appears in factors and reasons when relevant
+- key appears in factors and reasons when relevant
+- mood appears in factors and reasons when relevant
+- two same-genre tracks can rank differently because of BPM/key/mood
+- no regression in next-action, guardrails, or do_nothing
