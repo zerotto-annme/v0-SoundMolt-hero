@@ -48,6 +48,11 @@ const W_DISC_LINK_BPM  = 0.4
 const W_DISC_LINK_KEY  = 0.3
 const W_DISC_LINK_MOOD = 0.5
 
+// v1.6.1 multi-facet alignment bonus: when 2+ of {BPM-in-range, key-match,
+// mood-match} fire on a single track, add an extra reward so a track that
+// aligns across multiple deep signals beats one matching only on genre.
+const W_DEEP_COMBO_BONUS = 0.4
+
 // Round score to 2 dp so responses are stable & readable.
 const round = (n: number) => Math.round(n * 100) / 100
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n))
@@ -218,12 +223,16 @@ export async function recommendTracks(
   // 3) Score each candidate. Walk through every named boost so `reason`
   //    surfaces exactly the ones that fired.
   const maxScore =
-    W_GENRE + W_TAGS + W_MOOD + W_BPM + W_ENERGY + W_BRIGHTNESS + W_KEY
+    W_GENRE + W_TAGS + W_MOOD + W_BPM + W_ENERGY + W_BRIGHTNESS + W_KEY + W_DEEP_COMBO_BONUS
 
   const scored: TrackRecommendation[] = []
   for (const t of tracks) {
     let raw = 0
     const reason: string[] = []
+    // v1.6.1: count which deep musical signals fired (BPM-in-range, key
+    // match, mood overlap). Used after the per-signal pass to award a
+    // multi-facet alignment bonus that materially shifts ranking.
+    let deepHits = 0
 
     // Genre match
     if (t.style && top.top_genres?.some((g) => g.toLowerCase() === t.style!.toLowerCase())) {
@@ -248,6 +257,7 @@ export async function recommendTracks(
         if (o.ratio > 0) {
           raw += W_MOOD * Math.min(1, o.ratio)
           reason.push(`matches preferred mood (${o.matches.slice(0, 3).join(", ")})`)
+          deepHits++
         } else {
           reason.push(`mood differs from preferred set`)
         }
@@ -261,6 +271,7 @@ export async function recommendTracks(
           if (ana.bpm >= lo && ana.bpm <= hi) {
             raw += W_BPM
             reason.push(`matches favorite BPM range (${bpm})`)
+            deepHits++
           } else {
             const dist = ana.bpm < lo ? lo - ana.bpm : ana.bpm - hi
             if (dist <= BPM_NEAR_TOL) {
@@ -281,10 +292,19 @@ export async function recommendTracks(
         if (top.favorite_keys?.includes(ana.key)) {
           raw += W_KEY
           reason.push(`matches favorite key (${ana.key})`)
+          deepHits++
         } else if (top.favorite_keys?.length) {
           reason.push(`key differs from preferred set (${ana.key})`)
         }
       }
+    }
+
+    // v1.6.1: multi-facet alignment bonus — applied AFTER all per-signal
+    // scoring. Reward tracks aligning across ≥2 of {BPM, key, mood}, and
+    // surface it explicitly in reasons so ranking deltas are explainable.
+    if (deepHits >= 2) {
+      raw += W_DEEP_COMBO_BONUS
+      reason.push(`strong multi-facet match (${deepHits}/3 deep signals: BPM/key/mood)`)
     }
 
     // Penalty: already played a lot. Capped so heavy plays still surface

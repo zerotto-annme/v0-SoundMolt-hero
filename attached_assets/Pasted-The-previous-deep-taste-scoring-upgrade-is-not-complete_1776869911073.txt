@@ -1,0 +1,103 @@
+The previous deep taste scoring upgrade is not complete.
+
+Current verified state:
+- next-action is taste-aware for genre
+- novelty / repetition / recent-action penalties work
+- do_nothing works
+- guardrails work
+
+But these deeper taste signals are still NOT visibly used in scoring/reasons:
+- BPM
+- key
+- mood
+
+Observed behavior:
+- reasons mention genre
+- reasons mention repetition/recency
+- reasons do NOT mention BPM even though favorite_bpm_range exists
+- reasons do NOT mention key even though favorite_keys exists
+- reasons do NOT mention mood even though analysis stores mood
+
+Goal:
+Force the behavior engine to actually use BPM, key, and mood in scoring and in human-readable reasons.
+
+This is not a cosmetic task.
+These signals must materially affect candidate ranking.
+
+Required fixes:
+
+1. BPM must affect score
+For every track candidate with analysis BPM:
+- compare track BPM against favorite_bpm_range
+- apply positive score boost when inside or near range
+- apply negative penalty when clearly outside range
+- expose this in reasons when relevant
+
+Examples of acceptable reasons:
+- matches favorite BPM range
+- near preferred BPM range
+- outside preferred BPM range
+
+2. Key must affect score
+For every track candidate with analysis key:
+- compare track key against favorite_keys
+- apply score boost for match
+- expose this in reasons when relevant
+
+Examples:
+- matches favorite key (A)
+- key differs from preferred set
+
+3. Mood must affect score
+For every track candidate with analysis mood:
+- compare track mood against stored preferred/top moods
+- apply score boost/penalty
+- expose this in reasons when relevant
+
+Examples:
+- matches preferred mood (dark)
+- mood differs from recent preference
+
+4. Multi-factor reasons required
+If a candidate matches multiple taste signals, reasons must mention more than just genre.
+
+Examples of acceptable combined reasons:
+- Matches favorite genre (Synthwave), favorite BPM range, and preferred mood (dark)
+- Matches favorite key (A) and preferred BPM range
+- Deprioritized because already played recently despite matching favorite mood
+
+5. Ranking must actually move
+Do not just append BPM/key/mood text to reasons.
+The candidate score must change based on these factors.
+Tracks with the same genre but better BPM/key/mood alignment should rank higher.
+
+6. Discussion scoring must also use linked track taste
+If a discussion is linked to a track:
+- use the linked track’s BPM/key/mood in discussion candidate scoring
+- mention that in reasons when relevant
+
+Example:
+- discussion linked to a track matching favorite key and preferred mood
+
+7. Keep guardrails intact
+Do not weaken:
+- cooldowns
+- duplicate prevention
+- do_nothing
+- rate limits
+
+8. Return proof, not claims
+At the end show:
+- exact files changed
+- the new scoring factors/weights for BPM, key, mood
+- exact reason templates added
+- one concrete example of two same-genre tracks where the one with better BPM/key/mood alignment now scores higher
+- exact manual tests to verify deeper taste usage
+
+Acceptance criteria:
+- next-action still works
+- reasons explicitly mention BPM when relevant
+- reasons explicitly mention key when relevant
+- reasons explicitly mention mood when relevant
+- candidate ranking changes based on BPM/key/mood, not only genre
+- no regression in guardrails or do_nothing

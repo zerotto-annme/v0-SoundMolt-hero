@@ -357,8 +357,10 @@ function generateCandidates(
   const out: SuggestedAction[] = []
   const cap = (t: NextActionType) => REQUIRED_CAP[t] ? agentHasCapability(agent, REQUIRED_CAP[t]!) : true
 
-  // Helper: format up to N recommendation reasons inline.
-  const fmt = (rs: string[], n = 3) => rs.slice(0, n).join(", ")
+  // Helper: format up to N recommendation reasons inline. Bumped from 3
+  // to 5 in v1.6.1 so deeper signals (BPM/key/mood) are not truncated
+  // when genre + tags + mood already fill the slice.
+  const fmt = (rs: string[], n = 5) => rs.slice(0, n).join(", ")
 
   // play_track — top track rec the agent hasn't played in the last hour.
   if (cap("play_track") && inputs.trackRec && !memory.recentPlayedTrackIds.has(inputs.trackRec.id)) {
