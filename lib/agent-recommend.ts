@@ -115,13 +115,114 @@ interface AnalysisAgg {
   tags:          string[]
 }
 
-interface AnalysisStats {
+export interface AnalysisStats {
   bpm:        number | null
   energy:     number | null
   brightness: number | null
   key:        string | null
   moods:      string[]
   tags:       string[]
+}
+
+/**
+ * Pure scoring function — extracted v1.6.3 so /debug can run the SAME
+ * scoring path on synthetic in-memory candidates for proof, with no DB
+ * writes and no dependence on the agent's actual play history.
+ *
+ * Returns the rounded score, the reasons that fired, and a per-factor
+ * numeric breakdown. Same maxScore normalization as the live recommender.
+ */
+export const TRACK_MAX_SCORE =
+  W_GENRE + W_TAGS + W_MOOD + W_BPM + W_ENERGY + W_BRIGHTNESS + W_KEY + W_DEEP_COMBO_BONUS
+
+export function scoreTrackCandidate(
+  top:           TasteProfile["summary"],
+  candidateGenre: string | null,
+  ana:           AnalysisStats | null,
+  priorPlayCount: number,
+): { score: number; reason: string[]; factors: Record<string, number> } {
+  let raw = 0
+  const reason: string[] = []
+  const factors: Record<string, number> = {}
+  const add = (k: string, v: number) => { if (v !== 0) { factors[k] = round(v); raw += v } }
+  let deepHits = 0
+
+  // Genre match
+  if (candidateGenre && top.top_genres?.some((g) => g.toLowerCase() === candidateGenre.toLowerCase())) {
+    add("genre_match", W_GENRE)
+    reason.push(`matches favorite genre (${candidateGenre})`)
+  }
+
+  if (ana) {
+    // Tag overlap (analysis-derived)
+    if (top.top_tags?.length && ana.tags.length) {
+      const o = overlapRatio(ana.tags, top.top_tags)
+      if (o.ratio > 0) {
+        add("tag_match", W_TAGS * Math.min(1, o.ratio))
+        reason.push(`matching tags (${o.matches.slice(0, 3).join(", ")})`)
+      }
+    }
+    // Mood overlap (annotates "differs" when profile has moods but candidate doesn't match).
+    if (top.top_moods?.length && ana.moods.length) {
+      const o = overlapRatio(ana.moods, top.top_moods)
+      if (o.ratio > 0) {
+        add("mood_match", W_MOOD * Math.min(1, o.ratio))
+        reason.push(`matches preferred mood (${o.matches.slice(0, 3).join(", ")})`)
+        deepHits++
+      } else {
+        reason.push(`mood differs from preferred set`)
+      }
+    }
+    // BPM tiered scoring: in range / near / far.
+    if (top.favorite_bpm_range && ana.bpm != null) {
+      const m = top.favorite_bpm_range.match(/^(\d+)-(\d+)$/)
+      if (m) {
+        const lo = +m[1], hi = +m[2]
+        const bpm = Math.round(ana.bpm)
+        if (ana.bpm >= lo && ana.bpm <= hi) {
+          add("bpm_match", W_BPM)
+          reason.push(`matches favorite BPM range (${bpm})`)
+          deepHits++
+        } else {
+          const dist = ana.bpm < lo ? lo - ana.bpm : ana.bpm - hi
+          if (dist <= BPM_NEAR_TOL) {
+            add("bpm_near", W_BPM_NEAR)
+            reason.push(`near preferred BPM range (${bpm})`)
+          } else if (dist > BPM_FAR_TOL) {
+            add("bpm_penalty", -W_BPM_FAR_PENALTY)
+            reason.push(`outside preferred BPM range (${bpm}, -${W_BPM_FAR_PENALTY.toFixed(2)})`)
+          }
+        }
+      }
+    }
+    if (inRange(ana.energy,     top.preferred_energy_range))     { add("energy_match",     W_ENERGY);     reason.push("matching energy") }
+    if (inRange(ana.brightness, top.preferred_brightness_range)) { add("brightness_match", W_BRIGHTNESS); reason.push("matching brightness") }
+    // Key scoring (explicit "differs" annotation when profile has favorite_keys).
+    if (ana.key) {
+      if (top.favorite_keys?.includes(ana.key)) {
+        add("key_match", W_KEY)
+        reason.push(`matches favorite key (${ana.key})`)
+        deepHits++
+      } else if (top.favorite_keys?.length) {
+        reason.push(`key differs from preferred set (${ana.key})`)
+      }
+    }
+  }
+
+  // Multi-facet alignment bonus when ≥2 of {BPM, key, mood} fire.
+  if (deepHits >= 2) {
+    add("multi_facet_bonus", W_DEEP_COMBO_BONUS)
+    reason.push(`strong multi-facet match (${deepHits}/3 deep signals: BPM/key/mood)`)
+  }
+
+  // Replay penalty (capped — never excludes).
+  const penalty = Math.min(PLAY_PENALTY_CAP, priorPlayCount * PLAY_PENALTY)
+  if (penalty > 0) {
+    add("repetition_penalty", -penalty)
+    reason.push(`-${penalty.toFixed(2)} (already played ${priorPlayCount}×)`)
+  }
+
+  return { score: round(clamp01(raw / TRACK_MAX_SCORE)), reason, factors }
 }
 
 function finalize(a: AnalysisAgg): AnalysisStats {
@@ -230,110 +331,18 @@ export async function recommendTracks(
 
   // 3) Score each candidate. Walk through every named boost so `reason`
   //    surfaces exactly the ones that fired.
-  const maxScore =
-    W_GENRE + W_TAGS + W_MOOD + W_BPM + W_ENERGY + W_BRIGHTNESS + W_KEY + W_DEEP_COMBO_BONUS
-
   const scored: TrackRecommendation[] = []
   for (const t of tracks) {
-    let raw = 0
-    const reason: string[] = []
-    // v1.6.2: per-factor numeric breakdown — populated alongside reasons so
-    // /debug can show callers exactly which weights contributed how much.
-    // Only non-zero contributions are recorded.
-    const factors: Record<string, number> = {}
-    const add = (k: string, v: number) => { if (v !== 0) { factors[k] = round(v); raw += v } }
-    let deepHits = 0
-
-    // Genre match
-    if (t.style && top.top_genres?.some((g) => g.toLowerCase() === t.style!.toLowerCase())) {
-      add("genre_match", W_GENRE)
-      reason.push(`matches favorite genre (${t.style})`)
-    }
-
-    const ana = analysisByTrack.get(t.id)
-    if (ana) {
-      // Tag overlap (analysis-derived)
-      if (top.top_tags?.length && ana.tags.length) {
-        const o = overlapRatio(ana.tags, top.top_tags)
-        if (o.ratio > 0) {
-          add("tag_match", W_TAGS * Math.min(1, o.ratio))
-          reason.push(`matching tags (${o.matches.slice(0, 3).join(", ")})`)
-        }
-      }
-      // Mood overlap (v1.6: annotate "differs" when profile has moods
-      // but candidate doesn't match any — pure reason transparency, no penalty).
-      if (top.top_moods?.length && ana.moods.length) {
-        const o = overlapRatio(ana.moods, top.top_moods)
-        if (o.ratio > 0) {
-          add("mood_match", W_MOOD * Math.min(1, o.ratio))
-          reason.push(`matches preferred mood (${o.matches.slice(0, 3).join(", ")})`)
-          deepHits++
-        } else {
-          reason.push(`mood differs from preferred set`)
-        }
-      }
-      // BPM tiered scoring (v1.6): in range / near / far.
-      if (top.favorite_bpm_range && ana.bpm != null) {
-        const m = top.favorite_bpm_range.match(/^(\d+)-(\d+)$/)
-        if (m) {
-          const lo = +m[1], hi = +m[2]
-          const bpm = Math.round(ana.bpm)
-          if (ana.bpm >= lo && ana.bpm <= hi) {
-            add("bpm_match", W_BPM)
-            reason.push(`matches favorite BPM range (${bpm})`)
-            deepHits++
-          } else {
-            const dist = ana.bpm < lo ? lo - ana.bpm : ana.bpm - hi
-            if (dist <= BPM_NEAR_TOL) {
-              add("bpm_near", W_BPM_NEAR)
-              reason.push(`near preferred BPM range (${bpm})`)
-            } else if (dist > BPM_FAR_TOL) {
-              add("bpm_penalty", -W_BPM_FAR_PENALTY)
-              reason.push(`outside preferred BPM range (${bpm}, -${W_BPM_FAR_PENALTY.toFixed(2)})`)
-            }
-          }
-        }
-      }
-      if (inRange(ana.energy,     top.preferred_energy_range))     { add("energy_match",     W_ENERGY);     reason.push("matching energy") }
-      if (inRange(ana.brightness, top.preferred_brightness_range)) { add("brightness_match", W_BRIGHTNESS); reason.push("matching brightness") }
-      // Key scoring (v1.6: explicit "differs" annotation when profile has
-      // favorite_keys but candidate key is not in the set).
-      if (ana.key) {
-        if (top.favorite_keys?.includes(ana.key)) {
-          add("key_match", W_KEY)
-          reason.push(`matches favorite key (${ana.key})`)
-          deepHits++
-        } else if (top.favorite_keys?.length) {
-          reason.push(`key differs from preferred set (${ana.key})`)
-        }
-      }
-    }
-
-    // v1.6.1: multi-facet alignment bonus — applied AFTER all per-signal
-    // scoring. Reward tracks aligning across ≥2 of {BPM, key, mood}, and
-    // surface it explicitly in reasons so ranking deltas are explainable.
-    if (deepHits >= 2) {
-      add("multi_facet_bonus", W_DEEP_COMBO_BONUS)
-      reason.push(`strong multi-facet match (${deepHits}/3 deep signals: BPM/key/mood)`)
-    }
-
-    // Penalty: already played a lot. Capped so heavy plays still surface
-    // if they otherwise match perfectly — we deprioritize, never exclude.
+    const ana = analysisByTrack.get(t.id) ?? null
     const prior = playCount.get(t.id) ?? 0
-    const penalty = Math.min(PLAY_PENALTY_CAP, prior * PLAY_PENALTY)
-    if (penalty > 0) {
-      add("repetition_penalty", -penalty)
-      reason.push(`-${penalty.toFixed(2)} (already played ${prior}×)`)
-    }
-
-    const score = clamp01(raw / maxScore)
+    const { score, reason, factors } = scoreTrackCandidate(top, t.style, ana, prior)
     if (score > 0) {
       scored.push({
         track_id:  t.id,
         title:     t.title,
         cover_url: t.cover_url,
         genre:     t.style,
-        score:     round(score),
+        score,
         reason,
         factors,
       })

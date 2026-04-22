@@ -1,0 +1,76 @@
+Deep Taste Scoring is still incomplete.
+
+Current verified state:
+- genre scoring works
+- bpm_match works
+- key_match works
+- BPM and key appear in debug factors/reasons
+- ranking already changes because of deep signals
+- guardrails and do_nothing still work
+
+Still NOT complete:
+1. mood_match does not appear in factors
+2. mood does not appear in reasons
+3. there is no clean same-genre proof case showing ranking difference due to BPM/key/mood
+
+Goal:
+Finish the last missing part of deep taste scoring and provide proof.
+
+Required fixes:
+
+1) Force mood into scoring
+If track analysis contains mood and taste profile contains preferred/top moods:
+- compute mood_match (or mood_penalty) explicitly
+- include it in debug factors
+- include it in candidate score
+- mention mood in reason when relevant
+
+Required examples of reason strings:
+- matches preferred mood (dark)
+- mood differs from current taste profile
+- strong genre match but weaker mood alignment
+
+2) Add same-genre proof route or proof output
+Provide one verifiable proof case where:
+- two track candidates share the same genre
+- but have different BPM/key/mood alignment
+- and the one with better BPM/key/mood alignment scores higher
+
+This proof can be returned through:
+- GET /api/agents/me/recommendations/debug
+or
+- a dedicated proof/debug section in that response
+
+The proof must make it obvious that ranking is not only genre-based.
+
+3) Debug route must expose full factors
+For each candidate, include factors like:
+- genre_match
+- bpm_match
+- key_match
+- mood_match when available
+- novelty
+- repetition_penalty
+- final_score
+
+4) Do not break anything
+- do not break next-action
+- do not break guardrails
+- do not weaken do_nothing
+- do not remove existing BPM/key logic
+
+5) Return proof, not claims
+At the end show:
+- exact files changed
+- one debug example where mood_match appears
+- one debug example where mood appears in reason
+- one same-genre ranking proof example
+- exact test steps for:
+  - GET /api/agents/me/recommendations/debug
+  - GET /api/agents/me/next-action
+
+Acceptance criteria:
+- mood_match appears in factors when mood data exists
+- mood appears in reason when relevant
+- same-genre ranking proof exists
+- no regression in next-action, guardrails, or do_nothing
