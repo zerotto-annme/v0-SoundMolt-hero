@@ -55,14 +55,24 @@ export function HorizontalShelf({
     const el = scrollerRef.current
     if (!el) return
     const onScroll = () => updateFades()
+    // Wheel policy for horizontal shelves:
+    //   • Vertical-dominant wheel (mouse wheel, vertical trackpad gesture)
+    //     must NEVER be translated into horizontal scroll. We previously
+    //     did `el.scrollLeft += e.deltaY` here, which (a) hijacked normal
+    //     page scrolling on top of every shelf and (b) caused the
+    //     "carousel slides left/right while a modal is open" bug, because
+    //     wheel events landing on shelf area (outside the modal panel)
+    //     would still move the shelf instead of doing nothing.
+    //   • We also stopPropagation so an ancestor wheel hijacker (e.g.
+    //     MusicFeed's snap-to-next-card handler) doesn't mistake a stray
+    //     scroll-over-shelf for a navigation gesture.
+    //   • Horizontal-dominant input (trackpad two-finger horizontal swipe,
+    //     Shift+wheel — browsers convert Shift+wheel to deltaX) is left
+    //     to the browser's native overflow-x scrolling. We do nothing.
     const onWheel = (e: WheelEvent) => {
       if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-        const atStart = el.scrollLeft <= 0 && e.deltaY < 0
-        const atEnd =
-          el.scrollLeft + el.clientWidth >= el.scrollWidth - 1 && e.deltaY > 0
-        if (atStart || atEnd) return
-        e.preventDefault()
-        el.scrollLeft += e.deltaY
+        e.stopPropagation()
+        return
       }
     }
     el.addEventListener("scroll", onScroll, { passive: true })
