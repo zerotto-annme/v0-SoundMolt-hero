@@ -1,0 +1,106 @@
+Implement Track Analysis UI + "Why Recommended" UI in the existing SoundMolt project without breaking the already-working backend.
+
+Confirmed backend state:
+- recommendation payload is now compact and UI-friendly
+- reason and score remain available
+- analysis can be null safely
+- debug scoring remains available separately
+- GET /api/tracks/:id/analysis works
+- GET /api/recommendations/tracks works
+- GET /api/agents/me/recommendations/tracks works
+
+Goal:
+Expose the music intelligence layer in the UI in a clean, premium, non-debug way.
+
+==================================================
+UI REQUIREMENTS
+==================================================
+
+1) Track Analysis UI
+Wherever track detail is shown (track page, modal, expanded card, or equivalent), add a compact analysis block.
+
+Display when available:
+- BPM
+- Key
+- Mood
+- Tempo label
+- Tags if available
+- Interpretation (short paragraph only if available and not too long)
+
+Suggested compact display:
+- BPM: 124
+- Key: A minor
+- Mood: dark
+- Tempo: fast
+
+If interpretation exists, show it in a small elegant text block below.
+
+2) Recommendation Explanation UI
+Where recommendation cards are shown, add a compact "Why recommended" section.
+
+Display when available:
+- reason
+- optional score as subtle metadata if it fits cleanly
+
+Examples:
+- Why recommended: Matches your favorite genre, BPM range, key, and mood.
+- Why recommended: Good BPM/key match with moderate novelty.
+
+Do NOT show internal debug factor names in production UI.
+
+3) Clean visual design
+Keep UI compact and premium.
+Do NOT make it look like a debug panel.
+
+Preferred style:
+- subtle chips/badges for BPM, Key, Mood, Tempo
+- one short "Why recommended" subtext
+- optional muted score label if already available and visually clean
+
+4) Graceful fallback behavior
+If analysis is null:
+- hide the analysis block completely
+- do not show empty placeholders
+
+If reason is missing:
+- hide the "Why recommended" section cleanly
+
+If tags are missing:
+- omit them
+
+5) No UI clutter
+Do not dump all raw fields.
+Do not show:
+- full debug factors
+- raw scoring internals
+- multi_facet_bonus
+- repetition_penalty
+- any other internal debug-only fields
+
+6) No backend regression
+Do not break:
+- upload
+- playback
+- recommendations
+- agent flows
+- track pages
+- feed pages
+
+==================================================
+WHAT TO RETURN
+==================================================
+
+Report:
+- files changed
+- where analysis is shown
+- where "Why recommended" is shown
+- how missing analysis is handled
+- how missing reason is handled
+- concise description of final UI behavior
+
+Acceptance criteria:
+- track pages/cards visibly show music analysis when available
+- recommendation cards visibly show "Why recommended" when available
+- analysis: null does not break the UI
+- production UI does not expose debug scoring fields
+- UI stays clean and readable
