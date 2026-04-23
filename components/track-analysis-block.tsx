@@ -11,7 +11,7 @@
  *   • RecommendedTracksPanel — passes a pre-fetched snapshot via prop
  */
 import { useEffect, useState } from "react"
-import { Activity, Music2, Sparkles, Gauge } from "lucide-react"
+import { Activity, Music2, Sparkles, Gauge, BarChart3 } from "lucide-react"
 
 export interface TrackAnalysisData {
   bpm:            number | null
@@ -105,6 +105,14 @@ export function TrackAnalysisBlock({ trackId, data: dataProp, compact, className
 
   return (
     <div className={className ?? "rounded-xl border border-white/10 bg-white/[0.02] p-3 space-y-2"}>
+      {!compact && (
+        <div className="flex items-center gap-1.5">
+          <BarChart3 size={13} className="text-cyan-400" />
+          <h3 className="text-xs uppercase tracking-wider text-white/60 font-medium">
+            Track Analysis
+          </h3>
+        </div>
+      )}
       <div className="flex flex-wrap gap-1.5">
         {data.bpm != null    && <Chip icon={<Gauge size={11} />}    label="BPM"   value={String(Math.round(data.bpm))} />}
         {keyLabel            && <Chip icon={<Music2 size={11} />}   label="Key"   value={keyLabel} />}

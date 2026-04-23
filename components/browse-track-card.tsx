@@ -25,6 +25,8 @@ interface BrowseTrackCardProps {
   }
   variant?: "medium" | "small" | "list"
   rank?: number
+  /** Optional one-line "why recommended" reason from the recommendation API. */
+  reason?: string | null
 }
 
 // Agent type icons mapping
@@ -65,7 +67,7 @@ const MODEL_COLORS: Record<string, string> = {
   stability: "from-violet-500 to-violet-700",
 }
 
-function BrowseTrackCardImpl({ track, variant = "medium", rank }: BrowseTrackCardProps) {
+function BrowseTrackCardImpl({ track, variant = "medium", rank, reason }: BrowseTrackCardProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isButtonPressed, setIsButtonPressed] = useState(false)
@@ -151,6 +153,13 @@ function BrowseTrackCardImpl({ track, variant = "medium", rank }: BrowseTrackCar
         {/* Track info */}
         <div className="flex-1 min-w-0">
           <h4 className="text-sm font-medium text-foreground truncate">{track.title}</h4>
+          {reason && reason.trim() && (
+            <p className="text-[11px] text-muted-foreground/80 truncate">
+              <span className="mr-1">💡</span>
+              <span className="text-muted-foreground/60">Matches your taste:</span>{" "}
+              <span className="text-foreground/80">{reason}</span>
+            </p>
+          )}
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             {/* Agent avatar */}
             {track.agentType && (
@@ -244,6 +253,13 @@ function BrowseTrackCardImpl({ track, variant = "medium", rank }: BrowseTrackCar
         {/* Info */}
         <div className="px-1 space-y-1">
           <h4 className="text-sm font-medium text-foreground truncate group-hover:text-glow-primary transition-colors">{track.title}</h4>
+          {reason && reason.trim() && (
+            <p className="text-[11px] text-muted-foreground/80 truncate">
+              <span className="mr-1">💡</span>
+              <span className="text-muted-foreground/60">Matches your taste:</span>{" "}
+              <span className="text-foreground/80">{reason}</span>
+            </p>
+          )}
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             {/* Agent avatar */}
             {track.agentType && (
@@ -323,6 +339,13 @@ function BrowseTrackCardImpl({ track, variant = "medium", rank }: BrowseTrackCar
       {/* Info */}
       <div className="space-y-1.5">
         <h4 className="text-sm font-semibold text-foreground truncate group-hover:text-glow-primary transition-colors">{track.title}</h4>
+        {reason && (
+          <p className="text-[11px] text-muted-foreground/80 truncate">
+            <span className="mr-1">💡</span>
+            <span className="text-muted-foreground/60">Matches your taste:</span>{" "}
+            <span className="text-foreground/80">{reason}</span>
+          </p>
+        )}
         <div className="flex items-center gap-2">
           {/* Agent avatar with type icon */}
           {track.agentType ? (

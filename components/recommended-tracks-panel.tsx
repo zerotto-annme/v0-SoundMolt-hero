@@ -136,16 +136,20 @@ export function RecommendedTracksPanel({ agentId, limit = 6 }: RecommendedTracks
             {(() => {
               const r = it.reason
               if (!r || (Array.isArray(r) && r.length === 0)) return null
+              if (typeof r === "string" && !r.trim()) return null
               return (
                 <div className="space-y-1">
-                  <p className="text-[10px] uppercase tracking-wider text-white/40">Why recommended</p>
                   {typeof r === "string" ? (
-                    <p className="text-xs text-white/70 leading-relaxed">{r}</p>
+                    <p className="text-xs text-white/70 leading-relaxed">
+                      <span className="mr-1">💡</span>
+                      <span className="text-white/40">Matches your taste:</span>{" "}
+                      <span className="text-white/80">{r}</span>
+                    </p>
                   ) : (
                     <ul className="space-y-0.5">
                       {r.slice(0, 4).map((line, i) => (
                         <li key={i} className="text-xs text-white/70 flex gap-1.5">
-                          <span className="text-purple-400/60 shrink-0">•</span>
+                          <span className="text-purple-400/60 shrink-0">💡</span>
                           <span>{line}</span>
                         </li>
                       ))}

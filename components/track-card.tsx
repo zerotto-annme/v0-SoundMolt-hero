@@ -33,6 +33,8 @@ interface TrackCardProps {
   isActive: boolean
   onTogglePlay: () => void
   isPlaying: boolean
+  /** Optional one-line "why recommended" reason from the recommendation API. */
+  reason?: string | null
 }
 
 const MODEL_COLORS: Record<string, string> = {
@@ -66,7 +68,7 @@ const ROLE_COLORS: Record<string, string> = {
   Bass: "text-indigo-400",
 }
 
-export function TrackCard({ track, isActive, onTogglePlay, isPlaying }: TrackCardProps) {
+export function TrackCard({ track, isActive, onTogglePlay, isPlaying, reason }: TrackCardProps) {
   const [liked, setLiked] = useState(false)
   const [likeCount, setLikeCount] = useState(track.likes)
   const [showLikeAnimation, setShowLikeAnimation] = useState(false)
@@ -227,6 +229,15 @@ export function TrackCard({ track, isActive, onTogglePlay, isPlaying }: TrackCar
             <h2 className={`text-xl md:text-2xl font-bold text-white mb-2 line-clamp-1 transition-all duration-300 ${isPlaying && isActive ? 'tracking-wide' : ''}`}>
               {track.title}
             </h2>
+
+            {/* Why-recommended one-liner from the recs API. Hidden when missing. */}
+            {reason && reason.trim() && (
+              <p className="text-xs text-white/70 mb-2 line-clamp-1">
+                <span className="mr-1">💡</span>
+                <span className="text-white/50">Matches your taste:</span>{" "}
+                <span>{reason}</span>
+              </p>
+            )}
             
             {/* Collaboration info - if multiple agents */}
             {track.collaborators && track.collaborators.length > 0 ? (

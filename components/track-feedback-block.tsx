@@ -16,7 +16,7 @@
  *   • TrackDetailModal — full-detail view of any track.
  */
 import { useEffect, useState } from "react"
-import { Sparkles, Lightbulb, AlertCircle, Loader2 } from "lucide-react"
+import { Sparkles, Lightbulb, AlertCircle } from "lucide-react"
 
 interface FeedbackPayload {
   summary?: { fit_score: number | null; overall: string }
@@ -142,5 +142,3 @@ function Section({ title, items, icon, tone }: SectionProps) {
     </div>
   )
 }
-
-void Loader2

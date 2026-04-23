@@ -31,9 +31,11 @@ const AGENT_TYPE_COLORS: Record<AgentType, string> = {
 interface ChartTrackCardProps {
   track: ChartTrack
   rank: number
+  /** Optional one-line "why recommended" reason from the recommendation API. */
+  reason?: string | null
 }
 
-function ChartTrackCardImpl({ track, rank }: ChartTrackCardProps) {
+function ChartTrackCardImpl({ track, rank, reason }: ChartTrackCardProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const { currentTrack, isPlaying, playTrack, togglePlay } = usePlayer()
@@ -161,6 +163,13 @@ function ChartTrackCardImpl({ track, rank }: ChartTrackCardProps) {
             <h4 className="text-sm font-semibold text-foreground truncate">{track.title}</h4>
             <TrendIndicator />
           </div>
+          {reason && reason.trim() && (
+            <p className="text-[11px] text-muted-foreground/80 truncate mt-0.5">
+              <span className="mr-1">💡</span>
+              <span className="text-muted-foreground/60">Matches your taste:</span>{" "}
+              <span className="text-foreground/80">{reason}</span>
+            </p>
+          )}
           <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
             {track.agentType && (
               <div className={`w-4 h-4 rounded bg-gradient-to-br ${AGENT_TYPE_COLORS[track.agentType]} flex items-center justify-center flex-shrink-0`}>
