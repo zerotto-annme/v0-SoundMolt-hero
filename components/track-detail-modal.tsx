@@ -439,14 +439,27 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
               fill the remaining space after header + cover row, regardless of
               their actual heights. overscroll-contain prevents wheel chaining
               into the (already body-scroll-locked) page behind the modal. ===
-              Section order: player → analysis → creator feedback → comments → artist footer.
+
+              FIXED SECTION ORDER (the modal NEVER skips, reorders, or
+              conditionally hides a whole section — that responsibility lives
+              INSIDE each block, never here):
+
+                  player → actions → analysis → feedback → comments → footer
+
+              Each section is wrapped in a stable <div data-section="…"> so the
+              DOM node always exists at the correct index, even when the inner
+              component returns null. `empty:hidden` collapses an empty wrapper
+              so we don't get a phantom 24-px space-y-6 gap between visible
+              siblings (CSS :empty matches when the wrapper has zero children;
+              React null returns produce zero children).
+
               `space-y-6` is the single source of truth for vertical rhythm —
               no per-section mt-* overrides allowed (they previously broke it). */}
         <div className="flex-1 min-h-0 p-6 space-y-6 overflow-y-auto overscroll-contain">
 
-          {/* === PLAYER AREA: waveform + transport + actions === */}
-          {/* Waveform Player Section */}
-          <div className="bg-secondary/30 rounded-xl p-4 space-y-4">
+          {/* === PLAYER AREA: waveform + transport. Always rendered, never gated
+                on analysis/feedback availability. === */}
+          <div data-section="player" className="bg-secondary/30 rounded-xl p-4 space-y-4">
             {/* Waveform visualization */}
             <div 
               ref={waveformRef}
@@ -615,8 +628,9 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
             </div>
           </div>
 
-          {/* Action buttons with inline stats */}
-          <div className="flex items-center gap-3">
+          {/* === ACTIONS: like / favorite / share / download + inline stats.
+                Always rendered. === */}
+          <div data-section="actions" className="flex items-center gap-3">
             <button
               onClick={handleLike}
               className={`h-10 px-3 rounded-full border flex items-center gap-1.5 transition-all duration-300 ${
@@ -716,24 +730,34 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
           </div>
 
           {/* === TRACK ANALYSIS: auto-extracted by Essentia. Block self-hides
-                when no analysis exists (returns null), so spacing collapses. === */}
-          <TrackAnalysisBlock trackId={track.id} />
+                (returns null) while loading and when no useful data exists.
+                Wrapper stays in DOM at fixed index; empty:hidden collapses
+                the wrapper so no phantom space-y-6 gap appears. === */}
+          <div data-section="analysis" className="empty:hidden">
+            <TrackAnalysisBlock trackId={track.id} />
+          </div>
 
           {/* === CREATOR FEEDBACK: strengths / considerations / suggestions.
-                Block self-hides when no feedback exists. === */}
-          <TrackFeedbackBlock trackId={track.id} />
+                Block self-hides on loading / status==="analysis_pending" / empty.
+                Same stable-wrapper + empty:hidden pattern as Analysis. === */}
+          <div data-section="feedback" className="empty:hidden">
+            <TrackFeedbackBlock trackId={track.id} />
+          </div>
 
-          {/* === COMMENTS === */}
-          <TrackComments
-            trackId={track.id}
-            trackAgentName={track.agentName}
-            onSeekTo={handleSeekToTime}
-          />
+          {/* === COMMENTS: always rendered. === */}
+          <div data-section="comments">
+            <TrackComments
+              trackId={track.id}
+              trackAgentName={track.agentName}
+              onSeekTo={handleSeekToTime}
+            />
+          </div>
 
           {/* === ARTIST FOOTER: agent identity card with top divider.
-                space-y-6 already gives 24 px above; pt-4 + border-t adds the
-                visible separator without breaking the rhythm. === */}
-          <div className="pt-4 border-t border-border/30">
+                Always rendered. space-y-6 already gives 24 px above;
+                pt-4 + border-t adds the visible separator without breaking
+                the rhythm. === */}
+          <div data-section="footer" className="pt-4 border-t border-border/30">
             <Link 
               href={`/agent/${encodeURIComponent(track.agentName)}`}
               onClick={onClose}
