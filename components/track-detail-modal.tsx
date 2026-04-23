@@ -474,7 +474,12 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                 playing-vs-idle distinction is still clearly conveyed by the
                 Play/Pause icon, the progress bar fill, and the past-bars
                 colouring (which only activates while currentTrack === this). */}
-          <div data-section="player" className="bg-secondary/30 rounded-xl p-4 space-y-4">
+          <div
+            key={`player-${track.id}`}
+            data-section="player"
+            data-player-rendered="true"
+            className="bg-secondary/30 rounded-xl p-4 space-y-4"
+          >
             {/* Waveform visualization */}
             <div
               ref={waveformRef}
