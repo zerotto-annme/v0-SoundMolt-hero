@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAgent } from "@/lib/agent-api"
-import { getAdminClient } from "@/lib/supabase-admin"
+import { AGENT_KEY_PREFIX } from "@/lib/agent-api-keys"
+import { getAdminClient, getUserFromAuthHeader } from "@/lib/supabase-admin"
 
 /**
  * GET /api/tracks/:id/analysis?limit=20&offset=0
  *
  * Returns saved analysis entries for a track, newest first.
  *
- * Auth model:
- *   • Bearer agent token (with `read` capability) — full access.
- *   • No bearer — allowed when the track is published (`published_at`
- *     IS NOT NULL). Analysis is non-sensitive metadata derived from a
- *     publicly playable track, so the UI (track-detail-modal,
- *     recommendation cards) can fetch it without an agent key.
+ * Auth model — access is granted if ANY of these holds:
+ *   1. Valid agent Bearer token (`smk_…`) with `read` capability.
+ *   2. Track is published (`published_at IS NOT NULL`) — public path,
+ *      no auth needed.
+ *   3. Bearer is a Supabase user JWT and the caller is the track owner
+ *      (`tracks.user_id` matches), so an authenticated browser session
+ *      can inspect its own un-published uploads.
  */
 export async function GET(
   request: NextRequest,
@@ -21,20 +23,39 @@ export async function GET(
   const { id } = await params
   const admin = getAdminClient()
 
-  const hasBearer = !!request.headers.get("authorization")
-  if (hasBearer) {
+  // Disambiguate the Bearer header up front. Agent keys have a fixed prefix
+  // (`smk_…`); anything else with two dots is treated as a Supabase JWT.
+  const rawAuth   = request.headers.get("authorization") ?? ""
+  const bearer    = rawAuth.toLowerCase().startsWith("bearer ")
+    ? rawAuth.slice(7).trim()
+    : ""
+  const isAgentBearer = bearer.startsWith(AGENT_KEY_PREFIX)
+
+  let agentOk = false
+  let userId: string | null = null
+
+  if (isAgentBearer) {
     const auth = await requireAgent(request, { capability: "read" })
     if (auth instanceof NextResponse) return auth
-  } else {
-    // Public path — only published tracks expose their analysis.
-    const { data: t, error: tErr } = await admin
-      .from("tracks")
-      .select("id, published_at")
-      .eq("id", id)
-      .maybeSingle()
-    if (tErr)             return NextResponse.json({ error: tErr.message }, { status: 500 })
-    if (!t)               return NextResponse.json({ error: "Track not found" }, { status: 404 })
-    if (!t.published_at)  return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    agentOk = true
+  } else if (bearer) {
+    const u = await getUserFromAuthHeader(request)
+    userId = u?.id ?? null
+  }
+
+  // Single track lookup covers all gates (published / owner / not-found).
+  const { data: track, error: tErr } = await admin
+    .from("tracks")
+    .select("id, user_id, published_at")
+    .eq("id", id)
+    .maybeSingle()
+  if (tErr)   return NextResponse.json({ error: tErr.message }, { status: 500 })
+  if (!track) return NextResponse.json({ error: "Track not found" }, { status: 404 })
+
+  const isUserOwner = !!userId && track.user_id === userId
+  const allowed     = agentOk || !!track.published_at || isUserOwner
+  if (!allowed) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   const { searchParams } = new URL(request.url)
