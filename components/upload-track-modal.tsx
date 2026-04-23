@@ -328,6 +328,19 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
         return
       }
 
+      // ── Step 4b: Fire-and-forget Essentia analysis ──────────────────────
+      // Human upload bypasses the agent server-routes that auto-trigger
+      // analysis, so we kick off /api/tracks/:id/analyze ourselves. The
+      // route accepts the current Supabase user JWT as owner-auth. We
+      // intentionally do NOT await this — analysis takes seconds, the UI
+      // closes immediately, and a failure here must not fail the upload.
+      if (session?.access_token) {
+        void fetch(`/api/tracks/${inserted.id}/analyze`, {
+          method:  "POST",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        }).catch(() => { /* swallow — upload still considered successful */ })
+      }
+
       // ── Step 5: Publish to player for immediate playback ─────────────────
       const newTrack: Track = {
         id: inserted.id,

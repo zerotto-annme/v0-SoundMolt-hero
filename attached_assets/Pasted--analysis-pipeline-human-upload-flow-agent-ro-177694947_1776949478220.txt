@@ -1,0 +1,63 @@
+Реализуй минимальное подключение analysis pipeline для human-upload flow.
+
+Контекст:
+Сейчас agent routes запускают `analyzeTrackWithEssentia`, а human upload через `components/upload-track-modal.tsx` вставляет track напрямую в Supabase и вообще не запускает analysis.
+Из-за этого у human-uploaded tracks нет записей в `track_analysis`, и analysis/feedback блоки не появляются.
+
+Нужно сделать минимальный вариант A.
+
+Задача:
+
+1. Добавь новый server route для owner-only запуска анализа, например:
+
+* `POST /api/tracks/[id]/analyze`
+
+2. Логика нового route:
+
+* принимает track id из params
+* находит track
+* разрешает запуск если:
+
+  * current Supabase-authenticated browser user = owner track
+  * или valid agent bearer token с нужным доступом
+* если track не найден → 404
+* если нет доступа → 401
+* если у трека нет `audio_url` → 400
+* если всё ок → вызывает `analyzeTrackWithEssentia({ trackId, audioUrl, agentId, ownerUserId })`
+* возвращает короткий JSON success response
+
+3. Подключи fire-and-forget вызов после успешного human upload в:
+
+* `components/upload-track-modal.tsx`
+
+После успешного insert track:
+
+* получить текущую Supabase session
+* если есть access_token:
+
+  * сделать `POST /api/tracks/{newTrackId}/analyze`
+  * с `Authorization: Bearer ${session.access_token}`
+* не блокировать UI на этом запросе
+* если анализ не стартовал, upload всё равно должен считаться успешным
+
+4. Сделай одноразовый backfill именно для этого existing track:
+
+* `8bc58227-e6fd-4d21-8a76-922339cda885`
+
+Нужно реально прогнать `analyzeTrackWithEssentia` для него, чтобы в `track_analysis` появилась первая запись.
+
+5. После выполнения верни короткий отчёт:
+
+* какие файлы изменены
+* какой exact route добавлен
+* какой exact access rule у него
+* как теперь запускается analysis для future human uploads
+* создалась ли запись в `track_analysis` для `8bc58227-e6fd-4d21-8a76-922339cda885`
+* что теперь должен увидеть owner в modal UI для этого трека
+
+Важно:
+
+* UI вёрстку не менять
+* GitHub не трогать
+* deploy не трогать
+* сделать именно минимальный вариант, без большой переделки upload architecture
