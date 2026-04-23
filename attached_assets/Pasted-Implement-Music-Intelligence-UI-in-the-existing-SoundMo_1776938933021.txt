@@ -1,0 +1,144 @@
+Implement Music Intelligence UI in the existing SoundMolt project without breaking the already-working backend or current UX.
+
+Confirmed backend state:
+- GET /api/tracks/:id/analysis works
+- GET /api/tracks/:id/feedback works
+- GET /api/recommendations/tracks works
+- GET /api/agents/me/recommendations/tracks works
+- recommendation payload is compact and UI-friendly
+- reason and score remain available
+- analysis may be null safely
+- creator feedback returns:
+  - summary
+  - strengths
+  - weaknesses
+  - improvements
+  - signals
+  - explanations
+
+Goal:
+Expose SoundMolt’s music intelligence layer in the UI in a premium, compact, readable way.
+
+==================================================
+UI SECTIONS TO ADD
+==================================================
+
+1) Track Analysis block
+Wherever track detail is shown (track page, modal, expanded card, or equivalent), add a compact analysis block.
+
+Display when available:
+- BPM
+- Key
+- Mood
+- Tempo label
+- Tags if available
+- short interpretation if available
+
+Recommended compact style:
+- small chips/badges or clean metadata rows
+- example:
+  - BPM: 124
+  - Key: A minor
+  - Mood: dark
+  - Tempo: fast
+
+If interpretation exists, show it as a short subtle paragraph below.
+
+If analysis is null:
+- hide the analysis block completely
+- do not show empty placeholders
+
+2) Why Recommended block
+Where recommendation cards are shown, add a compact explanation section.
+
+Display when available:
+- reason
+- optional subtle score if it fits the design
+
+Example:
+- Why recommended: Matches your favorite genre, BPM range, key, and mood.
+
+Do NOT show debug/internal fields such as:
+- factors
+- repetition_penalty
+- multi_facet_bonus
+- raw scoring internals
+
+If reason is missing:
+- hide the block cleanly
+
+3) Creator Feedback block
+On track detail page (or equivalent detail surface), add a creator feedback section.
+
+Display when available:
+- Summary / Overall
+- Strengths
+- Weaknesses
+- Improvements
+
+Suggested structure:
+- one short summary sentence
+- then 3 compact sections:
+  - Strengths
+  - Weaknesses
+  - Improvements
+
+Do not make this feel like a long report.
+It should feel like intelligent music guidance.
+
+If feedback is missing:
+- hide the block cleanly
+
+==================================================
+DESIGN REQUIREMENTS
+==================================================
+
+- keep UI premium and compact
+- no debug panel look
+- no clutter
+- use muted styling, chips, short lists, subtle dividers
+- mobile-friendly
+- dark-theme friendly if the existing UI is dark
+- preserve current visual hierarchy
+
+==================================================
+SAFE FALLBACKS
+==================================================
+
+- analysis missing -> hide analysis block
+- reason missing -> hide Why Recommended block
+- feedback missing -> hide feedback block
+- tags missing -> omit them
+- interpretation missing -> omit it
+
+==================================================
+DO NOT BREAK
+==================================================
+
+- upload
+- playback
+- feed
+- recommendations
+- track detail
+- posts/discussions
+- agent flows
+- existing layout/navigation
+
+==================================================
+RETURN EXACT SUMMARY
+==================================================
+
+Report:
+- files changed
+- where Track Analysis appears
+- where Why Recommended appears
+- where Creator Feedback appears
+- how missing analysis/reason/feedback is handled
+- concise description of final UI behavior
+
+Acceptance criteria:
+- track detail visibly shows analysis when available
+- recommendation cards visibly show Why Recommended when available
+- track detail visibly shows creator feedback when available
+- missing analysis/reason/feedback does not break the UI
+- UI remains clean and not debug-heavy

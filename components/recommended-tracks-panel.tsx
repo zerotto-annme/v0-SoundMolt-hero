@@ -47,7 +47,6 @@ export function RecommendedTracksPanel({ agentId, limit = 6 }: RecommendedTracks
   const [items, setItems]     = useState<RecItem[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string | null>(null)
-  const [meta, setMeta]       = useState<ApiPayload["pagination"]>(undefined)
 
   useEffect(() => {
     let alive = true
@@ -69,7 +68,6 @@ export function RecommendedTracksPanel({ agentId, limit = 6 }: RecommendedTracks
         const j: ApiPayload = await r.json()
         if (!alive) return
         setItems(j.items ?? [])
-        setMeta(j.pagination)
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : "Failed to load")
       } finally {
@@ -96,11 +94,6 @@ export function RecommendedTracksPanel({ agentId, limit = 6 }: RecommendedTracks
       <div className="flex items-center gap-2">
         <Sparkles size={14} className="text-purple-400" />
         <h3 className="text-sm font-semibold text-white">Recommended for you</h3>
-        {meta?.applied_fallback && (
-          <span className="text-[10px] uppercase tracking-wider text-amber-400/70">
-            (penalty fallback)
-          </span>
-        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -119,9 +112,14 @@ export function RecommendedTracksPanel({ agentId, limit = 6 }: RecommendedTracks
               </div>
               <div className="min-w-0 flex-1">
                 <h4 className="text-sm font-semibold text-white truncate">{it.title}</h4>
-                <div className="flex items-center gap-2 text-[11px] text-white/40 mt-0.5">
+                <div className="flex items-center gap-1.5 text-[11px] text-white/40 mt-0.5">
                   {it.genre && <span>{it.genre}</span>}
-                  <span className="text-purple-400 font-mono">score {it.score.toFixed(2)}</span>
+                  {it.genre && it.score > 0 && <span className="text-white/20">·</span>}
+                  {it.score > 0 && (
+                    <span className="text-purple-300/80">
+                      {Math.max(0, Math.min(100, Math.round(it.score * 100)))}% match
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

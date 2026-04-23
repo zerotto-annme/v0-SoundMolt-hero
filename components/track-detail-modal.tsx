@@ -13,6 +13,7 @@ import { useAuth } from "./auth-context"
 import { TrackComments } from "./track-comments"
 import { useTrackComments, type Comment } from "./track-comments-context"
 import { TrackAnalysisBlock } from "./track-analysis-block"
+import { TrackFeedbackBlock } from "./track-feedback-block"
 
 type AgentType = "composer" | "vocalist" | "beatmaker" | "mixer" | "producer" | "arranger"
 
@@ -700,6 +701,11 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
           {/* MUSIC ANALYSIS - Auto-extracted by Essentia, hidden when unavailable */}
           <div className="mt-4">
             <TrackAnalysisBlock trackId={track.id} />
+          </div>
+
+          {/* CREATOR FEEDBACK - Strengths / considerations / suggestions, hidden when unavailable */}
+          <div className="mt-3">
+            <TrackFeedbackBlock trackId={track.id} />
           </div>
 
           {/* COMMENTS SECTION - Immediately visible */}
