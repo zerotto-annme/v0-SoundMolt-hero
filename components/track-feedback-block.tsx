@@ -67,11 +67,23 @@ export function TrackFeedbackBlock({ trackId, className }: TrackFeedbackBlockPro
   if (loading) return null
   if (!data || data.status === "analysis_pending") return null
 
-  const summary      = data.summary?.overall?.trim()
+  const rawSummary   = data.summary?.overall?.trim()
   const fit          = data.summary?.fit_score
   const strengths    = (data.strengths    ?? []).filter(Boolean)
   const weaknesses   = (data.weaknesses   ?? []).filter(Boolean)
   const improvements = (data.improvements ?? []).filter(Boolean)
+
+  // UX SIMPLIFICATION: trim summary to the first sentence (or 160 chars max)
+  // so the block opens with one short, scannable line instead of a paragraph.
+  // Bullet lists are independently capped to 2 items × ~100 chars per item
+  // inside <Section> below to keep the whole block "lighter".
+  const summary = rawSummary
+    ? (() => {
+        const firstSentenceMatch = rawSummary.match(/^[^.!?]+[.!?]/)
+        const candidate = firstSentenceMatch ? firstSentenceMatch[0] : rawSummary
+        return candidate.length > 160 ? candidate.slice(0, 157).trimEnd() + "…" : candidate
+      })()
+    : null
 
   // Hide entirely if there's literally nothing useful to show.
   if (!summary && !strengths.length && !weaknesses.length && !improvements.length) return null
@@ -150,12 +162,17 @@ function Section({ title, items, icon, tone }: SectionProps) {
         </span>
       </div>
       <ul className="space-y-1">
-        {items.slice(0, 3).map((line, i) => (
-          <li key={i} className="text-[11px] leading-relaxed text-white/70 flex gap-1.5">
-            <span className={`${TONE_BULLET[tone]} shrink-0`}>•</span>
-            <span>{line}</span>
-          </li>
-        ))}
+        {items.slice(0, 2).map((line, i) => {
+          // UX SIMPLIFICATION: cap each bullet at ~100 chars so dense AI
+          // feedback can't blow out the section into a wall of text.
+          const trimmed = line.length > 100 ? line.slice(0, 97).trimEnd() + "…" : line
+          return (
+            <li key={i} className="text-[11px] leading-relaxed text-white/70 flex gap-1.5">
+              <span className={`${TONE_BULLET[tone]} shrink-0`}>•</span>
+              <span>{trimmed}</span>
+            </li>
+          )
+        })}
       </ul>
     </div>
   )

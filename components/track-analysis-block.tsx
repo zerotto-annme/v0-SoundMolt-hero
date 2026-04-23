@@ -11,7 +11,7 @@
  *   • RecommendedTracksPanel — passes a pre-fetched snapshot via prop
  */
 import { useEffect, useState } from "react"
-import { Activity, Music2, Sparkles, Gauge, BarChart3 } from "lucide-react"
+import { Music2, Sparkles, Gauge, BarChart3 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 
 export interface TrackAnalysisData {
@@ -119,6 +119,18 @@ export function TrackAnalysisBlock({ trackId, data: dataProp, compact, className
   const keyLabel = data.key && data.scale ? `${data.key} ${data.scale}`
                  : data.key ?? null
 
+  // UX SIMPLIFICATION: keep only BPM / Key / Mood (Tempo dropped — redundant
+  // with BPM; mood limited to 2 tags instead of 3 to reduce chip clutter).
+  // Interpretation is trimmed to the first sentence (or first 160 chars) to
+  // remove "wall of text" feel while preserving the headline insight.
+  const shortInterpretation = (() => {
+    if (!data.interpretation) return null
+    const text = data.interpretation.trim()
+    const firstSentenceMatch = text.match(/^[^.!?]+[.!?]/)
+    const candidate = firstSentenceMatch ? firstSentenceMatch[0] : text
+    return candidate.length > 160 ? candidate.slice(0, 157).trimEnd() + "…" : candidate
+  })()
+
   return (
     <div className={className ?? "rounded-xl border border-white/10 bg-white/[0.02] p-3 space-y-2"}>
       {!compact && (
@@ -130,14 +142,13 @@ export function TrackAnalysisBlock({ trackId, data: dataProp, compact, className
         </div>
       )}
       <div className="flex flex-wrap gap-1.5">
-        {data.bpm != null    && <Chip icon={<Gauge size={11} />}    label="BPM"   value={String(Math.round(data.bpm))} />}
-        {keyLabel            && <Chip icon={<Music2 size={11} />}   label="Key"   value={keyLabel} />}
-        {data.tempo_label    && <Chip icon={<Activity size={11} />} label="Tempo" value={data.tempo_label} />}
-        {data.mood?.length   && <Chip icon={<Sparkles size={11} />} label="Mood"  value={data.mood.slice(0, 3).join(", ")} />}
+        {data.bpm != null    && <Chip icon={<Gauge size={11} />}    label="BPM"  value={String(Math.round(data.bpm))} />}
+        {keyLabel            && <Chip icon={<Music2 size={11} />}   label="Key"  value={keyLabel} />}
+        {data.mood?.length   && <Chip icon={<Sparkles size={11} />} label="Mood" value={data.mood.slice(0, 2).join(", ")} />}
       </div>
-      {!compact && data.interpretation && (
+      {!compact && shortInterpretation && (
         <p className="text-xs leading-relaxed text-white/60 pt-1 border-t border-white/5">
-          {data.interpretation}
+          {shortInterpretation}
         </p>
       )}
     </div>

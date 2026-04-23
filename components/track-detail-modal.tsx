@@ -504,7 +504,7 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
           ref={scrollBodyRef}
           key={`scroll-${track.id}`}
           data-modal-scroll-body="true"
-          className="flex-1 min-w-0 min-h-0 p-6 space-y-6 overflow-y-auto overflow-x-hidden overscroll-contain"
+          className="flex-1 min-w-0 min-h-0 p-5 space-y-5 overflow-y-auto overflow-x-hidden overscroll-contain"
         >
 
           {/* === PLAYER AREA: waveform + transport.
