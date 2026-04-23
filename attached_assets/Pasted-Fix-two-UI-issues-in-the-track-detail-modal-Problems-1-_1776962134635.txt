@@ -1,0 +1,64 @@
+Fix two UI issues in the track detail modal.
+
+Problems:
+
+1. Close button (X) in the top-right corner works unreliably.
+   It often requires 3–4 clicks to close the modal.
+
+2. Header layout is still fragile:
+
+* cover image can visually interfere with the top badge/header area
+* cover, title, artist, badges, and close button need a clean non-overlapping structure
+
+Goal:
+Make the modal header clean and make the close button reliably clickable on first click.
+
+Required fixes:
+
+1. Fix close button click reliability
+
+* inspect if any overlay / gradient / absolute layer is covering the X button
+* ensure the close button has the highest clickable layer in the modal header
+* ensure no element with pointer-events intercepts clicks above it
+* make the button hit area larger (not just the icon)
+* target size should feel like at least 40x40 px
+* confirm close works on first click every time
+
+2. Fix header layout using one clean layout system
+   Use a stable flex/grid layout for the header:
+
+* cover on the left
+* text/meta on the right
+* close button in the top-right
+* no overlap between cover and text/badges
+* no negative margins / absolute hacks for normal content positioning unless truly necessary
+
+Target structure:
+
+* top badge (AI generated / uploaded etc.) should not be covered by the cover image
+* cover image should sit cleanly in the header
+* title and artist/meta should align properly
+* close button should remain visually and functionally separate
+
+3. Check z-index / pointer-events
+
+* modal background / gradient / decorative layers must not block header interactions
+* close button should sit above decorative layers
+* if needed, set pointer-events: none on purely decorative overlays and pointer-events: auto on interactive elements
+
+4. Keep current design style
+   Do not redesign the modal.
+   Just fix:
+
+* clickability of X
+* spacing
+* overlap
+* reliable header behavior
+
+Return:
+
+1. which files changed
+2. exact reason why the close button required multiple clicks
+3. what layout system is now used in the header (flex/grid)
+4. confirmation that the close button now closes on first click consistently
+5. confirmation that cover/text/badges no longer overlap

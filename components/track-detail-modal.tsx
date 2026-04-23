@@ -373,44 +373,70 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
           ? "bottom-[calc(1rem+72px)] md:max-h-[calc(90vh-88px)] md:top-[calc(50%-44px)]"
           : "bottom-4 md:max-h-[90vh] md:top-1/2"
       }`}>
-        {/* === HEADER AREA: slim gradient strip + close + source badge.
-              Height kept under ~12 vh so the combined header+cover band
-              never dominates the modal and the waveform is visible without
-              scrolling. (static, never scrolls) === */}
-        <div className={`flex-shrink-0 h-20 md:h-24 bg-gradient-to-br ${MODEL_COLORS[track.modelProvider] || "from-gray-600 to-gray-800"} relative`}>
-          <div className="absolute inset-0 bg-black/30" />
-          
-          {/* Close button */}
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center text-white/80 hover:text-white hover:bg-black/60 transition-all"
-          >
-            <X className="w-4 h-4" />
-          </button>
+        {/* === CLOSE BUTTON: lifted to PANEL level (sibling of header / cover
+              row, not nested inside the header strip) with explicit z-30 so
+              it always paints — and hit-tests — above every other element in
+              the modal panel.
 
-          {/* Source badge */}
-          <div className="absolute top-4 left-4 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/40 backdrop-blur-sm border border-white/10">
-            {track.sourceType === "uploaded" ? (
-              <>
-                <Upload className="w-3.5 h-3.5 text-cyan-400" />
-                <span className="text-xs font-mono text-white/90">UPLOADED</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-3.5 h-3.5 text-glow-secondary" />
-                <span className="text-xs font-mono text-white/90">AI GENERATED</span>
-              </>
-            )}
-          </div>
+              ROOT CAUSE OF PRIOR "needs 3–4 clicks" BUG:
+              The cover-row container below uses negative top-margin
+              (-mt-14 md:-mt-16) and is a block-level div that spans the full
+              panel width. Even though visually empty above its inner cover
+              image, its transparent bounding box extended UP into the bottom
+              half of the close button's hit area (y≈32-48 px on desktop) and,
+              with default pointer-events:auto + later DOM order, captured ~50%
+              of clicks targeting the X icon. Lifting the button to panel-level
+              with z-30 + the cover row's pointer-events-none (below) makes
+              hit-test deterministic.
+
+              Hit area: w-10 h-10 = 40×40 px (was 32×32). type=button prevents
+              accidental form-submit semantics; aria-label provides screen
+              reader text. === */}
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute top-3 right-3 z-30 w-10 h-10 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center text-white/80 hover:text-white hover:bg-black/70 transition-colors"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        {/* === SOURCE BADGE: also lifted to panel level with z-30 so the cover
+              image (which extends UP into the header via negative margin) can
+              never visually cover it. pointer-events-none — purely decorative,
+              never blocks anything underneath. === */}
+        <div className="absolute top-3 left-3 z-30 pointer-events-none flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-sm border border-white/10">
+          {track.sourceType === "uploaded" ? (
+            <>
+              <Upload className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="text-xs font-mono text-white/90">UPLOADED</span>
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-3.5 h-3.5 text-glow-secondary" />
+              <span className="text-xs font-mono text-white/90">AI GENERATED</span>
+            </>
+          )}
         </div>
 
-        {/* === COVER + TITLE ROW: overlaps the slim gradient via negative
+        {/* === HEADER STRIP: purely decorative gradient + dark overlay.
+              pointer-events-none on the wrapper so neither the gradient nor
+              the dark overlay can ever intercept clicks meant for the close
+              button or badge that now sit above it at panel level. === */}
+        <div className={`flex-shrink-0 h-20 md:h-24 bg-gradient-to-br ${MODEL_COLORS[track.modelProvider] || "from-gray-600 to-gray-800"} relative pointer-events-none`}>
+          <div className="absolute inset-0 bg-black/30" />
+        </div>
+
+        {/* === COVER + TITLE ROW: overlaps the gradient strip via negative
               margin (cover sits ~half on the gradient, half on the card body).
-              Smaller cover + tighter gap keep the whole top band compact so
-              the waveform appears immediately without scrolling.
-              (static, never scrolls — sits between header and scroll body) === */}
-        <div className="flex-shrink-0 relative px-6 -mt-14 md:-mt-16 pb-3">
-          <div className="flex gap-4 items-end">
+
+              pointer-events-none on the OUTER container neutralises the
+              transparent extra rectangle created by the negative margin —
+              that rectangle is what captured close-button clicks before this
+              fix. The INNER flex re-enables pointer events for the cover,
+              title, agent link (which navigates AND closes modal). === */}
+        <div className="flex-shrink-0 relative px-6 -mt-14 md:-mt-16 pb-3 pointer-events-none">
+          <div className="flex gap-4 items-end pointer-events-auto">
             {/* Cover */}
             <div className="relative w-28 h-28 md:w-32 md:h-32 rounded-xl overflow-hidden shadow-2xl ring-4 ring-card flex-shrink-0">
               <Image
