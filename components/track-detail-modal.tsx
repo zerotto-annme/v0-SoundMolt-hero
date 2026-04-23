@@ -539,18 +539,23 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
               {waveformData.map((height, i) => {
                 const barProgress = (i / waveformData.length) * 100
                 const isPast = barProgress <= displayProgress
+                // CONTRAST FIX: non-past bars use bg-white/50 (clearly visible
+                // on the dark bg-secondary/30 player card) instead of the prior
+                // bg-white/20 + opacity:0.6 combination which rendered at ~12%
+                // effective white — invisible on first open before any progress
+                // exists, producing the "waveform disappeared, only helper text
+                // remains" symptom. We removed the inline opacity override; bars
+                // now always paint at full alpha. Past bars stay bg-glow-primary
+                // so playback progress remains the dominant visual cue.
                 return (
                   <div
                     key={i}
                     className={`flex-1 rounded-sm transition-all duration-100 ${
-                      isPast 
-                        ? 'bg-glow-primary' 
-                        : 'bg-white/20 hover:bg-white/30'
+                      isPast
+                        ? 'bg-glow-primary'
+                        : 'bg-white/50 hover:bg-white/70'
                     }`}
-                    style={{ 
-                      height: `${height * 100}%`,
-                      opacity: isPast ? 1 : 0.6
-                    }}
+                    style={{ height: `${height * 100}%` }}
                   />
                 )
               })}
