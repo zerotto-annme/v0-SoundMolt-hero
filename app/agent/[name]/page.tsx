@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button"
 import { usePlayer } from "@/components/player-context"
 import { BrowseTrackCard } from "@/components/browse-track-card"
 import { Sidebar } from "@/components/sidebar"
+import { TrackDetailModal } from "@/components/track-detail-modal"
 import { 
   getAgentByName, 
   getTopTracksByAgent, 
@@ -38,7 +39,7 @@ import {
   formatFollowers,
   type Agent 
 } from "@/lib/agents"
-import { formatPlays, getRelativeTime } from "@/lib/seed-tracks"
+import { formatPlays, getRelativeTime, type SeedTrack } from "@/lib/seed-tracks"
 
 type AgentType = "composer" | "vocalist" | "beatmaker" | "mixer" | "producer" | "arranger"
 
@@ -88,6 +89,9 @@ export default function AgentProfilePage({ params }: { params: Promise<{ name: s
   const router = useRouter()
   const [isFollowing, setIsFollowing] = useState(false)
   const [activeTab, setActiveTab] = useState<"tracks" | "releases" | "collabs" | "about">("tracks")
+  // Single-instance modal state shared across Top Tracks and Collaborations
+  // rows. Only one modal is ever mounted regardless of how many rows render.
+  const [selectedTrack, setSelectedTrack] = useState<SeedTrack | null>(null)
   const { playTrack, currentTrack, isPlaying, togglePlay } = usePlayer()
   
   if (!agent) {
@@ -264,40 +268,75 @@ export default function AgentProfilePage({ params }: { params: Promise<{ name: s
         
         {/* Tab Content */}
         <div className="mt-6">
-          {/* Top Tracks */}
+          {/* Top Tracks
+              Row click → opens TrackDetailModal (full detail view).
+              Play overlay (button on the cover thumbnail) → plays/pauses
+              audio WITHOUT bubbling to row, via stopPropagation. */}
           {activeTab === "tracks" && (
             <div className="space-y-2">
-              {topTracks.map((track, index) => (
-                <div
-                  key={track.id}
-                  className={`group flex items-center gap-4 p-3 rounded-lg hover:bg-white/5 transition-all cursor-pointer ${
-                    currentTrack?.id === track.id ? "bg-glow-primary/10" : ""
-                  }`}
-                  onClick={() => playTrack(track)}
-                >
-                  <span className={`w-8 text-center font-bold text-lg ${index < 3 ? "text-glow-primary" : "text-muted-foreground"}`}>
-                    {index + 1}
-                  </span>
-                  <div className="relative w-12 h-12 rounded overflow-hidden flex-shrink-0">
-                    <Image src={track.coverUrl} alt={track.title} fill className="object-cover" />
-                    <div className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity ${
-                      currentTrack?.id === track.id && isPlaying ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                    }`}>
-                      {currentTrack?.id === track.id && isPlaying ? (
-                        <Pause className="w-5 h-5 text-white" fill="white" />
-                      ) : (
-                        <Play className="w-5 h-5 text-white" fill="white" />
-                      )}
+              {topTracks.map((track, index) => {
+                const isCurrent = currentTrack?.id === track.id
+                const isThisPlaying = isCurrent && isPlaying
+                return (
+                  <div
+                    key={track.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Open ${track.title}`}
+                    className={`group flex items-center gap-4 p-3 rounded-lg hover:bg-white/5 transition-colors cursor-pointer ${
+                      isCurrent ? "bg-glow-primary/10" : ""
+                    }`}
+                    onClick={() => setSelectedTrack(track)}
+                    onKeyDown={(e) => {
+                      // Only react to Enter/Space when the row itself is the
+                      // event target — Enter/Space on a nested <button>/<a>
+                      // bubbles here too and must NOT also open the modal.
+                      if (e.target !== e.currentTarget) return
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault()
+                        setSelectedTrack(track)
+                      }
+                    }}
+                  >
+                    <span className={`w-8 text-center font-bold text-lg ${index < 3 ? "text-glow-primary" : "text-muted-foreground"}`}>
+                      {index + 1}
+                    </span>
+                    <div className="relative w-12 h-12 rounded overflow-hidden flex-shrink-0">
+                      <Image src={track.coverUrl} alt={track.title} fill className="object-cover" />
+                      {/* DEDICATED PLAY/PAUSE BUTTON: stopPropagation prevents
+                          the row's modal-open handler from firing when user
+                          targets playback specifically. */}
+                      <button
+                        type="button"
+                        aria-label={isThisPlaying ? `Pause ${track.title}` : `Play ${track.title}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (isCurrent) {
+                            togglePlay()
+                          } else {
+                            playTrack(track)
+                          }
+                        }}
+                        className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity ${
+                          isThisPlaying ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                        }`}
+                      >
+                        {isThisPlaying ? (
+                          <Pause className="w-5 h-5 text-white" fill="white" />
+                        ) : (
+                          <Play className="w-5 h-5 text-white" fill="white" />
+                        )}
+                      </button>
                     </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-foreground truncate">{track.title}</h4>
+                      <p className="text-sm text-muted-foreground">{track.style}</p>
+                    </div>
+                    <span className="text-sm text-muted-foreground">{formatPlays(track.plays)} plays</span>
+                    <span className="text-sm text-muted-foreground">{Math.floor(track.duration / 60)}:{(track.duration % 60).toString().padStart(2, "0")}</span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-medium text-foreground truncate">{track.title}</h4>
-                    <p className="text-sm text-muted-foreground">{track.style}</p>
-                  </div>
-                  <span className="text-sm text-muted-foreground">{formatPlays(track.plays)} plays</span>
-                  <span className="text-sm text-muted-foreground">{Math.floor(track.duration / 60)}:{(track.duration % 60).toString().padStart(2, "0")}</span>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
           
@@ -310,12 +349,35 @@ export default function AgentProfilePage({ params }: { params: Promise<{ name: s
             </div>
           )}
           
-          {/* Collaborations */}
+          {/* Collaborations
+              Same row-click vs play-button separation as Top Tracks. The
+              collaborator <Link> already navigates away (stops bubble via
+              its own click semantics — Next.js Link calls e.preventDefault
+              on plain clicks for client navigation, then router pushes; we
+              add an explicit stopPropagation for safety so clicking the
+              collaborator name doesn't ALSO open the modal). */}
           {activeTab === "collabs" && (
             <div className="space-y-4">
               {collaborations.length > 0 ? (
                 collaborations.map(({ track, collaborator }) => (
-                  <div key={track.id} className="flex items-center gap-4 p-4 rounded-xl bg-card/30 hover:bg-card/50 transition-all">
+                  <div
+                    key={track.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Open ${track.title}`}
+                    className="flex items-center gap-4 p-4 rounded-xl bg-card/30 hover:bg-card/50 transition-colors cursor-pointer"
+                    onClick={() => setSelectedTrack(track)}
+                    onKeyDown={(e) => {
+                      // Only react to Enter/Space when the row itself is the
+                      // event target — Enter/Space on a nested <button>/<a>
+                      // bubbles here too and must NOT also open the modal.
+                      if (e.target !== e.currentTarget) return
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault()
+                        setSelectedTrack(track)
+                      }
+                    }}
+                  >
                     <div className="relative w-16 h-16 rounded-lg overflow-hidden flex-shrink-0">
                       <Image src={track.coverUrl} alt={track.title} fill className="object-cover" />
                     </div>
@@ -325,6 +387,7 @@ export default function AgentProfilePage({ params }: { params: Promise<{ name: s
                         <span className="text-sm text-muted-foreground">with</span>
                         <Link 
                           href={`/agent/${encodeURIComponent(collaborator.name)}`}
+                          onClick={(e) => e.stopPropagation()}
                           className="flex items-center gap-2 hover:text-glow-primary transition-colors"
                         >
                           <div className="w-5 h-5 rounded overflow-hidden">
@@ -334,7 +397,15 @@ export default function AgentProfilePage({ params }: { params: Promise<{ name: s
                         </Link>
                       </div>
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => playTrack(track)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Play ${track.title}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        playTrack(track)
+                      }}
+                    >
                       <Play className="w-4 h-4" fill="currentColor" />
                     </Button>
                   </div>
@@ -429,6 +500,21 @@ export default function AgentProfilePage({ params }: { params: Promise<{ name: s
         </div>
       </div>
       </main>
+
+      {/* === TRACK DETAIL MODAL ===
+          Single instance shared by all rows on this page. Conditionally
+          mounted only when a track has been chosen — opening = setting
+          selectedTrack, closing = nullifying it. The modal manages its own
+          body-scroll-lock + scroll-reset on track change, so the artist
+          profile underneath returns to its previous state with no layout
+          jump on close. */}
+      {selectedTrack && (
+        <TrackDetailModal
+          track={selectedTrack}
+          isOpen
+          onClose={() => setSelectedTrack(null)}
+        />
+      )}
     </div>
   )
 }
