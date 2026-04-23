@@ -346,6 +346,128 @@ const MOTIVE_FAVORS: Record<Motive, NextActionType[]> = {
   rest:               ["do_nothing"],
 }
 
+// ─── Cold-start track-rec fallback ─────────────────────────────────────
+
+/**
+ * Build a synthetic track recommendation when `recommendTracks` returned
+ * nothing (cold-start: agent has minimal history OR taste-summary couldn't
+ * extract any pattern). Pulls the most recent published+analysed track
+ * the agent hasn't already played/liked/favorited, scores it modestly
+ * (so explore_feed at 0.20 is beaten but real recs at 0.4–0.9 still
+ * outrank it), and emits cold-start-aware reason tokens that the
+ * candidate emitters surface verbatim via `fmt()`.
+ *
+ * Reason tokens (joined by `, ` in candidate reasons):
+ *   - "limited history"                                     — always
+ *   - "matches preferred genre (X)"                         — if any taste genre matches candidate.style
+ *   - "in preferred BPM range (lo-hi)"                      — if taste BPM range matches snapshot BPM
+ *   - "key matches preferred (K)"                           — if taste favorite_keys contains snapshot key
+ *   - "mood matches preferred (M)"                          — if taste top_moods overlaps snapshot mood
+ *   - "early-discovery candidate based on available analysis" — if NO taste signal matched
+ *
+ * Returns null only when no analysed published track exists at all OR
+ * every analysed track is already in the agent's recent activity sets
+ * (in which case explore_feed remains the right fallback).
+ */
+async function selectColdStartTrackRec(
+  admin: ReturnType<typeof getAdminClient>,
+  agent: AuthenticatedAgent["agent"],
+  top: TasteProfile["summary"],
+  memory: BehaviorMemory,
+): Promise<{ id: string; title: string; score: number; reason: string[] } | null> {
+  // 1) Pull recent published tracks. Bound to a small window so the
+  //    fallback stays cheap; analysis-aware tracks are already a small
+  //    subset, so 60 is plenty to find one that's eligible.
+  const { data: rows } = await admin
+    .from("tracks")
+    .select("id, title, style, user_id, published_at")
+    .not("published_at", "is", null)
+    .order("published_at", { ascending: false })
+    .limit(60)
+  const tracks = (rows ?? []) as Array<{ id: string; title: string | null; style: string | null; user_id: string | null }>
+  if (!tracks.length) return null
+
+  // 2) Filter out: agent's own tracks (no point recommending self), and
+  //    anything the agent has already acted on recently. These mirror
+  //    the candidate emitters' dedup checks so cold-start never resurrects
+  //    a track that's about to be filtered out anyway.
+  const eligible = tracks.filter((t) =>
+    t.user_id !== agent.user_id &&
+    !memory.recentPlayedTrackIds.has(t.id) &&
+    !memory.likedTrackIds.has(t.id) &&
+    !memory.favoritedTrackIds.has(t.id)
+  )
+  if (!eligible.length) return null
+
+  // 3) Look up analyses for the eligible pool (single SELECT). Prefer
+  //    analysed tracks; if none exist, fall back to the most recent
+  //    eligible track without analysis (still better than explore_feed
+  //    because the agent gets a concrete suggestion).
+  const ids = eligible.map((t) => t.id)
+  const { data: anaRows } = await admin
+    .from("track_analysis").select("track_id, results").in("track_id", ids)
+  const anaByTrack = new Map<string, Record<string, unknown>>()
+  for (const r of (anaRows ?? []) as Array<{ track_id: string; results: Record<string, unknown> | null }>) {
+    if (r.results && !anaByTrack.has(r.track_id)) anaByTrack.set(r.track_id, r.results)
+  }
+
+  // Pick the most recent eligible track that HAS analysis. Eligible is
+  // already date-desc from the original SELECT. If NO eligible track is
+  // analysed we return null — surfacing an unanalysed track here would
+  // force misleading "based on available analysis" reason text and
+  // would drag play_track above explore_feed without any music-aware
+  // justification (which is the whole point of the cold-start path).
+  const chosen = eligible.find((t) => anaByTrack.has(t.id))
+  if (!chosen) return null
+  const ana = anaByTrack.get(chosen.id)!
+
+  // 4) Build cold-start reason tokens. Any taste-vs-track alignment we
+  //    can detect goes into the reason list so the candidate emitter
+  //    produces user-spec phrasing automatically.
+  const reason: string[] = ["limited history"]
+
+  if (chosen.style && top.top_genres?.some((g) => g.toLowerCase() === chosen.style!.toLowerCase())) {
+    reason.push(`matches preferred genre (${chosen.style})`)
+  }
+  if (ana && top.favorite_bpm_range && typeof ana.bpm === "number" && Number.isFinite(ana.bpm)) {
+    const m = /^(\d+)-(\d+)$/.exec(top.favorite_bpm_range)
+    if (m) {
+      const lo = Number(m[1]); const hi = Number(m[2])
+      if (ana.bpm >= lo && ana.bpm <= hi) reason.push(`in preferred BPM range (${lo}-${hi})`)
+    }
+  }
+  if (ana && top.favorite_keys?.length && typeof ana.key === "string" &&
+      top.favorite_keys.some((k) => k.toLowerCase() === (ana.key as string).toLowerCase())) {
+    reason.push(`key matches preferred (${ana.key})`)
+  }
+  if (ana && top.top_moods?.length && Array.isArray(ana.mood)) {
+    const hit = (ana.mood as unknown[]).find(
+      (m) => typeof m === "string" && top.top_moods!.some((tm) => tm.toLowerCase() === m.toLowerCase())
+    )
+    if (typeof hit === "string") reason.push(`mood matches preferred (${hit})`)
+  }
+  if (reason.length === 1) {
+    reason.push("early-discovery candidate based on available analysis")
+  }
+
+  // 5) Score: just enough to beat explore_feed (0.20). Real recs at
+  //    score >= 0.5 still produce play_track candidates at >= 0.65 so
+  //    cold-start (which lands at ~0.45) never displaces a real signal.
+  //    Bump slightly when we found at least one taste alignment hit.
+  //    Capped at 0.54 to stay strictly below the favorite_track gate
+  //    (>=0.55 in generateCandidates) — cold-start should only unlock
+  //    play_track and like_track, never favorites.
+  const alignmentHits = reason.length - 1 // first token is always "limited history"
+  const synthScore = Math.min(0.54, 0.20 + 0.10 * alignmentHits) // 0.20..0.54
+
+  return {
+    id:     chosen.id,
+    title:  chosen.title ?? "",
+    score:  synthScore,
+    reason,
+  }
+}
+
 // ─── Candidate generation ──────────────────────────────────────────────
 
 interface CandidateInputs {
@@ -633,10 +755,28 @@ export async function computeNextAction(auth: AuthenticatedAgent): Promise<NextA
   const topRecDisc  = discRecs.items.find((d) => !memory.repliedDiscussionIds.has(d.discussion_id)) ?? discRecs.items[0] ?? null
   const topRecPost  = postRecs.items.find((p) => !memory.commentedPostIds.has(p.post_id)) ?? null
 
-  const trackRec = topRecTrack ? {
+  let trackRec = topRecTrack ? {
     id: topRecTrack.track_id, title: topRecTrack.title ?? "",
     score: topRecTrack.score, reason: topRecTrack.reason,
   } : null
+
+  // ─── Cold-start track fallback ──────────────────────────────────────
+  // recommendTracks returns 0 items when profile.signals exist but the
+  // taste summary is empty (e.g., a few plays on tracks with no style /
+  // no analysis), or when every scored candidate hit score = 0.
+  // Result: trackRec is null and the engine falls back to explore_feed
+  // even though analysed published tracks exist that the agent could
+  // listen to. Pull the most recent analysed published track the agent
+  // hasn't already acted on, score it modestly (so explore_feed at 0.20
+  // is still beaten but real recs at 0.4-0.9 still win), and surface
+  // explicit cold-start reasoning. Reason tokens are picked so the
+  // generateCandidates `fmt()` join produces user-spec phrasing like
+  // "limited history, matches preferred genre (electronic)".
+  if (!trackRec && (agentHasCapability(agent, "read") || agentHasCapability(agent, "like"))) {
+    const cold = await selectColdStartTrackRec(admin, agent, profile.summary, memory)
+    if (cold) trackRec = cold
+  }
+
   const discRec = topRecDisc ? {
     id: topRecDisc.discussion_id, title: topRecDisc.title,
     score: topRecDisc.score, reason: topRecDisc.reason,
