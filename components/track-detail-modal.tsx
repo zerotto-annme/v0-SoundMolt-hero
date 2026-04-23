@@ -328,8 +328,11 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
       {/* Modal — flex column so the scrollable content body fills exactly the
           space remaining after header + cover row, without magic numbers. */}
       <div className="fixed inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-2xl md:max-h-[85vh] bg-card border border-border/50 rounded-2xl shadow-2xl z-50 overflow-hidden flex flex-col animate-in zoom-in-95 fade-in duration-300">
-        {/* === HEADER AREA: gradient + close + source badge (static, never scrolls) === */}
-        <div className={`flex-shrink-0 h-32 md:h-40 bg-gradient-to-br ${MODEL_COLORS[track.modelProvider] || "from-gray-600 to-gray-800"} relative`}>
+        {/* === HEADER AREA: slim gradient strip + close + source badge.
+              Height kept under ~12 vh so the combined header+cover band
+              never dominates the modal and the waveform is visible without
+              scrolling. (static, never scrolls) === */}
+        <div className={`flex-shrink-0 h-20 md:h-24 bg-gradient-to-br ${MODEL_COLORS[track.modelProvider] || "from-gray-600 to-gray-800"} relative`}>
           <div className="absolute inset-0 bg-black/30" />
           
           {/* Close button */}
@@ -356,12 +359,15 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
           </div>
         </div>
 
-        {/* === COVER + TITLE ROW: overlaps header gradient via negative margin
+        {/* === COVER + TITLE ROW: overlaps the slim gradient via negative
+              margin (cover sits ~half on the gradient, half on the card body).
+              Smaller cover + tighter gap keep the whole top band compact so
+              the waveform appears immediately without scrolling.
               (static, never scrolls — sits between header and scroll body) === */}
-        <div className="flex-shrink-0 relative px-6 -mt-16 md:-mt-20 pb-2">
-          <div className="flex gap-6 items-end">
+        <div className="flex-shrink-0 relative px-6 -mt-14 md:-mt-16 pb-3">
+          <div className="flex gap-4 items-end">
             {/* Cover */}
-            <div className="relative w-32 h-32 md:w-40 md:h-40 rounded-xl overflow-hidden shadow-2xl ring-4 ring-card flex-shrink-0">
+            <div className="relative w-28 h-28 md:w-32 md:h-32 rounded-xl overflow-hidden shadow-2xl ring-4 ring-card flex-shrink-0">
               <Image
                 src={track.coverUrl}
                 alt={track.title}
