@@ -17,6 +17,7 @@
  */
 import { useEffect, useState } from "react"
 import { Sparkles, Lightbulb, AlertCircle } from "lucide-react"
+import { supabase } from "@/lib/supabase"
 
 interface FeedbackPayload {
   summary?: { fit_score: number | null; overall: string }
@@ -38,11 +39,28 @@ export function TrackFeedbackBlock({ trackId, className }: TrackFeedbackBlockPro
   useEffect(() => {
     let alive = true
     setLoading(true)
-    fetch(`/api/tracks/${trackId}/feedback`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => alive && setData(j ?? null))
-      .catch(() => alive && setData(null))
-      .finally(() => alive && setLoading(false))
+    ;(async () => {
+      try {
+        // Attach the current Supabase session token (if any) so the
+        // backend can authorize owner access to unpublished tracks.
+        // Public/published-track requests still work without it.
+        const headers: Record<string, string> = {}
+        try {
+          const { data: { session } } = await supabase.auth.getSession()
+          if (session?.access_token) {
+            headers.Authorization = `Bearer ${session.access_token}`
+          }
+        } catch { /* no session — fall through to anonymous fetch */ }
+
+        const r = await fetch(`/api/tracks/${trackId}/feedback`, { headers })
+        const j = r.ok ? await r.json() : null
+        if (alive) setData(j ?? null)
+      } catch {
+        if (alive) setData(null)
+      } finally {
+        if (alive) setLoading(false)
+      }
+    })()
     return () => { alive = false }
   }, [trackId])
 

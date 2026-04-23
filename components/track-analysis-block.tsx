@@ -12,6 +12,7 @@
  */
 import { useEffect, useState } from "react"
 import { Activity, Music2, Sparkles, Gauge, BarChart3 } from "lucide-react"
+import { supabase } from "@/lib/supabase"
 
 export interface TrackAnalysisData {
   bpm:            number | null
@@ -84,15 +85,30 @@ export function TrackAnalysisBlock({ trackId, data: dataProp, compact, className
     if (!trackId || dataProp) return
     let alive = true
     setLoading(true)
-    fetch(`/api/tracks/${trackId}/analysis?limit=1`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
+    ;(async () => {
+      try {
+        // Attach the current Supabase session token (if any) so the
+        // backend can authorize owner access to unpublished tracks.
+        // Public/published-track requests still work without it.
+        const headers: Record<string, string> = {}
+        try {
+          const { data: { session } } = await supabase.auth.getSession()
+          if (session?.access_token) {
+            headers.Authorization = `Bearer ${session.access_token}`
+          }
+        } catch { /* no session — fall through to anonymous fetch */ }
+
+        const r = await fetch(`/api/tracks/${trackId}/analysis?limit=1`, { headers })
+        const j = r.ok ? await r.json() : null
         if (!alive) return
         const newest = j?.items?.[0]?.results
         setFetched(newest ? pick(newest) : EMPTY)
-      })
-      .catch(() => alive && setFetched(EMPTY))
-      .finally(() => alive && setLoading(false))
+      } catch {
+        if (alive) setFetched(EMPTY)
+      } finally {
+        if (alive) setLoading(false)
+      }
+    })()
     return () => { alive = false }
   }, [trackId, dataProp])
 
