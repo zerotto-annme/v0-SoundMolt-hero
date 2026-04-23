@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { X, Play, Pause, Heart, Share2, Plus, Sparkles, Clock, Zap, MoreHorizontal, ExternalLink, Copy, Music, Mic, Drum, Sliders, Disc, Layers, SkipBack, SkipForward, Volume2, MessageCircle, Download, Loader2, Upload, Lock } from "lucide-react"
@@ -120,6 +120,15 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
   const [downloadError, setDownloadError] = useState(false)
   const [showDownloadDisabled, setShowDownloadDisabled] = useState(false)
   const waveformRef = useRef<HTMLDivElement>(null)
+  // === SCROLL BODY REF + RESET ===
+  // Held so we can deterministically force scrollTop = 0 every time the modal
+  // becomes visible OR the track changes. Without this, "sometimes the modal
+  // opens at analysis/feedback/comments" — when React reconciles a same-instance
+  // modal across consecutive opens (or across track changes via parents that
+  // keep the modal mounted), the scroll body's DOM node can survive with its
+  // previous scrollTop intact. The useLayoutEffect below runs synchronously
+  // before paint so the user never visually sees the wrong scroll position.
+  const scrollBodyRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const { currentTrack, isPlaying, playTrack, togglePlay, prevTrack, nextTrack, preloadTrack } = usePlayer()
   const { progress, currentTime, duration, seekTo } = usePlayerProgress()
@@ -138,6 +147,18 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
       preloadTrack(track)
     }
   }, [isOpen, track, preloadTrack])
+
+  // Force scroll body to top on every open + every track change. Runs before
+  // paint so the user always sees the Player section at the top — never lands
+  // mid-scroll on Analysis / Feedback / Comments. The key={track.id} on the
+  // scroll body container (below) is the second line of defence: it forces a
+  // fresh DOM node per track so even React reconciliation can't carry over a
+  // stale scrollTop.
+  useLayoutEffect(() => {
+    if (isOpen && scrollBodyRef.current) {
+      scrollBodyRef.current.scrollTop = 0
+    }
+  }, [isOpen, track.id])
 
   const handleDiscussTrack = () => {
     requireAuth(() => {
@@ -479,7 +500,12 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
 
               `space-y-6` is the single source of truth for vertical rhythm —
               no per-section mt-* overrides allowed (they previously broke it). */}
-        <div className="flex-1 min-w-0 min-h-0 p-6 space-y-6 overflow-y-auto overflow-x-hidden overscroll-contain">
+        <div
+          ref={scrollBodyRef}
+          key={`scroll-${track.id}`}
+          data-modal-scroll-body="true"
+          className="flex-1 min-w-0 min-h-0 p-6 space-y-6 overflow-y-auto overflow-x-hidden overscroll-contain"
+        >
 
           {/* === PLAYER AREA: waveform + transport.
                 ALWAYS RENDERED — confirmed by audit: there is no `if (!track)`,
