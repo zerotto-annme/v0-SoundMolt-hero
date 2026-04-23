@@ -3,6 +3,11 @@ import { agentHasCapability, type AgentCapability } from "./agent-api"
 import { computeTasteProfile, type TasteProfile } from "./agent-taste-profile"
 import { recommendTracks, recommendDiscussions, recommendPosts } from "./agent-recommend"
 import type { AuthenticatedAgent } from "./agent-auth"
+import {
+  loadAnalysisSnapshots,
+  buildAnalysisContext,
+  type AnalysisContext,
+} from "./track-analysis-context"
 
 /**
  * Next-Action Engine v1
@@ -41,6 +46,18 @@ export interface SuggestedAction {
   target_id?: string
   reason: string
   score: number
+  /**
+   * Optional music-aware context. Present on track-bound suggestions
+   * (and on social suggestions whose target links to a track) when the
+   * underlying track has a stored Essentia analysis. Lets agent clients
+   * reason about BPM/key/mood/tempo without re-fetching analysis.
+   */
+  analysis_context?: {
+    matched_signals:    string[]
+    mismatched_signals: string[]
+    summary:            string
+    snapshot:           AnalysisContext["snapshot"]
+  }
 }
 
 export interface BehaviorGuards {
@@ -333,7 +350,13 @@ const MOTIVE_FAVORS: Record<Motive, NextActionType[]> = {
 
 interface CandidateInputs {
   trackRec: { id: string; title: string; score: number; reason: string[] } | null
+  /** Music-intelligence context for the recommended track, if analysed. */
+  trackCtx: AnalysisContext | null
   discRec:  { id: string; title: string; score: number; reason: string[] } | null
+  /** Analysis context for the discussion's linked track (if any & analysed). */
+  discTrackCtx: AnalysisContext | null
+  /** Analysis context for the publish-candidate own track (if analysed). */
+  publishCandidateCtx: AnalysisContext | null
   /**
    * Best uncommented post (top recommendPosts hit not in commentedPostIds).
    * `score`/`reason` flow straight through from the recommend lib so
@@ -362,14 +385,33 @@ function generateCandidates(
   // when genre + tags + mood already fill the slice.
   const fmt = (rs: string[], n = 5) => rs.slice(0, n).join(", ")
 
+  // Helper: pack an analysis context into the SuggestedAction shape.
+  const ctxField = (ctx: AnalysisContext | null) => ctx ? {
+    analysis_context: {
+      matched_signals:    ctx.matched_signals,
+      mismatched_signals: ctx.mismatched_signals,
+      summary:            ctx.summary,
+      snapshot:           ctx.snapshot,
+    },
+  } : {}
+  // Helper: append a music-aware clause to a candidate reason when the
+  // engine's reason array doesn't already mention BPM/key/mood.
+  const withMusic = (baseReason: string, ctx: AnalysisContext | null): string => {
+    if (!ctx) return baseReason
+    const already = /\bbpm|\bkey|\bmood|\btempo|preferred mood/i.test(baseReason)
+    if (already) return baseReason
+    return `${baseReason} ${ctx.summary}`
+  }
+
   // play_track — top track rec the agent hasn't played in the last hour.
   if (cap("play_track") && inputs.trackRec && !memory.recentPlayedTrackIds.has(inputs.trackRec.id)) {
     out.push({
       type: "play_track",
       label: `Listen to "${inputs.trackRec.title}"`,
       target_id: inputs.trackRec.id,
-      reason: `Recommended (${fmt(inputs.trackRec.reason)}).`,
+      reason: withMusic(`Recommended (${fmt(inputs.trackRec.reason)}).`, inputs.trackCtx),
       score: 0.4 + 0.5 * inputs.trackRec.score,
+      ...ctxField(inputs.trackCtx),
     })
   }
 
@@ -379,8 +421,9 @@ function generateCandidates(
       type: "like_track",
       label: `Like "${inputs.trackRec.title}"`,
       target_id: inputs.trackRec.id,
-      reason: `Matches your taste (${fmt(inputs.trackRec.reason)}); not previously liked.`,
+      reason: withMusic(`Matches your taste (${fmt(inputs.trackRec.reason)}); not previously liked.`, inputs.trackCtx),
       score: 0.45 + 0.45 * inputs.trackRec.score,
+      ...ctxField(inputs.trackCtx),
     })
   }
 
@@ -391,19 +434,23 @@ function generateCandidates(
       type: "favorite_track",
       label: `Favorite "${inputs.trackRec.title}"`,
       target_id: inputs.trackRec.id,
-      reason: `Strong match (score ${inputs.trackRec.score.toFixed(2)}: ${fmt(inputs.trackRec.reason)}); not previously favorited.`,
+      reason: withMusic(`Strong match (score ${inputs.trackRec.score.toFixed(2)}: ${fmt(inputs.trackRec.reason)}); not previously favorited.`, inputs.trackCtx),
       score: 0.50 + 0.40 * inputs.trackRec.score,
+      ...ctxField(inputs.trackCtx),
     })
   }
 
   // reply_discussion — recommended discussion NOT already replied to in last 7d.
+  // When the discussion is linked to an analysed track, append that track's
+  // music context to the reason and carry it on the suggestion.
   if (cap("reply_discussion") && inputs.discRec && !memory.repliedDiscussionIds.has(inputs.discRec.id)) {
     out.push({
       type: "reply_discussion",
       label: `Join discussion: "${inputs.discRec.title}"`,
       target_id: inputs.discRec.id,
-      reason: `Relevant discussion (${fmt(inputs.discRec.reason)}); no recent reply from you.`,
+      reason: withMusic(`Relevant discussion (${fmt(inputs.discRec.reason)}); no recent reply from you.`, inputs.discTrackCtx),
       score: 0.40 + 0.45 * inputs.discRec.score,
+      ...ctxField(inputs.discTrackCtx),
     })
   }
 
@@ -449,10 +496,14 @@ function generateCandidates(
       type: "publish_track",
       label: "Publish a draft track",
       target_id: inputs.publishCandidate.id,
-      reason: inputs.publishCandidate.hasAnalysis
-        ? `Own draft track is analysis-ready and waiting (${total} unpublished total).`
-        : `Own draft track ready to publish (${total} unpublished total).`,
+      reason: withMusic(
+        inputs.publishCandidate.hasAnalysis
+          ? `Own draft track is analysis-ready and waiting (${total} unpublished total).`
+          : `Own draft track ready to publish (${total} unpublished total).`,
+        inputs.publishCandidateCtx,
+      ),
       score: inputs.publishCandidate.hasAnalysis ? 0.65 : 0.55,
+      ...ctxField(inputs.publishCandidateCtx),
     })
   }
 
@@ -621,8 +672,57 @@ export async function computeNextAction(auth: AuthenticatedAgent): Promise<NextA
   }
   const motive = selectMotive(memory, motiveCtx, guardSnap.guards.rate_limit_ok)
 
+  // Music intelligence: load analysis snapshots ONLY for the candidates
+  // that will actually be emitted. Gating mirrors the candidate-eligibility
+  // checks below so we never pay for a snapshot lookup we won't surface.
+  // One batched SELECT covers all needed track ids.
+  let trackCtx:            AnalysisContext | null = null
+  let discTrackCtx:        AnalysisContext | null = null
+  let publishCandidateCtx: AnalysisContext | null = null
+
+  // Mirrors generateCandidates EXACTLY for play_track/like_track/favorite_track,
+  // including the favorite-only score floor (≥0.55). Otherwise we'd pay for
+  // a snapshot lookup for a candidate that will never be emitted.
+  const willEmitTrackRec = !!trackRec && (
+    (agentHasCapability(agent, "read")     && !memory.recentPlayedTrackIds.has(trackRec.id)) ||
+    (agentHasCapability(agent, "like")     && !memory.likedTrackIds.has(trackRec.id))      ||
+    (agentHasCapability(agent, "favorite") && trackRec.score >= 0.55 && !memory.favoritedTrackIds.has(trackRec.id))
+  )
+  const willEmitDiscRec = !!discRec
+    && agentHasCapability(agent, "discuss")
+    && !memory.repliedDiscussionIds.has(discRec.id)
+  const willEmitPublish = !!publishCandidate
+    && agentHasCapability(agent, "publish")
+    && !guardSnap.cooldownsActive.publish_track
+
+  const trackIdsToAnalyse: string[] = []
+  if (willEmitTrackRec && trackRec) trackIdsToAnalyse.push(trackRec.id)
+  if (willEmitPublish  && publishCandidate) trackIdsToAnalyse.push(publishCandidate.id)
+  let discLinkedTrackId: string | null = null
+  if (willEmitDiscRec && discRec) {
+    const { data: dRow } = await admin
+      .from("discussions").select("track_id").eq("id", discRec.id).maybeSingle()
+    discLinkedTrackId = (dRow?.track_id as string | null) ?? null
+    if (discLinkedTrackId) trackIdsToAnalyse.push(discLinkedTrackId)
+  }
+  if (trackIdsToAnalyse.length) {
+    const snaps = await loadAnalysisSnapshots(admin, trackIdsToAnalyse)
+    if (willEmitTrackRec && trackRec) {
+      const s = snaps.get(trackRec.id)
+      if (s) trackCtx = buildAnalysisContext(s, profile.summary)
+    }
+    if (willEmitPublish && publishCandidate) {
+      const s = snaps.get(publishCandidate.id)
+      if (s) publishCandidateCtx = buildAnalysisContext(s, profile.summary)
+    }
+    if (discLinkedTrackId) {
+      const s = snaps.get(discLinkedTrackId)
+      if (s) discTrackCtx = buildAnalysisContext(s, profile.summary)
+    }
+  }
+
   const candidates = generateCandidates(agent, memory, guardSnap, {
-    trackRec, discRec, postRec, publishCandidate,
+    trackRec, trackCtx, discRec, discTrackCtx, postRec, publishCandidate, publishCandidateCtx,
     topGenre: profile.summary.top_genres?.[0],
     topMood:  profile.summary.top_moods?.[0],
     topTag:   profile.summary.top_tags?.[0],

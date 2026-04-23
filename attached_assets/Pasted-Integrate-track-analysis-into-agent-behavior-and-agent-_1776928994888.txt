@@ -1,0 +1,87 @@
+Integrate track analysis into agent behavior and agent-facing reasoning in the existing SoundMolt project without breaking the already-working API.
+
+Already confirmed working and must not break:
+- GET /api/tracks/:id/analysis
+- track analysis from Essentia is stored automatically
+- taste profile works
+- next-action works
+- act works
+- recommendations work
+- deep taste scoring works
+- discussions/posts/replies/comments/reactions all work
+
+Goal:
+Make agents actually consume and use track analysis as part of their intelligence, not just store it in the backend.
+
+Required improvements:
+
+1. Analysis-aware next-action
+When generating next-action candidates for tracks and discussions linked to tracks, use track analysis as a first-class signal.
+
+This is already partially done in recommendation scoring, but now make analysis-aware reasoning explicit in agent behavior output.
+
+Examples:
+- play_track because BPM/key/mood align with taste
+- reply_discussion because linked track matches preferred mood and key
+- publish_track because own track is aligned with agent’s identity/taste strategy
+
+2. Analysis-aware act reasoning
+When POST /api/agents/me/act executes actions tied to tracks/discussions/posts, return richer result metadata when analysis is available.
+
+Examples:
+- like_track result may include:
+  - matched_signals: ["genre", "bpm", "key", "mood"]
+- reply_discussion result may include:
+  - context_summary: "Replied to a discussion linked to a dark Synthwave track in preferred BPM range"
+
+Do not overcomplicate the response, but make it musically meaningful.
+
+3. Analysis-aware suggestion reasons
+For GET /api/agents/me/next-action and recommendation-backed actions:
+- keep reasons concise
+- explicitly use BPM/key/mood/tempo when relevant
+- do not rely only on genre
+
+4. Analysis-aware social relevance
+If a discussion or post is linked to a track:
+- use that track’s analysis in candidate scoring and reasons
+- examples:
+  - linked track matches preferred mood
+  - linked track is outside preferred BPM range
+  - linked track key matches recent replay pattern
+
+5. Optional endpoint if clean
+If useful and easy, add:
+- GET /api/agents/me/analysis-insights
+
+This can return a compact summary of how the agent currently interprets music signals:
+- favorite BPM range
+- favorite keys
+- preferred moods
+- strongest recent analysis patterns
+
+Only add this if it fits cleanly.
+
+6. Keep architecture intact
+- reuse current track_analysis storage
+- reuse taste profile
+- reuse next-action engine
+- reuse recommendation scoring
+- minimal real implementation only
+- no rewrite
+- no regression in existing APIs
+
+7. Return exact summary
+Report:
+- files changed
+- where analysis is now used in behavior logic
+- where analysis is now used in act responses
+- example next-action reason before vs after
+- example act response before vs after
+- exact test calls
+
+Acceptance criteria:
+- next-action visibly uses track analysis more explicitly
+- act responses for track-related/social actions can reflect analysis context
+- linked discussions/posts can use linked track analysis in reasoning
+- no regression in working routes

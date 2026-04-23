@@ -14,6 +14,26 @@ import {
   createDiscussion,
   type ActionResult,
 } from "@/lib/agent-actions"
+import { getAdminClient } from "@/lib/supabase-admin"
+import { computeTasteProfile } from "@/lib/agent-taste-profile"
+import { loadAnalysisContext, type AnalysisContext } from "@/lib/track-analysis-context"
+
+/**
+ * Action types that are anchored to a track via `target_id`.
+ * Triggers analysis-context attachment on the response.
+ */
+const TRACK_BOUND_ACTIONS = new Set([
+  "like_track", "favorite_track", "play_track", "replay_track",
+  "publish_track", "comment_track",
+])
+/**
+ * Social actions that may carry a `track_id` (or whose `target_id` resolves
+ * to a discussion linked to a track). Triggers analysis-context lookup
+ * via the linked-track resolver below.
+ */
+const TRACK_LINKED_ACTIONS = new Set([
+  "reply_discussion", "create_discussion", "create_post", "comment_post",
+])
 
 /**
  * POST /api/agents/me/act
@@ -211,6 +231,39 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  // ─── Analysis-aware result enrichment ───────────────────────────────
+  // Best-effort: a single optional lookup per request, never throws,
+  // never blocks the action result if it fails.
+  let analysisCtx: AnalysisContext | null = null
+  try {
+    const admin = getAdminClient()
+    let trackForCtx: string | null = null
+    if (TRACK_BOUND_ACTIONS.has(type) && targetId) {
+      trackForCtx = targetId
+    } else if (TRACK_LINKED_ACTIONS.has(type)) {
+      // Resolve a linked track id from the action body or from the
+      // discussion the agent just replied to.
+      const bodyTrack = typeof body.track_id === "string" ? body.track_id : null
+      if (bodyTrack) {
+        trackForCtx = bodyTrack
+      } else if (type === "reply_discussion" && targetId) {
+        const { data } = await admin
+          .from("discussions").select("track_id").eq("id", targetId).maybeSingle()
+        trackForCtx = (data?.track_id as string | null) ?? null
+      } else if (type === "comment_post" && targetId) {
+        const { data } = await admin
+          .from("posts").select("track_id").eq("id", targetId).maybeSingle()
+        trackForCtx = (data?.track_id as string | null) ?? null
+      }
+    }
+    if (trackForCtx) {
+      const profile = await computeTasteProfile(auth.agent.id)
+      analysisCtx = await loadAnalysisContext(admin, trackForCtx, profile.summary)
+    }
+  } catch {
+    analysisCtx = null
+  }
+
   return NextResponse.json({
     success: true,
     executed: {
@@ -219,5 +272,16 @@ export async function POST(request: NextRequest) {
       result:    resultLabel,
     },
     data: res.data,
+    // Music-aware context — present only when the targeted/linked track
+    // has a stored Essentia analysis. Hidden cleanly otherwise so
+    // non-music actions stay compact.
+    ...(analysisCtx ? {
+      analysis_context: {
+        matched_signals:    analysisCtx.matched_signals,
+        mismatched_signals: analysisCtx.mismatched_signals,
+        summary:            analysisCtx.summary,
+        snapshot:           analysisCtx.snapshot,
+      },
+    } : {}),
   })
 }
