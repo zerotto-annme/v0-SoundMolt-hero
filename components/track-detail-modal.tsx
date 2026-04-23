@@ -325,10 +325,11 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
         className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 animate-in fade-in duration-200"
       />
 
-      {/* Modal */}
-      <div className="fixed inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-2xl md:max-h-[85vh] bg-card border border-border/50 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in zoom-in-95 fade-in duration-300">
-        {/* Header gradient */}
-        <div className={`h-32 md:h-40 bg-gradient-to-br ${MODEL_COLORS[track.modelProvider] || "from-gray-600 to-gray-800"} relative`}>
+      {/* Modal — flex column so the scrollable content body fills exactly the
+          space remaining after header + cover row, without magic numbers. */}
+      <div className="fixed inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-2xl md:max-h-[85vh] bg-card border border-border/50 rounded-2xl shadow-2xl z-50 overflow-hidden flex flex-col animate-in zoom-in-95 fade-in duration-300">
+        {/* === HEADER AREA: gradient + close + source badge (static, never scrolls) === */}
+        <div className={`flex-shrink-0 h-32 md:h-40 bg-gradient-to-br ${MODEL_COLORS[track.modelProvider] || "from-gray-600 to-gray-800"} relative`}>
           <div className="absolute inset-0 bg-black/30" />
           
           {/* Close button */}
@@ -355,8 +356,9 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
           </div>
         </div>
 
-        {/* Cover art - overlapping header */}
-        <div className="relative px-6 -mt-16 md:-mt-20">
+        {/* === COVER + TITLE ROW: overlaps header gradient via negative margin
+              (static, never scrolls — sits between header and scroll body) === */}
+        <div className="flex-shrink-0 relative px-6 -mt-16 md:-mt-20 pb-2">
           <div className="flex gap-6 items-end">
             {/* Cover */}
             <div className="relative w-32 h-32 md:w-40 md:h-40 rounded-xl overflow-hidden shadow-2xl ring-4 ring-card flex-shrink-0">
@@ -427,9 +429,16 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
           </div>
         </div>
 
-        {/* Content */}
-        <div className="p-6 space-y-6 overflow-y-auto overscroll-contain max-h-[calc(85vh-220px)]">
-          
+        {/* === SCROLL BODY: only this container scrolls. flex-1 min-h-0 makes it
+              fill the remaining space after header + cover row, regardless of
+              their actual heights. overscroll-contain prevents wheel chaining
+              into the (already body-scroll-locked) page behind the modal. ===
+              Section order: player → analysis → creator feedback → comments → artist footer.
+              `space-y-6` is the single source of truth for vertical rhythm —
+              no per-section mt-* overrides allowed (they previously broke it). */}
+        <div className="flex-1 min-h-0 p-6 space-y-6 overflow-y-auto overscroll-contain">
+
+          {/* === PLAYER AREA: waveform + transport + actions === */}
           {/* Waveform Player Section */}
           <div className="bg-secondary/30 rounded-xl p-4 space-y-4">
             {/* Waveform visualization */}
@@ -700,27 +709,25 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
             </div>
           </div>
 
-          {/* MUSIC ANALYSIS - Auto-extracted by Essentia, hidden when unavailable */}
-          <div className="mt-4">
-            <TrackAnalysisBlock trackId={track.id} />
-          </div>
+          {/* === TRACK ANALYSIS: auto-extracted by Essentia. Block self-hides
+                when no analysis exists (returns null), so spacing collapses. === */}
+          <TrackAnalysisBlock trackId={track.id} />
 
-          {/* CREATOR FEEDBACK - Strengths / considerations / suggestions, hidden when unavailable */}
-          <div className="mt-3">
-            <TrackFeedbackBlock trackId={track.id} />
-          </div>
+          {/* === CREATOR FEEDBACK: strengths / considerations / suggestions.
+                Block self-hides when no feedback exists. === */}
+          <TrackFeedbackBlock trackId={track.id} />
 
-          {/* COMMENTS SECTION - Immediately visible */}
-          <div className="mt-2">
-            <TrackComments 
-              trackId={track.id} 
-              trackAgentName={track.agentName} 
-              onSeekTo={handleSeekToTime}
-            />
-          </div>
+          {/* === COMMENTS === */}
+          <TrackComments
+            trackId={track.id}
+            trackAgentName={track.agentName}
+            onSeekTo={handleSeekToTime}
+          />
 
-          {/* Agent Identity - Compact inline card */}
-          <div className="mt-6 pt-4 border-t border-border/30">
+          {/* === ARTIST FOOTER: agent identity card with top divider.
+                space-y-6 already gives 24 px above; pt-4 + border-t adds the
+                visible separator without breaking the rhythm. === */}
+          <div className="pt-4 border-t border-border/30">
             <Link 
               href={`/agent/${encodeURIComponent(track.agentName)}`}
               onClick={onClose}
