@@ -318,16 +318,40 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
 
   if (!isOpen) return null
 
+  // === GLOBAL BOTTOM PLAYER COMPENSATION ===
+  // The MusicPlayer (components/music-player.tsx) is rendered AFTER children
+  // in app/layout.tsx, so at equal z-50 it paints on top of any overlay. We
+  // shrink the modal panel so it never extends into the player band and bump
+  // the panel above z-50 as a safety belt.
+  // Player band heights — keep these in sync with music-player.tsx:
+  //   • mobile: h-16 (64) + 4-px progress bar above + 1-px border-t ≈ 69 → 72
+  //   • desktop: h-20 (80) + 1-px border-t ≈ 81 → 88 (also used /2 = 44 for re-centering)
+  // NOTE: the magic-number classes below MUST be written as literal strings
+  // (not template-interpolated) — Tailwind JIT scans source for full literal
+  // class names; interpolated arbitrary values would never be emitted.
+  const hasBottomPlayer = !!currentTrack
+
   return (
     <>
-      {/* Backdrop — clicks do NOT close the modal */}
+      {/* Backdrop — clicks do NOT close the modal. Stays at z-50 inset-0 so the
+          dim covers everything; the bottom player paints over it (later in DOM
+          at equal z) so it remains visible/usable while the modal is open. */}
       <div 
         className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 animate-in fade-in duration-200"
       />
 
-      {/* Modal — flex column so the scrollable content body fills exactly the
-          space remaining after header + cover row, without magic numbers. */}
-      <div className="fixed inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-2xl md:max-h-[85vh] bg-card border border-border/50 rounded-2xl shadow-2xl z-50 overflow-hidden flex flex-col animate-in zoom-in-95 fade-in duration-300">
+      {/* Modal panel — flex column. Lifted to z-[60] so it always paints above
+          the global bottom player (which is z-50, rendered after children in
+          app/layout.tsx). Bottom inset and max-height shrink to leave the
+          player band uncovered when a track is loaded — Comments/Footer stay
+          fully reachable, internal Player stays visible. Centering on desktop
+          shifts up by half the player band so the modal stays optically
+          centered in the *available* (above-player) viewport. */}
+      <div className={`fixed left-4 right-4 top-4 z-[60] md:inset-auto md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-2xl bg-card border border-border/50 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 fade-in duration-300 ${
+        hasBottomPlayer
+          ? "bottom-[calc(1rem+72px)] md:max-h-[calc(85vh-88px)] md:top-[calc(50%-44px)]"
+          : "bottom-4 md:max-h-[85vh] md:top-1/2"
+      }`}>
         {/* === HEADER AREA: slim gradient strip + close + source badge.
               Height kept under ~12 vh so the combined header+cover band
               never dominates the modal and the waveform is visible without
