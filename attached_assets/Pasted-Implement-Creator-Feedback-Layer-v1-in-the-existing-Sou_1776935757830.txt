@@ -1,0 +1,202 @@
+Implement Creator Feedback Layer v1 in the existing SoundMolt project without breaking the already-working API, behavior engine, recommendations, or Essentia integration.
+
+Already confirmed working and must not break:
+- track upload/create/publish
+- automatic Essentia analysis after upload
+- GET /api/tracks/:id/analysis
+- taste profile
+- recommendations
+- next-action
+- act
+- posts/discussions/reactions
+- linked track reasoning
+- analysis-aware act responses
+
+Goal:
+Turn SoundMolt’s music intelligence into useful feedback for creators.
+
+This is NOT full autonomous mastering.
+This is a structured AI feedback layer that interprets track analysis into actionable creator guidance.
+
+==================================================
+REQUIRED ROUTES
+==================================================
+
+1. GET /api/tracks/:id/feedback
+2. POST /api/tracks/:id/feedback/rebuild
+
+Optional if clean:
+3. GET /api/agents/me/feedback-insights
+
+==================================================
+CORE IDEA
+==================================================
+
+Use existing analysis + recommendation/taste logic to generate creator-facing feedback such as:
+- strengths
+- weaknesses
+- fit/match observations
+- improvement suggestions
+- summary guidance
+
+The output must be useful, structured, and readable.
+
+==================================================
+INPUTS TO USE
+==================================================
+
+Use real existing signals only:
+- track analysis (bpm, key, scale, mood, tempo_label, interpretation, tags if available)
+- taste profile
+- recommendation scoring logic if reusable
+- listening/replay/favorite signals if they exist
+- linked music intelligence signals already present in the system
+
+Do NOT invent fake data.
+
+==================================================
+FEEDBACK OUTPUT SHAPE
+==================================================
+
+Suggested response shape:
+
+{
+  "track_id": "...",
+  "provider": "soundmolt-feedback-v1",
+  "summary": {
+    "fit_score": 0.78,
+    "overall": "Strong dark/electronic alignment with clear rhythmic identity."
+  },
+  "strengths": [
+    "The track strongly matches preferred BPM/taste signals.",
+    "The key and mood create a coherent dark electronic feel."
+  ],
+  "weaknesses": [
+    "The track may be overly similar to recently replayed patterns.",
+    "Mood is strong, but tonal identity may not diversify the agent profile."
+  ],
+  "improvements": [
+    "Consider adding more contrast or variation if you want broader recommendation appeal.",
+    "If the goal is discovery rather than repetition, try shifting key/mood or tempo profile."
+  ],
+  "signals": {
+    "bpm": 124,
+    "key": "A",
+    "scale": "minor",
+    "mood": "dark",
+    "tempo_label": "fast"
+  },
+  "explanations": [
+    "Matches favorite BPM range.",
+    "Matches favorite key.",
+    "Matches preferred mood."
+  ],
+  "created_at": "..."
+}
+
+==================================================
+REQUIRED LOGIC
+==================================================
+
+1. Strengths
+Use existing analysis/taste signals to highlight what the track does well.
+
+Examples:
+- strong BPM alignment
+- strong key alignment
+- strong mood alignment
+- good genre fit
+- coherent identity
+- recommendation-friendly profile
+
+2. Weaknesses
+Use cautious, non-destructive phrasing.
+Do not pretend to be a mastering engineer.
+Focus on music intelligence interpretation.
+
+Examples:
+- too close to recent patterns
+- weak novelty
+- mood/tempo too narrow for broader discovery
+- outside preferred range in some dimensions
+- lacks diversity against recent behavior trends
+
+3. Improvements
+Return actionable but light-touch suggestions.
+These should be framed as guidance, not absolute truth.
+
+Examples:
+- vary tempo if broader appeal is desired
+- shift mood if diversity is needed
+- strengthen contrast if repetition is too high
+- consider changing key or energy profile to stand out
+
+4. Fit score
+Provide a compact numeric or normalized score showing how well the track fits the current system/taste profile.
+Do not overclaim scientific precision.
+
+5. Rebuild endpoint
+POST /api/tracks/:id/feedback/rebuild should:
+- recompute feedback
+- overwrite/update stored feedback snapshot if you store one
+- return the rebuilt feedback
+
+6. Storage model
+Use the simplest clean implementation:
+- either compute on read
+- or store a feedback snapshot table
+
+If storage is added, keep it minimal, for example:
+- track_feedback(id, track_id, owner_user_id, provider, payload jsonb, created_at, updated_at)
+
+Do not overengineer.
+
+==================================================
+STYLE REQUIREMENTS
+==================================================
+
+- creator-facing
+- readable
+- useful
+- concise but meaningful
+- no raw debug language
+- no leaking internal scoring factors directly unless translated into plain language
+
+Good:
+- Matches your preferred dark/electronic profile and sits in your strongest BPM band.
+
+Bad:
+- genre_match=0.30 bpm_match=0.20 key_match=0.15
+
+==================================================
+KEEP ARCHITECTURE INTACT
+==================================================
+
+- reuse current auth middleware / requireAgent logic where appropriate
+- reuse existing track analysis
+- reuse existing taste/recommendation signals where useful
+- minimal real implementation only
+- no rewrite
+- no regression in existing APIs
+
+==================================================
+RETURN EXACT SUMMARY
+==================================================
+
+Report:
+- files changed
+- whether feedback is computed on read or stored
+- routes added
+- how strengths are generated
+- how weaknesses are generated
+- how improvements are generated
+- exact test calls for:
+  - GET /api/tracks/:id/feedback
+  - POST /api/tracks/:id/feedback/rebuild
+
+Acceptance criteria:
+- GET /api/tracks/:id/feedback works
+- POST /api/tracks/:id/feedback/rebuild works
+- feedback is based on real analysis/taste signals
+- output is creator-friendly, not debug-heavy
+- no regression in existing APIs
