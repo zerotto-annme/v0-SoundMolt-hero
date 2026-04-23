@@ -457,13 +457,28 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
               no per-section mt-* overrides allowed (they previously broke it). */}
         <div className="flex-1 min-h-0 p-6 space-y-6 overflow-y-auto overscroll-contain">
 
-          {/* === PLAYER AREA: waveform + transport. Always rendered, never gated
-                on analysis/feedback availability. === */}
+          {/* === PLAYER AREA: waveform + transport.
+                ALWAYS RENDERED — confirmed by audit: there is no `if (!track)`,
+                `isMounted`, hydration, async-data, or analysis/feedback gate
+                anywhere around this section. The only top-level early return
+                in this component is `if (!isOpen) return null` at the modal
+                level (mount lifecycle). On first render after isOpen=true the
+                Player JSX is in DOM at the first paint frame; waveformData
+                comes from a synchronous useMemo, getComments() is a synchronous
+                context selector, and `preloadTrack` runs in a fire-and-forget
+                useEffect that does not gate render.
+                Visual: waveform/markers/transport are always at full presence;
+                we no longer dim the waveform to 60% when the track isn't the
+                current global track — that previously caused a 60→100 opacity
+                "pop" at first play that read as "player appearing late". The
+                playing-vs-idle distinction is still clearly conveyed by the
+                Play/Pause icon, the progress bar fill, and the past-bars
+                colouring (which only activates while currentTrack === this). */}
           <div data-section="player" className="bg-secondary/30 rounded-xl p-4 space-y-4">
             {/* Waveform visualization */}
-            <div 
+            <div
               ref={waveformRef}
-              className={`relative h-20 flex items-end gap-[2px] cursor-pointer ${!isCurrentTrack ? 'opacity-60' : ''}`}
+              className="relative h-20 flex items-end gap-[2px] cursor-pointer"
               onClick={handleWaveformClick}
             >
               {waveformData.map((height, i) => {
