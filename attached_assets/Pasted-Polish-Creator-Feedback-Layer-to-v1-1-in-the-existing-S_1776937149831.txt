@@ -1,0 +1,83 @@
+Polish Creator Feedback Layer to v1.1 in the existing SoundMolt project without breaking the already-working APIs.
+
+Current verified state:
+- GET /api/tracks/:id/feedback works
+- POST /api/tracks/:id/feedback/rebuild works
+- strengths exist
+- improvements exist
+- text is mostly human-readable
+- weaknesses field exists but currently often returns []
+- some wording still feels slightly technical:
+  - "124 BPM"
+  - "A minor"
+  - "owner-profile fit"
+
+Goal:
+Make feedback more balanced, more creator-friendly, and less technical in tone while still grounded in real signals.
+
+Required improvements:
+
+1. Improve weaknesses generation
+If real signals suggest limitations, weaknesses should not stay empty too often.
+
+Possible weakness themes:
+- too close to recent patterns
+- low novelty
+- narrow emotional range
+- strong fit but limited contrast
+- may blend in rather than stand out
+- outside preferred range in one meaningful dimension
+- strong mood identity but limited variety
+
+Do NOT invent criticism randomly.
+But if the system has enough evidence, produce at least one weakness when appropriate.
+
+2. Keep weaknesses constructive
+Weaknesses must sound helpful, not harsh.
+
+Good examples:
+- The track feels cohesive, but it may lean a bit too close to recently favored patterns.
+- Its dark identity is clear, though it may benefit from more contrast to stand out.
+- The rhythmic profile is strong, but the overall feel may be somewhat familiar.
+
+3. Make wording more creator-facing
+Reduce raw technical phrasing when possible.
+Translate technical signals into more natural language.
+
+Instead of:
+- 124 BPM
+- A minor
+- owner-profile fit
+
+Prefer:
+- fast-paced rhythmic feel
+- darker tonal center
+- strong match with the current taste profile
+
+Technical values can still appear in signals, but summary/strengths/weaknesses/improvements should read more naturally.
+
+4. Keep strengths and improvements grounded
+Do not remove the existing strengths/improvements structure.
+Just improve wording and balance.
+
+5. Keep output shape stable
+Preserve:
+- summary
+- strengths
+- weaknesses
+- improvements
+- signals
+- explanations
+
+6. Return exact summary
+Report:
+- files changed
+- what changed in weakness generation
+- what changed in phrasing
+- one example before/after feedback response
+
+Acceptance criteria:
+- weaknesses are generated more often when justified
+- feedback remains human-readable
+- wording is less technical in summary text
+- no regression in strengths/improvements
