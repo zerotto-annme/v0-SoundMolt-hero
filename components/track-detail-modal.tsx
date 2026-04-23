@@ -349,8 +349,8 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
           centered in the *available* (above-player) viewport. */}
       <div className={`fixed left-4 right-4 top-4 z-[60] md:inset-auto md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-2xl bg-card border border-border/50 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 fade-in duration-300 ${
         hasBottomPlayer
-          ? "bottom-[calc(1rem+72px)] md:max-h-[calc(85vh-88px)] md:top-[calc(50%-44px)]"
-          : "bottom-4 md:max-h-[85vh] md:top-1/2"
+          ? "bottom-[calc(1rem+72px)] md:max-h-[calc(90vh-88px)] md:top-[calc(50%-44px)]"
+          : "bottom-4 md:max-h-[90vh] md:top-1/2"
       }`}>
         {/* === HEADER AREA: slim gradient strip + close + source badge.
               Height kept under ~12 vh so the combined header+cover band
@@ -479,7 +479,7 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
 
               `space-y-6` is the single source of truth for vertical rhythm —
               no per-section mt-* overrides allowed (they previously broke it). */}
-        <div className="flex-1 min-h-0 p-6 space-y-6 overflow-y-auto overscroll-contain">
+        <div className="flex-1 min-w-0 min-h-0 p-6 space-y-6 overflow-y-auto overflow-x-hidden overscroll-contain">
 
           {/* === PLAYER AREA: waveform + transport.
                 ALWAYS RENDERED — confirmed by audit: there is no `if (!track)`,
