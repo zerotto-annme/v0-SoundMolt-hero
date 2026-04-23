@@ -1,0 +1,62 @@
+Исправь scroll behavior в modal / overlay UI.
+
+Проблема:
+Сейчас при открытой модалке (например track detail modal) wheel-scroll часто уходит в background page вместо scrollable content внутри модалки.
+Также horizontal scroll area под/внутри открытого окна перехватывает поведение так, что вертикальный scroll колесом не работает как должен.
+Сейчас нормально двигается только если навести мышку прямо на scrollbar thumb, а это неверно.
+
+Нужно исправить scroll containment и positioning.
+
+Что должно работать после правки:
+
+1. Когда modal / dialog / overlay открыт:
+
+* wheel-scroll над контентом модалки скроллит только modal content
+* background page behind modal не должен скроллиться
+* body/page scroll должен быть locked while modal is open
+
+2. Если внутри модалки есть scrollable content:
+
+* `overflow-y: auto` должен быть на правильном внутреннем content container
+* у modal container должна быть корректная max-height / height constraint
+* scroll должен жить внутри modal content, а не на фоне страницы
+
+3. Если есть horizontal carousels / horizontal bars behind or inside overlays:
+
+* обычный vertical mouse wheel не должен случайно скроллить background horizontal container
+* modal overlay должен перехватывать pointer/wheel interaction правильно
+* background interactive layers должны быть inert while modal is open
+
+4. Проверить именно:
+
+* track detail modal
+* любые drawer / popup / opened card detail states
+* случаи, где под модалкой есть horizontal track rows/carousels
+
+5. Проверь стили и логику:
+
+* `overflow`, `overflow-y`, `overflow-x`
+* `position: fixed`
+* `inset: 0`
+* `pointer-events`
+* `overscroll-behavior`
+* body scroll lock
+* z-index layering
+* modal content wrapper vs page wrapper
+
+6. Если используется Radix/Dialog/Sheet/Drawer:
+
+* исправь в соответствии с правильным scroll-lock pattern
+* background must not scroll while dialog open
+
+7. Не менять визуальный дизайн
+8. GitHub не трогать
+9. Deploy не трогать
+
+После правки верни:
+
+* какие файлы изменены
+* в чём была точная причина бага
+* какой контейнер теперь скроллится
+* как заблокирован background scroll
+* какие modal/overlay сценарии проверены

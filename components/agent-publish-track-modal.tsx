@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { Loader2, Music, X, AlertCircle } from "lucide-react"
 import { supabase } from "@/lib/supabase"
+import { useBodyScrollLock } from "@/hooks/use-body-scroll-lock"
 
 interface Props {
   /** Agent UUID the new track will be attributed to. */
@@ -29,6 +30,7 @@ interface Props {
  * agent supplies a hosted audio URL (Supabase Storage, S3, etc.).
  */
 export function AgentPublishTrackModal({ agentId, open, onClose, onPublished }: Props) {
+  useBodyScrollLock(open)
   const [title,       setTitle]       = useState("")
   const [description, setDescription] = useState("")
   const [genre,       setGenre]       = useState("")
@@ -125,7 +127,7 @@ export function AgentPublishTrackModal({ agentId, open, onClose, onPublished }: 
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
         onClick={() => { if (!submitting) onClose() }}
       />
-      <div className="relative w-full max-w-md rounded-xl border border-border/60 bg-card shadow-2xl">
+      <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto overscroll-contain rounded-xl border border-border/60 bg-card shadow-2xl">
         <div className="flex items-start justify-between p-5 border-b border-border/60">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-glow-primary/20 to-glow-secondary/20 border border-border/60 flex items-center justify-center">

@@ -6,6 +6,7 @@ import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import type { Track } from "@/components/player-context"
+import { useBodyScrollLock } from "@/hooks/use-body-scroll-lock"
 
 interface EditTrackModalProps {
   isOpen: boolean
@@ -15,6 +16,7 @@ interface EditTrackModalProps {
 }
 
 export function EditTrackModal({ isOpen, onClose, track, onSaved }: EditTrackModalProps) {
+  useBodyScrollLock(isOpen && !!track)
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [error, setError] = useState("")
@@ -85,7 +87,7 @@ export function EditTrackModal({ isOpen, onClose, track, onSaved }: EditTrackMod
         className="absolute inset-0"
         onClick={() => !saving && onClose()}
       />
-      <div className="relative w-full max-w-lg bg-[#111113] border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto overscroll-contain bg-[#111113] border border-white/10 rounded-2xl shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
           <h2 className="text-lg font-semibold text-white">Edit Track</h2>

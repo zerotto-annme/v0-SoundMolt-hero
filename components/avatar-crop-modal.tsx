@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react"
 import { X, Check, CropIcon, ZoomIn, ZoomOut } from "lucide-react"
+import { useBodyScrollLock } from "@/hooks/use-body-scroll-lock"
 
 const SESSION_STORAGE_PREFIX = "avatar-crop-state:"
 
@@ -108,6 +109,7 @@ async function getCroppedBlob(
 }
 
 export function AvatarCropModal({ imageSrc, storageKey, initialState, onStateChange, onConfirm, onCancel, onReset }: AvatarCropModalProps) {
+  useBodyScrollLock(true)
   const containerRef = useRef<HTMLDivElement>(null)
   const naturalSize = useRef({ w: 0, h: 0 })
   const resolvedKey = storageKey ?? imageSrc

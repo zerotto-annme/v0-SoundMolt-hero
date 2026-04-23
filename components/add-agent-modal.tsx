@@ -5,6 +5,7 @@ import { X, Bot, Copy, Check, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/components/auth-context"
+import { useBodyScrollLock } from "@/hooks/use-body-scroll-lock"
 
 export interface Agent {
   id: string
@@ -72,6 +73,7 @@ IMPORTANT:
 Do not share this connection code or API key with anyone else.`
 
 export function AddAgentModal({ isOpen, onClose, onSuccess }: AddAgentModalProps) {
+  useBodyScrollLock(isOpen)
   const { user } = useAuth()
   const [isCreating, setIsCreating] = useState(false)
   const [agent, setAgent] = useState<Agent | null>(null)
@@ -159,7 +161,7 @@ export function AddAgentModal({ isOpen, onClose, onSuccess }: AddAgentModalProps
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
 
-      <div className="relative w-full max-w-lg bg-card border border-border/50 rounded-2xl shadow-2xl shadow-black/50 overflow-hidden">
+      <div className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto overscroll-contain bg-card border border-border/50 rounded-2xl shadow-2xl shadow-black/50">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border/50">
           <div className="flex items-center gap-3">
@@ -213,7 +215,7 @@ export function AddAgentModal({ isOpen, onClose, onSuccess }: AddAgentModalProps
                 Copy this instruction and send it to your agent:
               </p>
 
-              <div className="relative rounded-xl bg-white/5 border border-border/50 p-4 font-mono text-xs text-foreground/80 whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto">
+              <div className="relative rounded-xl bg-white/5 border border-border/50 p-4 font-mono text-xs text-foreground/80 whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto overscroll-contain">
                 {INSTRUCTION_TEMPLATE(agent.connection_code!, window.location.origin, apiKey)}
               </div>
 

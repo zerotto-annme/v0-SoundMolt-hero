@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { X, Sparkles, Wand2, Music, Clock, Loader2, Check, Cpu, Waves, Mic, Sliders, Zap, Bot, Activity, Download, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { usePlayer, type Track } from "./player-context"
+import { useBodyScrollLock } from "@/hooks/use-body-scroll-lock"
 
 interface CreateTrackModalProps {
   isOpen: boolean
@@ -88,6 +89,7 @@ function GeneratingWaveform() {
 }
 
 export function CreateTrackModal({ isOpen, onClose, onSuccess }: CreateTrackModalProps) {
+  useBodyScrollLock(isOpen)
   const [prompt, setPrompt] = useState("")
   const [selectedStyle, setSelectedStyle] = useState<string | null>(null)
   const [selectedDuration, setSelectedDuration] = useState<string>("60")
@@ -222,7 +224,7 @@ const handleClose = () => {
       />
       
       {/* Modal */}
-      <div className="relative w-full max-w-lg mx-4 bg-card border border-border/50 rounded-2xl shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto overscroll-contain bg-card border border-border/50 rounded-2xl shadow-2xl">
         {/* Header gradient */}
         <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-br from-glow-primary/20 via-transparent to-glow-secondary/20 pointer-events-none" />
         

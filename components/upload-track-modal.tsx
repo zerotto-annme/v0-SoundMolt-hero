@@ -7,6 +7,7 @@ import { usePlayer, type Track } from "./player-context"
 import { supabase } from "@/lib/supabase"
 import { uploadWithRetry } from "@/lib/upload-with-retry"
 import Image from "next/image"
+import { useBodyScrollLock } from "@/hooks/use-body-scroll-lock"
 
 interface UploadTrackModalProps {
   isOpen: boolean
@@ -36,6 +37,7 @@ const GENRES = [
 ]
 
 export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModalProps) {
+  useBodyScrollLock(isOpen)
   const [audioFile, setAudioFile] = useState<File | null>(null)
   const [coverFile, setCoverFile] = useState<File | null>(null)
   const [coverPreview, setCoverPreview] = useState<string | null>(null)
@@ -405,7 +407,7 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
       
       {/* Modal */}
-      <div className="relative w-full max-w-lg mx-4 bg-card border border-border/50 rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
+      <div className="relative w-full max-w-lg mx-4 bg-card border border-border/50 rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto overscroll-contain">
         {/* Header gradient */}
         <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-br from-glow-secondary/20 via-transparent to-glow-primary/20 pointer-events-none" />
         

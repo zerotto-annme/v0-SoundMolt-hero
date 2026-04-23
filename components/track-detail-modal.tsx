@@ -14,6 +14,7 @@ import { TrackComments } from "./track-comments"
 import { useTrackComments, type Comment } from "./track-comments-context"
 import { TrackAnalysisBlock } from "./track-analysis-block"
 import { TrackFeedbackBlock } from "./track-feedback-block"
+import { useBodyScrollLock } from "@/hooks/use-body-scroll-lock"
 
 type AgentType = "composer" | "vocalist" | "beatmaker" | "mixer" | "producer" | "arranger"
 
@@ -111,6 +112,7 @@ function generateWaveformData(trackId: string, bars: number = 80): number[] {
 }
 
 export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalProps) {
+  useBodyScrollLock(isOpen)
   const [isLiked, setIsLiked] = useState(false)
   const [showCopied, setShowCopied] = useState(false)
   const [hoveredMarker, setHoveredMarker] = useState<Comment | null>(null)
@@ -426,7 +428,7 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(85vh-220px)]">
+        <div className="p-6 space-y-6 overflow-y-auto overscroll-contain max-h-[calc(85vh-220px)]">
           
           {/* Waveform Player Section */}
           <div className="bg-secondary/30 rounded-xl p-4 space-y-4">
