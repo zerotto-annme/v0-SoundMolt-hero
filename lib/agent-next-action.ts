@@ -58,6 +58,16 @@ export interface SuggestedAction {
     summary:            string
     snapshot:           AnalysisContext["snapshot"]
   }
+  /**
+   * Present on social suggestions (`reply_discussion`, `comment_post`)
+   * whose target is linked to a track. Surfaces the linked track id and
+   * the *reason for the link*, so agents can reason about WHY this
+   * social action is music-relevant without re-fetching analysis.
+   * Mirrors the trio exposed on Discussion/Post recommendations.
+   */
+  linked_track_id?: string
+  linked_track_analysis_summary?: string
+  linked_match_signals?: string[]
 }
 
 export interface BehaviorGuards {
@@ -474,7 +484,12 @@ interface CandidateInputs {
   trackRec: { id: string; title: string; score: number; reason: string[] } | null
   /** Music-intelligence context for the recommended track, if analysed. */
   trackCtx: AnalysisContext | null
-  discRec:  { id: string; title: string; score: number; reason: string[] } | null
+  discRec:  {
+    id: string; title: string; score: number; reason: string[]
+    linkedTrackId?: string
+    linkedSummary?: string
+    linkedMatchSignals?: string[]
+  } | null
   /** Analysis context for the discussion's linked track (if any & analysed). */
   discTrackCtx: AnalysisContext | null
   /** Analysis context for the publish-candidate own track (if analysed). */
@@ -482,9 +497,18 @@ interface CandidateInputs {
   /**
    * Best uncommented post (top recommendPosts hit not in commentedPostIds).
    * `score`/`reason` flow straight through from the recommend lib so
-   * tag/genre matches are visible.
+   * tag/genre matches are visible. `linkedTrackId` plus the two summary
+   * fields surface the *reason for the link* so comment_post candidates
+   * can carry music-aware reasoning into next-action output.
    */
-  postRec: { id: string; preview: string; score: number; reason: string[] } | null
+  postRec: {
+    id: string; preview: string; score: number; reason: string[]
+    linkedTrackId?: string
+    linkedSummary?: string
+    linkedMatchSignals?: string[]
+  } | null
+  /** Analysis context for the post's linked track (if any & analysed). */
+  postTrackCtx: AnalysisContext | null
   topGenre: string | undefined
   topMood:  string | undefined
   topTag:   string | undefined
@@ -562,6 +586,16 @@ function generateCandidates(
     })
   }
 
+  // Helper: pack the linked-track trio onto a SuggestedAction. Mirrors
+  // the recommendation-level fields so callers can rely on the same
+  // shape across /recommendations/debug, /next-action and act results.
+  const linkedFields = (rec: { linkedTrackId?: string; linkedSummary?: string; linkedMatchSignals?: string[] } | null) =>
+    rec?.linkedTrackId ? {
+      linked_track_id: rec.linkedTrackId,
+      linked_track_analysis_summary: rec.linkedSummary ?? "",
+      linked_match_signals: rec.linkedMatchSignals ?? [],
+    } : {}
+
   // reply_discussion — recommended discussion NOT already replied to in last 7d.
   // When the discussion is linked to an analysed track, append that track's
   // music context to the reason and carry it on the suggestion.
@@ -573,6 +607,7 @@ function generateCandidates(
       reason: withMusic(`Relevant discussion (${fmt(inputs.discRec.reason)}); no recent reply from you.`, inputs.discTrackCtx),
       score: 0.40 + 0.45 * inputs.discRec.score,
       ...ctxField(inputs.discTrackCtx),
+      ...linkedFields(inputs.discRec),
     })
   }
 
@@ -580,14 +615,17 @@ function generateCandidates(
   // Score now flows from recommend lib, so tag/genre matches are visible.
   if (cap("comment_post") && inputs.postRec) {
     const hasReasons = inputs.postRec.reason.some((r) => r !== "recent fallback")
+    const baseReason = hasReasons
+      ? `Relevant post (${fmt(inputs.postRec.reason)}); preview: "${inputs.postRec.preview}".`
+      : `Engage with a recent community post: "${inputs.postRec.preview}".`
     out.push({
       type: "comment_post",
       label: "Comment on a relevant post",
       target_id: inputs.postRec.id,
-      reason: hasReasons
-        ? `Relevant post (${fmt(inputs.postRec.reason)}); preview: "${inputs.postRec.preview}".`
-        : `Engage with a recent community post: "${inputs.postRec.preview}".`,
+      reason: withMusic(baseReason, inputs.postTrackCtx),
       score: 0.30 + 0.45 * inputs.postRec.score,
+      ...ctxField(inputs.postTrackCtx),
+      ...linkedFields(inputs.postRec),
     })
   }
 
@@ -780,10 +818,17 @@ export async function computeNextAction(auth: AuthenticatedAgent): Promise<NextA
   const discRec = topRecDisc ? {
     id: topRecDisc.discussion_id, title: topRecDisc.title,
     score: topRecDisc.score, reason: topRecDisc.reason,
+    // v1.7: thread linked-track trio through to candidate emitter.
+    linkedTrackId:      topRecDisc.linked_track_id,
+    linkedSummary:      topRecDisc.linked_track_analysis_summary,
+    linkedMatchSignals: topRecDisc.linked_match_signals,
   } : null
   const postRec = topRecPost ? {
     id: topRecPost.post_id, preview: topRecPost.content_preview,
     score: topRecPost.score, reason: topRecPost.reason,
+    linkedTrackId:      topRecPost.linked_track_id,
+    linkedSummary:      topRecPost.linked_track_analysis_summary,
+    linkedMatchSignals: topRecPost.linked_match_signals,
   } : null
 
   // Pick best unpublished own track for publish_track candidate.
@@ -818,6 +863,7 @@ export async function computeNextAction(auth: AuthenticatedAgent): Promise<NextA
   // One batched SELECT covers all needed track ids.
   let trackCtx:            AnalysisContext | null = null
   let discTrackCtx:        AnalysisContext | null = null
+  let postTrackCtx:        AnalysisContext | null = null
   let publishCandidateCtx: AnalysisContext | null = null
 
   // Mirrors generateCandidates EXACTLY for play_track/like_track/favorite_track,
@@ -831,6 +877,8 @@ export async function computeNextAction(auth: AuthenticatedAgent): Promise<NextA
   const willEmitDiscRec = !!discRec
     && agentHasCapability(agent, "discuss")
     && !memory.repliedDiscussionIds.has(discRec.id)
+  const willEmitPostRec = !!postRec
+    && agentHasCapability(agent, "comment")
   const willEmitPublish = !!publishCandidate
     && agentHasCapability(agent, "publish")
     && !guardSnap.cooldownsActive.publish_track
@@ -838,13 +886,16 @@ export async function computeNextAction(auth: AuthenticatedAgent): Promise<NextA
   const trackIdsToAnalyse: string[] = []
   if (willEmitTrackRec && trackRec) trackIdsToAnalyse.push(trackRec.id)
   if (willEmitPublish  && publishCandidate) trackIdsToAnalyse.push(publishCandidate.id)
-  let discLinkedTrackId: string | null = null
-  if (willEmitDiscRec && discRec) {
-    const { data: dRow } = await admin
-      .from("discussions").select("track_id").eq("id", discRec.id).maybeSingle()
-    discLinkedTrackId = (dRow?.track_id as string | null) ?? null
-    if (discLinkedTrackId) trackIdsToAnalyse.push(discLinkedTrackId)
-  }
+  // Discussion linked-track id flows from recommendation (no extra DB round
+  // trip needed now that recommendDiscussions exposes it).
+  const discLinkedTrackId: string | null =
+    (willEmitDiscRec && discRec?.linkedTrackId) || null
+  if (discLinkedTrackId) trackIdsToAnalyse.push(discLinkedTrackId)
+  // Post linked-track id: same — surfaced by recommendPosts directly.
+  const postLinkedTrackId: string | null =
+    (willEmitPostRec && postRec?.linkedTrackId) || null
+  if (postLinkedTrackId) trackIdsToAnalyse.push(postLinkedTrackId)
+
   if (trackIdsToAnalyse.length) {
     const snaps = await loadAnalysisSnapshots(admin, trackIdsToAnalyse)
     if (willEmitTrackRec && trackRec) {
@@ -859,10 +910,15 @@ export async function computeNextAction(auth: AuthenticatedAgent): Promise<NextA
       const s = snaps.get(discLinkedTrackId)
       if (s) discTrackCtx = buildAnalysisContext(s, profile.summary)
     }
+    if (postLinkedTrackId) {
+      const s = snaps.get(postLinkedTrackId)
+      if (s) postTrackCtx = buildAnalysisContext(s, profile.summary)
+    }
   }
 
   const candidates = generateCandidates(agent, memory, guardSnap, {
-    trackRec, trackCtx, discRec, discTrackCtx, postRec, publishCandidate, publishCandidateCtx,
+    trackRec, trackCtx, discRec, discTrackCtx, postRec, postTrackCtx,
+    publishCandidate, publishCandidateCtx,
     topGenre: profile.summary.top_genres?.[0],
     topMood:  profile.summary.top_moods?.[0],
     topTag:   profile.summary.top_tags?.[0],

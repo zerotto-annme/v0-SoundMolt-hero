@@ -48,6 +48,69 @@ const W_DISC_LINK_BPM  = 0.4
 const W_DISC_LINK_KEY  = 0.3
 const W_DISC_LINK_MOOD = 0.5
 
+// Post linked-track signals (v1.7) — symmetric with discussions. Posts
+// linked to a track that aligns with the agent's deep taste should rank
+// above generic same-tag posts so comment_post candidates surface
+// music-relevant engagement targets. Weights are intentionally identical
+// to the discussion ones: the social distance to the music is the same.
+const W_POST_LINK_BPM  = 0.4
+const W_POST_LINK_KEY  = 0.3
+const W_POST_LINK_MOOD = 0.5
+
+/**
+ * Build the trio of linked-track fields exposed on Discussion/Post
+ * recommendations and (downstream) on next-action SuggestedActions.
+ *
+ *   • linked_track_analysis_summary — one-line "BPM 124, key A, mood dark"
+ *     synthesis suitable for agent-facing reasoning. Empty string when
+ *     the linked analysis carries no usable facets.
+ *   • linked_match_signals          — taste alignment hits in the form
+ *     "linked track matches preferred mood (dark)" so agents can act
+ *     on the *reason for the link*, not just the existence of a link.
+ *
+ * Returns null when there is no linked track id at all (the caller
+ * should then omit all linked_* fields from the recommendation).
+ */
+function buildLinkedTrackFields(
+  linkedTrackId: string | null,
+  ana: { bpm: number | null; key: string | null; moods: string[] } | undefined,
+  top: TasteProfile["summary"],
+): { linked_track_id: string; linked_track_analysis_summary: string; linked_match_signals: string[] } | null {
+  if (!linkedTrackId) return null
+  const matched: string[] = []
+  const bits: string[] = []
+  if (!ana) {
+    return {
+      linked_track_id: linkedTrackId,
+      linked_track_analysis_summary: "linked track has no analysis yet",
+      linked_match_signals: [],
+    }
+  }
+  if (ana.bpm != null) bits.push(`BPM ${Math.round(ana.bpm)}`)
+  if (ana.key)         bits.push(`key ${ana.key}`)
+  if (ana.moods.length) bits.push(`mood ${ana.moods.slice(0, 2).join("/")}`)
+
+  if (top.favorite_bpm_range && ana.bpm != null) {
+    const m = top.favorite_bpm_range.match(/^(\d+)-(\d+)$/)
+    if (m && ana.bpm >= +m[1] && ana.bpm <= +m[2]) {
+      matched.push(`linked track in favorite BPM range (${m[1]}-${m[2]})`)
+    }
+  }
+  if (ana.key && top.favorite_keys?.some((k) => k.toLowerCase() === ana.key!.toLowerCase())) {
+    matched.push(`linked track key matches favorite (${ana.key})`)
+  }
+  if (top.top_moods?.length && ana.moods.length) {
+    const profLc = top.top_moods.map((m) => m.toLowerCase())
+    const hit = ana.moods.find((m) => profLc.includes(m.toLowerCase()))
+    if (hit) matched.push(`linked track matches preferred mood (${hit})`)
+  }
+  return {
+    linked_track_id: linkedTrackId,
+    linked_track_analysis_summary: bits.join(", ") || "linked track analysis present but empty",
+    linked_match_signals: matched,
+  }
+}
+
 // v1.6.1 multi-facet alignment bonus: when 2+ of {BPM-in-range, key-match,
 // mood-match} fire on a single track, add an extra reward so a track that
 // aligns across multiple deep signals beats one matching only on genre.
@@ -361,6 +424,12 @@ export interface DiscussionRecommendation {
   title:         string
   score:         number
   reason:        string[]
+  /** Track id this discussion is linked to (omitted when none). */
+  linked_track_id?: string
+  /** One-line summary of the linked track's analysis (when present). */
+  linked_track_analysis_summary?: string
+  /** Specific taste alignment hits the linked track produced. */
+  linked_match_signals?: string[]
 }
 
 interface DiscussionRow {
@@ -430,9 +499,15 @@ export async function recommendDiscussions(
   })) as unknown as DiscussionRow[]
 
   if (!profileHasSignals(profile)) {
+    // Cold-start: even without taste signals, surface the linked_track_id so
+    // downstream consumers (next-action, external agents) can still reason
+    // about / cite the linked track. linked_track_analysis_summary and
+    // linked_match_signals are intentionally omitted in fallback — there is
+    // no taste profile to match against and no analysis fetch is performed.
     return {
       items: rows.slice(0, limit).map((d) => ({
         discussion_id: d.id, title: d.title, score: 0, reason: ["recent fallback"],
+        ...(d.track_id ? { linked_track_id: d.track_id } : {}),
       })),
       profile, fallback: true,
       message: "Not enough taste data yet — returning recent discussions.",
@@ -472,8 +547,10 @@ export async function recommendDiscussions(
           reason.push(`linked track in favorite BPM range (${Math.round(linkedAna.bpm)})`)
         }
       }
-      // Linked-track key match
-      if (linkedAna.key && top.favorite_keys?.includes(linkedAna.key)) {
+      // Linked-track key match (case-insensitive — symmetric with posts and
+      // buildLinkedTrackFields so scoring/reason cannot contradict the
+      // surfaced linked_match_signals).
+      if (linkedAna.key && top.favorite_keys?.some((k) => k.toLowerCase() === linkedAna.key!.toLowerCase())) {
         raw += W_DISC_LINK_KEY
         reason.push(`linked track matches favorite key (${linkedAna.key})`)
       }
@@ -489,7 +566,11 @@ export async function recommendDiscussions(
 
     const score = clamp01(raw / maxScore)
     if (score > 0) {
-      scored.push({ discussion_id: d.id, title: d.title, score: round(score), reason })
+      const linked = buildLinkedTrackFields(d.track_id, linkedAna, top)
+      scored.push({
+        discussion_id: d.id, title: d.title, score: round(score), reason,
+        ...(linked ?? {}),
+      })
     }
   }
 
@@ -504,6 +585,12 @@ export interface PostRecommendation {
   content_preview: string
   score:           number
   reason:          string[]
+  /** Track id this post is linked to (omitted when none). */
+  linked_track_id?: string
+  /** One-line summary of the linked track's analysis (when present). */
+  linked_track_analysis_summary?: string
+  /** Specific taste alignment hits the linked track produced. */
+  linked_match_signals?: string[]
 }
 
 interface PostRow {
@@ -526,11 +613,15 @@ export async function recommendPosts(
   const profile = await computeTasteProfile(agentId)
   const top     = profile.summary
 
+  // Exclude only this agent's own posts. PostgREST `.neq` translates to
+  // SQL `<>`, which silently drops rows where `agent_id IS NULL` — i.e.
+  // every user-authored post. Use an explicit OR so user posts (with
+  // null agent_id) and other agents' posts are both visible.
   const { data, error } = await admin
     .from("posts")
     .select("id, content, tags, track_id, created_at, deleted_at, tracks(style)")
     .is("deleted_at", null)
-    .neq("agent_id", agentId)
+    .or(`agent_id.is.null,agent_id.neq.${agentId}`)
     .order("created_at", { ascending: false })
     .limit(200)
   if (error) throw new Error(`recommend: failed to read posts: ${error.message}`)
@@ -539,17 +630,53 @@ export async function recommendPosts(
   const preview = (s: string) => s.length <= PREVIEW_LEN ? s : s.slice(0, PREVIEW_LEN - 1) + "…"
 
   if (!profileHasSignals(profile)) {
+    // Cold-start: surface linked_track_id even without taste signals so
+    // downstream consumers can reason about / cite the linked track.
+    // linked_track_analysis_summary and linked_match_signals are
+    // intentionally omitted in fallback (no taste profile to match against).
     return {
       items: rows.slice(0, limit).map((p) => ({
         post_id: p.id, content_preview: preview(p.content), score: 0, reason: ["recent fallback"],
+        ...(p.track_id ? { linked_track_id: p.track_id } : {}),
       })),
       profile, fallback: true,
       message: "Not enough taste data yet — returning recent posts.",
     }
   }
 
+  // v1.7: load linked-track analyses for the same post window so post
+  // candidates can pick up BPM/key/mood alignment with the agent's deep
+  // taste profile, not just genre/tag matches. Single batched .in()
+  // SELECT keeps this cheap (typically <50 distinct linked tracks per
+  // 200-row post window).
+  const postTrackIds = Array.from(new Set(rows
+    .map((p) => p.track_id).filter((x): x is string => !!x)))
+  const linkedAnaByTrack = new Map<string, { bpm: number | null; key: string | null; moods: string[] }>()
+  if (postTrackIds.length > 0) {
+    const { data: anaRows, error: aErr } = await admin
+      .from("track_analysis").select("track_id, results").in("track_id", postTrackIds)
+    if (aErr) throw new Error(`recommend: failed to read linked post analyses: ${aErr.message}`)
+    for (const a of (anaRows ?? []) as { track_id: string; results: Record<string, unknown> | null }[]) {
+      if (linkedAnaByTrack.has(a.track_id)) continue
+      const r = a.results ?? {}
+      const rawBpm  = r.bpm
+      const rawKey  = r.key
+      const rawMood = r.mood
+      const bpm = typeof rawBpm === "number" && Number.isFinite(rawBpm) ? rawBpm
+                : typeof rawBpm === "string" && Number.isFinite(Number(rawBpm)) ? Number(rawBpm)
+                : null
+      const key = typeof rawKey === "string" ? rawKey : null
+      const moods = Array.isArray(rawMood)
+        ? (rawMood as unknown[]).filter((x): x is string => typeof x === "string")
+        : (typeof rawMood === "string" ? [rawMood] : [])
+      linkedAnaByTrack.set(a.track_id, { bpm, key, moods })
+    }
+  }
+
   const tagPool = [...(top.top_tags ?? []), ...(top.top_genres ?? [])]
-  const maxScore = W_TAGS + W_GENRE
+  // v1.7: maxScore now accounts for linked-track BPM/key/mood contributions
+  // (mirrors the discussion path).
+  const maxScore = W_TAGS + W_GENRE + W_POST_LINK_BPM + W_POST_LINK_KEY + W_POST_LINK_MOOD
 
   const scored: PostRecommendation[] = []
   for (const p of rows) {
@@ -568,9 +695,36 @@ export async function recommendPosts(
       reason.push(`linked track in favorite genre (${p.tracks.style})`)
     }
 
+    // v1.7: linked-track BPM/key/mood pass-through (parallel to discussions).
+    const linkedAna = p.track_id ? linkedAnaByTrack.get(p.track_id) : undefined
+    if (linkedAna) {
+      if (top.favorite_bpm_range && linkedAna.bpm != null) {
+        const m = top.favorite_bpm_range.match(/^(\d+)-(\d+)$/)
+        if (m && linkedAna.bpm >= +m[1] && linkedAna.bpm <= +m[2]) {
+          raw += W_POST_LINK_BPM
+          reason.push(`linked track in favorite BPM range (${Math.round(linkedAna.bpm)})`)
+        }
+      }
+      if (linkedAna.key && top.favorite_keys?.some((k) => k.toLowerCase() === linkedAna.key!.toLowerCase())) {
+        raw += W_POST_LINK_KEY
+        reason.push(`linked track matches favorite key (${linkedAna.key})`)
+      }
+      if (top.top_moods?.length && linkedAna.moods.length) {
+        const o = overlapRatio(linkedAna.moods, top.top_moods)
+        if (o.ratio > 0) {
+          raw += W_POST_LINK_MOOD * Math.min(1, o.ratio)
+          reason.push(`linked track matches preferred mood (${o.matches.slice(0, 3).join(", ")})`)
+        }
+      }
+    }
+
     const score = clamp01(raw / maxScore)
     if (score > 0) {
-      scored.push({ post_id: p.id, content_preview: preview(p.content), score: round(score), reason })
+      const linked = buildLinkedTrackFields(p.track_id, linkedAna, top)
+      scored.push({
+        post_id: p.id, content_preview: preview(p.content), score: round(score), reason,
+        ...(linked ?? {}),
+      })
     }
   }
 
