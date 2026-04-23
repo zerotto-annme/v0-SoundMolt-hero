@@ -533,24 +533,37 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
             {/* Waveform visualization */}
             <div
               ref={waveformRef}
-              className="relative h-20 flex items-end gap-[2px] cursor-pointer"
+              className="relative h-20 w-full flex items-end gap-[2px] cursor-pointer overflow-hidden"
               onClick={handleWaveformClick}
             >
               {waveformData.map((height, i) => {
                 const barProgress = (i / waveformData.length) * 100
                 const isPast = barProgress <= displayProgress
-                // CONTRAST FIX: non-past bars use bg-white/50 (clearly visible
-                // on the dark bg-secondary/30 player card) instead of the prior
-                // bg-white/20 + opacity:0.6 combination which rendered at ~12%
-                // effective white — invisible on first open before any progress
-                // exists, producing the "waveform disappeared, only helper text
-                // remains" symptom. We removed the inline opacity override; bars
-                // now always paint at full alpha. Past bars stay bg-glow-primary
-                // so playback progress remains the dominant visual cue.
+                // RENDER DETERMINISM (3 defensive guards against intermittent
+                // "waveform disappeared" symptom):
+                //
+                // 1) `transition-colors` instead of `transition-all` — the prior
+                //    `transition-all duration-100` animated height/width/opacity
+                //    too. Under heavy HMR Fast Refresh churn (700+ rebuilds per
+                //    session observed in logs) bars could mid-animate height and
+                //    visually flicker / appear collapsed. Restricting transition
+                //    to color only eliminates this class of glitch entirely.
+                //
+                // 2) `min-h-[2px]` — guarantees each bar paints at least 2 px
+                //    tall regardless of percentage-height edge cases (flex-item
+                //    `height: X%` can compute to 0 in some browser/Turbopack
+                //    HMR states if the parent height context is briefly lost).
+                //
+                // 3) `min-w-[1px]` — guarantees at least 1 px width so bars are
+                //    visible even in extreme narrow viewports where flex-1 +
+                //    gap-[2px] × 79 would otherwise compress them to 0.
+                //
+                // Past bars stay bg-glow-primary at full alpha; non-past bars
+                // bg-white/50 (clearly visible on bg-secondary/30 dark card).
                 return (
                   <div
                     key={i}
-                    className={`flex-1 rounded-sm transition-all duration-100 ${
+                    className={`flex-1 min-w-[1px] min-h-[2px] rounded-sm transition-colors duration-100 ${
                       isPast
                         ? 'bg-glow-primary'
                         : 'bg-white/50 hover:bg-white/70'
