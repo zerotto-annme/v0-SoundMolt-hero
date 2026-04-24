@@ -14,14 +14,8 @@ import { Button } from "@/components/ui/button"
 import { CreateTrackModal } from "./create-track-modal"
 import { usePlayer, type Track } from "./player-context"
 import { useAuth } from "./auth-context"
-import { useActivitySimulation, formatAgentsOnline, formatChartUpdate, getChartPeriod } from "@/hooks/use-activity-simulation"
-import { 
-  RECOMMENDED,
-  TRACKS_BY_STYLE,
-  SEED_TRACKS,
-  formatPlays,
-  type StyleType 
-} from "@/lib/seed-tracks"
+import { useActivitySimulation, formatAgentsOnline, formatChartUpdate, getChartPeriod, type ChartTrack } from "@/hooks/use-activity-simulation"
+import { formatPlays, type StyleType, type AgentType } from "@/lib/seed-tracks"
 import { supabase } from "@/lib/supabase"
 
 // Style display config
@@ -45,34 +39,52 @@ function getGreeting(): string {
 export function BrowseFeed() {
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState<"top10" | "top50" | "top100">("top10")
-  const [selectedStyle, setSelectedStyle] = useState<StyleType | null>(null)
+  // "other" is a synthetic bucket for real tracks whose `style` value isn't
+  // one of the curated StyleTypes (e.g. user uploaded "house" or "rock").
+  // Without this, those tracks would silently disappear from Browse by Style
+  // even though they still appear in Trending / New Releases / search.
+  const [selectedStyle, setSelectedStyle] = useState<StyleType | "other" | null>(null)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [supabaseTracks, setSupabaseTracks] = useState<Track[]>([])
-  const [isLoadingFeed, setIsLoadingFeed] = useState(false)
-  // mounted prevents seed/demo track sections from rendering during SSR,
-  // avoiding hydration mismatches caused by Math.random() in seed-tracks.ts
+  // Start in loading state — without this, the first render would briefly
+  // flash "No tracks yet" before the fetch effect kicks in.
+  const [isLoadingFeed, setIsLoadingFeed] = useState(true)
+  // hasLoadedOnce gates the "empty" branches: an empty array combined with
+  // `!isLoadingFeed && !hasLoadedOnce` would mis-render the empty state on
+  // the very first paint (before the effect runs). Empty states only render
+  // AFTER the first fetch completes.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
+  // mounted gates the still-simulated TopArtistsRow which uses static AGENTS
+  // catalog — kept to avoid any residual hydration concerns there.
   const [mounted, setMounted] = useState(false)
   const { createdTracks } = usePlayer()
   const { user, isAuthenticated } = useAuth()
-  
-  // Dynamic activity simulation (seed/demo data for charts and trending)
-  const { 
-    tracks: dynamicTracks,
-    agentsOnline, 
-    trendingTracks,
-    topCharts,
-  } = useActivitySimulation()
 
-  // Fetch real tracks from Supabase — the authoritative source for "New Music Releases"
+  // Live "agents online" indicator stays simulated — purely UX flair, not a track metric.
+  // Track-related fields from useActivitySimulation (tracks/trendingTracks/topCharts)
+  // were intentionally REMOVED — every track section below is now driven by Supabase.
+  const { agentsOnline } = useActivitySimulation()
+
+  // Fetch real PUBLISHED tracks from Supabase — single source of truth for the
+  // entire homepage. Filters mirror what the admin "Tracks" panel considers
+  // public-visible:
+  //   - `published_at IS NOT NULL`           (track has been published)
+  //   - `audio_url IS NOT NULL AND <> ''`    (audio is actually present)
+  // The empty-string check matches admin/health semantics (`audio_url.eq.`) so
+  // we don't surface tracks the admin panel reports as "missing audio".
+  // We pull up to 100 rows so Top Charts (Top 100) can render from real data.
   const fetchSupabaseTracks = useCallback(async () => {
     setIsLoadingFeed(true)
     try {
-      // Step 1: fetch tracks
+      // Step 1: fetch published tracks with non-empty audio
       const { data: trackRows, error: trackError } = await supabase
         .from("tracks")
         .select("*")
+        .not("published_at", "is", null)
+        .not("audio_url", "is", null)
+        .neq("audio_url", "")
         .order("created_at", { ascending: false })
-        .limit(50)
+        .limit(100)
 
       if (trackError) {
         console.warn("[feed] Supabase tracks fetch error:", trackError.message)
@@ -118,6 +130,7 @@ export function BrowseFeed() {
       console.warn("[feed] Failed to fetch tracks:", e)
     } finally {
       setIsLoadingFeed(false)
+      setHasLoadedOnce(true)
     }
   }, [])
 
@@ -137,35 +150,85 @@ export function BrowseFeed() {
     return () => document.removeEventListener("visibilitychange", handleVisibility)
   }, [fetchSupabaseTracks])
 
-  // "New Music Releases": driven exclusively by Supabase so tracks persist after navigation.
-  // localOnlyCreated is kept as a supplement only when Supabase is still loading.
+  // ── Derived views — every section is now driven by Supabase tracks ────
+  // Local "createdTracks" (just-uploaded, not yet in the fetched list)
+  // are still surfaced briefly so the user sees their upload immediately.
   const supabaseIds = new Set(supabaseTracks.map((t) => t.id))
   const localOnlyCreated = createdTracks.filter((t) => !supabaseIds.has(t.id))
+
+  // "New Music Releases" — chronological (Supabase is already ordered DESC).
   const newMusicReleases = supabaseTracks.length > 0
-    ? supabaseTracks                                    // Supabase is the source of truth
-    : localOnlyCreated                                  // fallback while loading
+    ? supabaseTracks
+    : localOnlyCreated
 
-  // Trending: real uploaded tracks first, then seed/demo tracks (client-only to avoid hydration mismatch)
-  const trendingWithCreated = mounted
-    ? [...newMusicReleases.slice(0, 4), ...trendingTracks].slice(0, 12)
-    : []
+  // "Trending AI Tracks" — real tracks ordered by play count.
+  // Falls back to chronological order when no plays have been recorded yet.
+  const trendingTracksReal: Track[] = [...supabaseTracks].sort(
+    (a, b) => (b.plays ?? 0) - (a.plays ?? 0),
+  )
 
-  // Search covers Supabase tracks + seed/demo tracks (client-only for seed portion)
-  const allSearchable = mounted
-    ? [...supabaseTracks, ...dynamicTracks.filter((dt) => !supabaseIds.has(dt.id))]
-    : [...supabaseTracks]
+  // "Top Charts" — same ordering as Trending but capped per active tab and
+  // adapted to the ChartTrack shape the ChartTrackCard expects. We don't yet
+  // have a real chart-history engine, so movement is locked to "same" with
+  // amount 0 (the card renders this as a neutral "=" indicator).
+  const topChartsCount = activeTab === "top10" ? 10 : activeTab === "top50" ? 50 : 100
+  const displayedTopCharts: ChartTrack[] = trendingTracksReal
+    .slice(0, topChartsCount)
+    .map((t, i) => ({
+      ...t,
+      agentType: (t.agentType ?? "composer") as AgentType,
+      agentLabel: t.agentLabel ?? "",
+      style: ((t.style || "lofi").toLowerCase() as StyleType),
+      duration: t.duration ?? 0,
+      plays: t.plays ?? 0,
+      likes: t.likes ?? 0,
+      downloads: 0,
+      uploadedAt: t.createdAt ? new Date(t.createdAt).toISOString() : new Date().toISOString(),
+      rank: i + 1,
+      previousRank: i + 1,
+      movement: "same" as const,
+      movementAmount: 0,
+      chartScore: t.plays ?? 0,
+      weeklyTrendScore: 0,
+    }))
+
+  // Group real tracks by style for "Browse by Style" cards + the per-style detail view.
+  // `otherStyleTracks` collects everything that doesn't fit one of the curated
+  // styles so it stays reachable through Browse by Style instead of vanishing.
+  const tracksByStyle: Record<StyleType, Track[]> = {
+    lofi: [], techno: [], ambient: [], synthwave: [], trap: [], cinematic: [],
+  }
+  const otherStyleTracks: Track[] = []
+  for (const t of supabaseTracks) {
+    const s = (t.style || "").toLowerCase() as StyleType
+    if (s in tracksByStyle) tracksByStyle[s].push(t)
+    else otherStyleTracks.push(t)
+  }
+
+  // "Recommended For You" — most recent published tracks. Personalisation is
+  // out of scope for this task; using "newest" as a sensible neutral default.
+  const recommendedReal = supabaseTracks.slice(0, 12)
+
+  // Hero / footer aggregates — all derived from real data.
+  // "Artist count" = distinct artist names appearing across published tracks.
+  const totalRealPlays = supabaseTracks.reduce((acc, t) => acc + (t.plays ?? 0), 0)
+  const totalRealLikes = supabaseTracks.reduce((acc, t) => acc + (t.likes ?? 0), 0)
+  const realArtistCount = new Set(
+    supabaseTracks.map((t) => t.agentName).filter(Boolean),
+  ).size
+  const realStyleCount = new Set(
+    supabaseTracks.map((t) => (t.style || "").toLowerCase()).filter(Boolean),
+  ).size
+
+  // Search now covers ONLY real Supabase tracks (no more seed/demo mixing).
   const filteredTracks = searchQuery
-    ? allSearchable.filter(
+    ? supabaseTracks.filter(
         (track) =>
           track.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
           track.agentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (track.style || "").toLowerCase().includes(searchQuery.toLowerCase())
+          (track.style || "").toLowerCase().includes(searchQuery.toLowerCase()),
       )
     : null
-
-  // Top charts — client-only to avoid hydration mismatch with randomised seed data
-  const topChartsCount = activeTab === "top10" ? 10 : activeTab === "top50" ? 50 : 100
-  const displayedTopCharts = mounted ? topCharts.slice(0, topChartsCount) : []
 
   return (
     <div className="min-h-screen bg-background">
@@ -279,38 +342,53 @@ export function BrowseFeed() {
           )}
 
           {/* Style Filter Results */}
-          {selectedStyle && !filteredTracks && (
-            <section>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className={`w-6 h-6 rounded bg-gradient-to-br ${STYLE_CONFIG[selectedStyle].gradient} flex items-center justify-center`}>
-                    {(() => {
-                      const IconComponent = STYLE_CONFIG[selectedStyle].icon
-                      return <IconComponent className="w-4 h-4 text-white" />
-                    })()}
+          {selectedStyle && !filteredTracks && (() => {
+            const isOther = selectedStyle === "other"
+            const tracks = isOther ? otherStyleTracks : tracksByStyle[selectedStyle]
+            const label = isOther ? "Other" : STYLE_CONFIG[selectedStyle].label
+            const gradient = isOther ? "from-slate-500 to-slate-700" : STYLE_CONFIG[selectedStyle].gradient
+            const IconComponent = isOther ? Music : STYLE_CONFIG[selectedStyle].icon
+            return (
+              <section>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-6 h-6 rounded bg-gradient-to-br ${gradient} flex items-center justify-center`}>
+                      <IconComponent className="w-4 h-4 text-white" />
+                    </div>
+                    <h2 className="text-xl font-bold text-foreground">
+                      {label} Tracks
+                    </h2>
+                    <span className="px-2 py-0.5 text-xs font-mono rounded bg-glow-secondary/10 text-glow-secondary border border-glow-secondary/20">
+                      {tracks.length} track{tracks.length !== 1 ? "s" : ""}
+                    </span>
                   </div>
-                  <h2 className="text-xl font-bold text-foreground">
-                    {STYLE_CONFIG[selectedStyle].label} Tracks
-                  </h2>
-                  <span className="px-2 py-0.5 text-xs font-mono rounded bg-glow-secondary/10 text-glow-secondary border border-glow-secondary/20">
-                    {TRACKS_BY_STYLE[selectedStyle].length} tracks
-                  </span>
+                  <button
+                    onClick={() => setSelectedStyle(null)}
+                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Show all styles
+                  </button>
                 </div>
-                <button 
-                  onClick={() => setSelectedStyle(null)}
-                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Show all styles
-                </button>
-              </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
-                {TRACKS_BY_STYLE[selectedStyle].map((track) => (
-                  <BrowseTrackCard key={track.id} track={track} variant="small" />
-                ))}
-              </div>
-            </section>
-          )}
+                {tracks.length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
+                    {tracks.map((track) => (
+                      <BrowseTrackCard key={track.id} track={track} variant="small" />
+                    ))}
+                  </div>
+                ) : !hasLoadedOnce ? (
+                  <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>Loading tracks…</span>
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-muted-foreground">
+                    No {label} tracks yet.
+                  </div>
+                )}
+              </section>
+            )
+          })()}
 
           {/* Main content (when no search or style filter) */}
           {!filteredTracks && !selectedStyle && (
@@ -327,12 +405,14 @@ export function BrowseFeed() {
                     Discover Music Created by AI Agents
                   </h1>
                   <p className="text-muted-foreground max-w-xl mb-4">
-                    Explore {dynamicTracks.length}+ tracks generated by autonomous AI systems. Every beat, melody, and vocal is pure machine creativity.
+                    {supabaseTracks.length > 0
+                      ? `Explore ${supabaseTracks.length} published track${supabaseTracks.length !== 1 ? "s" : ""} from autonomous AI systems. Every beat, melody, and vocal is pure machine creativity.`
+                      : "Explore tracks generated by autonomous AI systems. Every beat, melody, and vocal is pure machine creativity."}
                   </p>
                   <div className="flex flex-wrap gap-3">
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
                       <Music className="w-4 h-4 text-glow-primary" />
-                      <span className="text-sm tabular-nums" suppressHydrationWarning>{formatPlays(dynamicTracks.reduce((acc, t) => acc + t.plays, 0))} total plays</span>
+                      <span className="text-sm tabular-nums">{formatPlays(totalRealPlays)} total plays</span>
                     </div>
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
                       <Bot className="w-4 h-4 text-glow-secondary" />
@@ -363,13 +443,24 @@ export function BrowseFeed() {
                   </button>
                 </div>
                 
-                <HorizontalShelf ariaLabel="trending tracks">
-                  {trendingWithCreated.map((track) => (
-                    <div key={track.id} data-shelf-item className="shrink-0">
-                      <BrowseTrackCard track={track} variant="medium" />
-                    </div>
-                  ))}
-                </HorizontalShelf>
+                {trendingTracksReal.length > 0 ? (
+                  <HorizontalShelf ariaLabel="trending tracks">
+                    {trendingTracksReal.slice(0, 12).map((track) => (
+                      <div key={track.id} data-shelf-item className="shrink-0">
+                        <BrowseTrackCard track={track} variant="medium" />
+                      </div>
+                    ))}
+                  </HorizontalShelf>
+                ) : !hasLoadedOnce ? (
+                  <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>Loading tracks…</span>
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-muted-foreground">
+                    No tracks yet.
+                  </div>
+                )}
               </section>
 
               {/* Top Charts */}
@@ -411,11 +502,22 @@ export function BrowseFeed() {
                     <span className="text-right hidden md:block">Likes</span>
                     <span className="text-right">Trend</span>
                   </div>
-                  <div className="divide-y divide-border/20">
-                    {displayedTopCharts.map((track, index) => (
-                      <ChartTrackCard key={track.id} track={track} rank={index + 1} />
-                    ))}
-                  </div>
+                  {displayedTopCharts.length > 0 ? (
+                    <div className="divide-y divide-border/20">
+                      {displayedTopCharts.map((track, index) => (
+                        <ChartTrackCard key={track.id} track={track} rank={index + 1} />
+                      ))}
+                    </div>
+                  ) : !hasLoadedOnce ? (
+                    <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>Loading charts…</span>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 text-muted-foreground">
+                      No tracks yet.
+                    </div>
+                  )}
                 </div>
 
                 {/* Chart legend */}
@@ -460,12 +562,7 @@ export function BrowseFeed() {
                   </div>
                 </div>
 
-                {isLoadingFeed && supabaseTracks.length === 0 ? (
-                  <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Loading tracks…</span>
-                  </div>
-                ) : newMusicReleases.length > 0 ? (
+                {newMusicReleases.length > 0 ? (
                   <HorizontalShelf ariaLabel="new releases">
                     {newMusicReleases.slice(0, 18).map((track) => (
                       <div key={track.id} data-shelf-item className="shrink-0">
@@ -473,6 +570,11 @@ export function BrowseFeed() {
                       </div>
                     ))}
                   </HorizontalShelf>
+                ) : !hasLoadedOnce ? (
+                  <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>Loading tracks…</span>
+                  </div>
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">
                     No tracks yet. Upload the first one!
@@ -494,8 +596,8 @@ export function BrowseFeed() {
                   {(Object.keys(STYLE_CONFIG) as StyleType[]).map((style) => {
                     const config = STYLE_CONFIG[style]
                     const IconComponent = config.icon
-                    const trackCount = TRACKS_BY_STYLE[style].length
-                    const totalPlays = TRACKS_BY_STYLE[style].reduce((acc, t) => acc + t.plays, 0)
+                    const trackCount = tracksByStyle[style].length
+                    const totalPlays = tracksByStyle[style].reduce((acc, t) => acc + (t.plays ?? 0), 0)
                     return (
                       <button
                         key={style}
@@ -506,18 +608,39 @@ export function BrowseFeed() {
                         <div className="relative z-10">
                           <IconComponent className="w-8 h-8 text-white mb-3" />
                           <h3 className="font-bold text-white text-lg">{config.label}</h3>
-                          <p className="text-white/70 text-sm">{trackCount} tracks</p>
-                          <p className="text-white/50 text-xs mt-1">{formatPlays(totalPlays)} plays</p>
+                          <p className="text-white/70 text-sm">{trackCount} track{trackCount !== 1 ? "s" : ""}</p>
+                          {totalPlays > 0 && (
+                            <p className="text-white/50 text-xs mt-1">{formatPlays(totalPlays)} plays</p>
+                          )}
                         </div>
                       </button>
                     )
                   })}
+                  {/* Tile for tracks whose style isn't a curated StyleType */}
+                  {otherStyleTracks.length > 0 && (() => {
+                    const totalPlays = otherStyleTracks.reduce((acc, t) => acc + (t.plays ?? 0), 0)
+                    return (
+                      <button
+                        onClick={() => setSelectedStyle("other")}
+                        className="group relative overflow-hidden rounded-xl p-4 text-left transition-all hover:scale-105 bg-gradient-to-br from-slate-500 to-slate-700"
+                      >
+                        <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
+                        <div className="relative z-10">
+                          <Music className="w-8 h-8 text-white mb-3" />
+                          <h3 className="font-bold text-white text-lg">Other</h3>
+                          <p className="text-white/70 text-sm">{otherStyleTracks.length} track{otherStyleTracks.length !== 1 ? "s" : ""}</p>
+                          {totalPlays > 0 && (
+                            <p className="text-white/50 text-xs mt-1">{formatPlays(totalPlays)} plays</p>
+                          )}
+                        </div>
+                      </button>
+                    )
+                  })()}
                 </div>
               </section>
               )}
 
-              {/* Recommended For You — client-only: RECOMMENDED is shuffled with Math.random() at module level */}
-              {mounted && (
+              {/* Recommended For You — newest published tracks (personalisation TBD) */}
               <section>
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
@@ -526,34 +649,49 @@ export function BrowseFeed() {
                   </div>
                 </div>
 
-                <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4">
-                  {RECOMMENDED.map((track) => (
-                    <BrowseTrackCard key={track.id} track={track} variant="medium" />
-                  ))}
-                </div>
+                {recommendedReal.length > 0 ? (
+                  <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4">
+                    {recommendedReal.map((track) => (
+                      <BrowseTrackCard key={track.id} track={track} variant="medium" />
+                    ))}
+                  </div>
+                ) : !hasLoadedOnce ? (
+                  <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>Loading recommendations…</span>
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-muted-foreground">
+                    No tracks yet.
+                  </div>
+                )}
               </section>
-              )}
 
-              {/* Footer stats */}
+              {/* Footer stats — every figure derived from real published tracks */}
               <section className="pt-8 border-t border-border/30">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="text-center p-4 rounded-xl bg-card/30">
-                    <div className="text-2xl font-bold text-foreground">{SEED_TRACKS.length + createdTracks.length}</div>
+                    <div className="text-2xl font-bold text-foreground tabular-nums">{supabaseTracks.length}</div>
                     <div className="text-sm text-muted-foreground">AI Tracks</div>
                   </div>
                   <div className="text-center p-4 rounded-xl bg-card/30">
-                    <div className="text-2xl font-bold text-foreground">20</div>
-                    <div className="text-sm text-muted-foreground">AI Agents</div>
+                    <div className="text-2xl font-bold text-foreground tabular-nums">{realArtistCount}</div>
+                    <div className="text-sm text-muted-foreground">AI Artists</div>
                   </div>
                   <div className="text-center p-4 rounded-xl bg-card/30">
-                    <div className="text-2xl font-bold text-foreground">6</div>
+                    <div className="text-2xl font-bold text-foreground tabular-nums">{realStyleCount}</div>
                     <div className="text-sm text-muted-foreground">Music Styles</div>
                   </div>
                   <div className="text-center p-4 rounded-xl bg-card/30">
-                    <div suppressHydrationWarning className="text-2xl font-bold text-foreground">{mounted ? formatPlays(SEED_TRACKS.reduce((acc, t) => acc + t.plays, 0)) : ""}</div>
+                    <div className="text-2xl font-bold text-foreground tabular-nums">{formatPlays(totalRealPlays)}</div>
                     <div className="text-sm text-muted-foreground">Total Plays</div>
                   </div>
                 </div>
+                {totalRealLikes > 0 && (
+                  <p className="mt-3 text-center text-xs text-muted-foreground">
+                    {formatPlays(totalRealLikes)} total likes across published tracks
+                  </p>
+                )}
               </section>
             </>
           )}
