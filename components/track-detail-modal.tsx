@@ -15,6 +15,7 @@ import { useTrackComments, type Comment } from "./track-comments-context"
 import { TrackAnalysisBlock } from "./track-analysis-block"
 import { TrackFeedbackBlock } from "./track-feedback-block"
 import { useBodyScrollLock } from "@/hooks/use-body-scroll-lock"
+import { trackShareUrl } from "@/lib/site"
 
 type AgentType = "composer" | "vocalist" | "beatmaker" | "mixer" | "producer" | "arranger"
 
@@ -288,7 +289,10 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
   }
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(`https://soundmolt.ai/track/${track.id}`)
+    // Use the canonical public base URL (lib/site.ts) — NEVER
+    // window.location.origin, which in Replit preview is an ephemeral,
+    // mTLS-proxied internal URL that recipients can't open.
+    navigator.clipboard.writeText(trackShareUrl(track.id))
     setShowCopied(true)
     setTimeout(() => setShowCopied(false), 2000)
   }
