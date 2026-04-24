@@ -11,30 +11,67 @@ export const dynamic = "force-dynamic"
  * and analysis presence flag.
  */
 export async function GET(request: NextRequest) {
-  const auth = await requireAdmin(request)
-  if (!auth.ok) return auth.response
-  const { admin } = auth
+  try {
+    const auth = await requireAdmin(request)
+    if (!auth.ok) return auth.response
+    const { admin } = auth
 
-  const url = new URL(request.url)
-  const limit = Math.min(500, Math.max(1, Number(url.searchParams.get("limit") ?? 100)))
-  const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0))
+    const url = new URL(request.url)
+    const limit = Math.min(500, Math.max(1, Number(url.searchParams.get("limit") ?? 100)))
+    const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0))
 
   // Pull tracks (newest first). Service role bypasses RLS — admin sees all.
   // We pull the organic counters (plays/likes/downloads) so the admin can
   // compare them side-by-side with the boost values added by the Boost
   // Stats feature. Organic columns ARE the source of truth for analytics
   // and the recommendation engine — boosts live in a separate table.
-  const { data: tracks, error } = await admin
-    .from("tracks")
-    .select(
-      "id, title, user_id, agent_id, audio_url, published_at, created_at, plays, likes, downloads",
-    )
-    .order("created_at", { ascending: false })
-    .range(offset, offset + limit - 1)
+  //
+  // `downloads` was added in migration 015; on installations where that
+  // migration hasn't been applied the column is missing. We retry the
+  // SELECT without it instead of 500-ing the entire admin panel — the
+  // counter just shows 0 and the rest of the page works normally.
+  const FULL_SELECT =
+    "id, title, user_id, agent_id, audio_url, published_at, created_at, plays, likes, downloads"
+  const SAFE_SELECT =
+    "id, title, user_id, agent_id, audio_url, published_at, created_at, plays, likes"
 
-  if (error) {
-    console.error("[admin/tracks] select failed:", error)
-    return NextResponse.json({ error: "Failed to load tracks" }, { status: 500 })
+  // The downstream `t.downloads ?? 0` already handles a missing column
+  // — we just need the SELECT itself to succeed. Note: `boost_downloads`
+  // lives in `track_stat_boosts` (a separate table), so it's unaffected
+  // by `tracks.downloads` being absent.
+  let tracks: any[] | null = null
+  {
+    const r1 = await admin
+      .from("tracks")
+      .select(FULL_SELECT)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1)
+    if (r1.error) {
+      // 42703 = undefined_column. Anything else is genuinely unexpected,
+      // but we still try the safe fallback rather than fail the page.
+      console.warn(
+        "[admin/tracks] full select failed, retrying without `downloads`:",
+        r1.error.message,
+      )
+      const r2 = await admin
+        .from("tracks")
+        .select(SAFE_SELECT)
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1)
+      if (r2.error) {
+        // Even the bare SELECT failed. We surface a 200 with an empty
+        // list so the admin UI keeps working — every other section
+        // (users, agents, health) loads independently.
+        console.error("[admin/tracks] safe select also failed:", r2.error)
+        return NextResponse.json(
+          { tracks: [], limit, offset, warning: r2.error.message },
+          { status: 200 },
+        )
+      }
+      tracks = r2.data ?? []
+    } else {
+      tracks = r1.data ?? []
+    }
   }
 
   const trackIds = (tracks ?? []).map((t) => t.id)
@@ -133,5 +170,21 @@ export async function GET(request: NextRequest) {
     }
   })
 
-  return NextResponse.json({ tracks: result, limit, offset })
+    return NextResponse.json({ tracks: result, limit, offset })
+  } catch (e) {
+    // Last-ditch safety net: any unhandled exception (network, JSON
+    // serialization, type mismatch, etc.) still returns a 200 with an
+    // empty list so the admin panel keeps loading. The real error is
+    // logged for the operator.
+    console.error("[admin/tracks] unexpected failure:", e)
+    return NextResponse.json(
+      {
+        tracks: [],
+        limit: 0,
+        offset: 0,
+        warning: e instanceof Error ? e.message : "Unexpected error",
+      },
+      { status: 200 },
+    )
+  }
 }
