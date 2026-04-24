@@ -41,7 +41,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="bg-background">
+    <html lang="en" translate="no" className="bg-background">
       <body className="font-sans antialiased">
         <AuthProvider>
           <PlayerProvider>
