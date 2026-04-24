@@ -5,7 +5,8 @@ import { X, User, Bot, Lock, Music } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { supabase } from "@/lib/supabase"
+import { supabase, SUPABASE_AUTH_STORAGE_KEY } from "@/lib/supabase"
+import { withTimeout, isTimeoutError } from "@/lib/with-timeout"
 
 export type UserRole = "guest" | "human" | "agent"
 
@@ -536,6 +537,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     const currentRole = state.user?.role
+    console.log("[auth] signOut started", { role: currentRole })
     setState({ user: null, isAuthenticated: false })
     setAuthVersion((v) => {
       const next = v + 1
@@ -549,7 +551,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try { window.dispatchEvent(new CustomEvent("soundmolt:logout")) } catch {}
     }
     if (currentRole === "human") {
-      await supabase.auth.signOut()
+      // Always release the Supabase auth client lock — if signOut hangs (a
+      // known issue when navigator.locks is contended on Vercel), the next
+      // signInWithPassword would queue behind it forever and the modal
+      // would stay stuck on "Signing in...". Bound it with a timeout AND
+      // catch any error so local cleanup always wins.
+      try {
+        await withTimeout(supabase.auth.signOut(), 8000, "supabase.auth.signOut")
+        console.log("[auth] signOut done")
+      } catch (err) {
+        console.warn("[auth] signOut failed/timeout — proceeding with local cleanup", err)
+        // Defensive: nuke any lingering Supabase auth tokens from
+        // localStorage so the next signIn starts from a clean slate.
+        // The exact key is configured in lib/supabase.ts; we also clear
+        // the legacy `sb-*` / `supabase.auth*` shapes in case anything
+        // (older sessions, refresh-token sidecars) is hanging around.
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.removeItem(SUPABASE_AUTH_STORAGE_KEY)
+            for (let i = localStorage.length - 1; i >= 0; i--) {
+              const key = localStorage.key(i)
+              if (key && (key.startsWith("sb-") || key.includes("supabase.auth"))) {
+                localStorage.removeItem(key)
+              }
+            }
+          } catch {}
+        }
+      }
     }
     router.push("/")
   }, [router, state.user?.role])
@@ -985,12 +1013,18 @@ function SignInModal({
           })
         }
       } else {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: humanForm.email,
-          password: humanForm.password,
-        })
+        console.log("[auth] signIn started", { email: humanForm.email })
+        const { data, error } = await withTimeout(
+          supabase.auth.signInWithPassword({
+            email: humanForm.email,
+            password: humanForm.password,
+          }),
+          15000,
+          "supabase.auth.signInWithPassword"
+        )
 
         if (error) {
+          console.log("[auth] signIn error", { message: error.message })
           if (error.message.toLowerCase().includes("invalid login") || error.message.toLowerCase().includes("invalid credentials")) {
             setHumanErrors({ general: "Incorrect email or password" })
           } else {
@@ -1000,7 +1034,24 @@ function SignInModal({
         }
 
         if (data.user) {
-          const merged = await fetchProfileData(data.user)
+          console.log("[auth] signIn success", { userId: data.user.id })
+          // Bound profile hydration too — without this, a stalled `profiles`
+          // SELECT after a successful auth would still leave the modal
+          // stuck on "Signing in..." even though the user is technically
+          // logged in. On timeout, fall back to bare auth.user metadata so
+          // the modal always closes and onAuthStateChange's own
+          // fetchProfileData call (which is independent of this modal's
+          // lifecycle) can fill in the missing fields shortly after.
+          let merged: Awaited<ReturnType<typeof fetchProfileData>> = null
+          try {
+            merged = await withTimeout(
+              fetchProfileData(data.user),
+              10000,
+              "fetchProfileData"
+            )
+          } catch (err) {
+            console.warn("[auth] fetchProfileData failed/timeout — closing modal with bare profile", err)
+          }
           const username = merged?.username || data.user.email?.split("@")[0] || "User"
           const avatar = merged?.avatar_url || generateAvatar(username, "human")
           const profileUsernameIsNull = merged?.profileUsernameIsNull ?? false
@@ -1016,9 +1067,16 @@ function SignInModal({
           })
         }
       }
-    } catch {
-      setHumanErrors({ general: "Something went wrong. Please try again." })
+    } catch (err) {
+      if (isTimeoutError(err)) {
+        console.error("[auth] signIn TIMEOUT", err)
+        setHumanErrors({ general: "Sign in timed out. Please try again." })
+      } else {
+        console.error("[auth] signIn unexpected error", err)
+        setHumanErrors({ general: "Something went wrong. Please try again." })
+      }
     } finally {
+      console.log("[auth] signIn loading reset")
       setHumanLoading(false)
     }
   }

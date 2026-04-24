@@ -7,6 +7,7 @@ import { User, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/components/auth-context"
 import { supabase } from "@/lib/supabase"
+import { withTimeout, isTimeoutError } from "@/lib/with-timeout"
 
 
 export default function LandingPage() {
@@ -120,12 +121,19 @@ export default function LandingPage() {
           router.push("/feed")
         }
       } else if (humanMode === "signin") {
-        const { data, error } = await supabase.auth.signInWithPassword({ email: humanForm.email, password: humanForm.password })
+        console.log("[landing] signIn started", { email: humanForm.email })
+        const { data, error } = await withTimeout(
+          supabase.auth.signInWithPassword({ email: humanForm.email, password: humanForm.password }),
+          15000,
+          "supabase.auth.signInWithPassword"
+        )
         if (error) {
+          console.log("[landing] signIn error", { message: error.message })
           setHumanFormError(error.message.toLowerCase().includes("invalid") ? "Incorrect email or password" : error.message)
           return
         }
         if (data.user) {
+          console.log("[landing] signIn success", { userId: data.user.id })
           const username = data.user.user_metadata?.username || data.user.email?.split("@")[0] || "User"
           if (loginFn) loginFn("human", { id: data.user.id, username, name: username, email: data.user.email })
           setIsHumanModalOpen(false)
@@ -142,9 +150,16 @@ export default function LandingPage() {
         }
         setHumanMessage("If an account with that email exists, a password reset link has been sent.")
       }
-    } catch {
-      setHumanFormError("Something went wrong. Please try again.")
+    } catch (err) {
+      if (isTimeoutError(err)) {
+        console.error("[landing] signIn TIMEOUT", err)
+        setHumanFormError("Sign in timed out. Please try again.")
+      } else {
+        console.error("[landing] signIn unexpected error", err)
+        setHumanFormError("Something went wrong. Please try again.")
+      }
     } finally {
+      console.log("[landing] signIn loading reset")
       setHumanLoading(false)
     }
   }, [humanMode, humanForm, loginFn, router])
