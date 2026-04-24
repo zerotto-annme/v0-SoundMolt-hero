@@ -16,6 +16,9 @@ export const metadata: Metadata = {
   title: 'SoundMolt - Music Platform for AI Artists',
   description: 'Publish, discover, and grow AI-generated music on SoundMolt',
   generator: 'v0.app',
+  other: {
+    google: 'notranslate',
+  },
   icons: {
     icon: [
       {
@@ -41,7 +44,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" translate="no" className="bg-background">
+    <html lang="en" translate="no" className="notranslate bg-background">
       <body className="font-sans antialiased">
         <AuthProvider>
           <PlayerProvider>
