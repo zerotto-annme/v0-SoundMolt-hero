@@ -1,11 +1,14 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { useAuth } from "@/components/auth-context"
 import { supabase } from "@/lib/supabase"
 import {
   Loader2,
   ShieldAlert,
+  LogIn,
   RefreshCw,
   Trash2,
   EyeOff,
@@ -296,39 +299,185 @@ function useAdminResource<T>(path: string, active: boolean): AdminResource<T> {
 }
 
 // ── Page ────────────────────────────────────────────────────────────
+//
+// Gate logic for /admin.
+//
+// IMPORTANT: This page intentionally does NOT call router.push/replace
+// at any point. Non-admins are shown an in-page card; we never navigate
+// away from /admin. If you find yourself adding a redirect here, stop —
+// the spec is "show the message, stay on /admin".
+//
+// State machine:
+//   "checking" → still waiting for AuthProvider to hydrate the session
+//                (authReady === false), or the /api/admin/me request
+//                hasn't returned yet, or we're waiting briefly for the
+//                Supabase session token to appear post-sign-in. Renders
+//                a spinner.
+//   "guest"   → authReady === true AND no user is signed in. Renders a
+//                friendly "Sign in required" card with a button that
+//                opens the global sign-in modal. NO redirect.
+//   "denied"  → authReady === true, a user IS signed in, and the
+//                server-side requireAdmin() check returned `is_admin:
+//                false` with HTTP 200. Renders "Access denied" with a
+//                link back to /feed. ONLY entered on a confirmed
+//                non-admin response — transient errors fall to "error"
+//                so a network blip never falsely revokes admin access.
+//   "error"   → /api/admin/me returned non-2xx, threw, or returned
+//                malformed JSON. Renders a retry card. The user can
+//                click "Try again" to re-run the check; we also auto-
+//                recheck whenever `authVersion` ticks (sign-in,
+//                token refresh, etc.).
+//   "ok"      → server confirmed admin. Renders <AdminDashboard />.
+//
+// Why a separate "error" state matters: the prior version coerced any
+// fetch failure to "denied", which would falsely show "Access denied"
+// to a real admin during a network hiccup or a Vercel cold start.
+//
+// Why we depend on `authVersion`: `[authReady, isAuthenticated, email]`
+// alone won't re-fire when the user signs in if the email/auth flags
+// were already in their final state by the time the effect last ran
+// (e.g. token storage races). `authVersion` ticks on every relevant
+// auth event (INITIAL_SESSION, SIGNED_IN, TOKEN_REFRESHED, manual
+// login/logout), so depending on it guarantees a re-evaluation every
+// time the auth picture changes.
+//
+// The /api/admin/me endpoint runs the SAME requireAdmin() check the
+// data routes use, so the UI gate can never disagree with the API gate
+// (and ADMIN_EMAILS env overrides apply uniformly).
+type AdminGate = "checking" | "guest" | "denied" | "error" | "ok"
+
+// Short retry window (ms) for the "isAuthenticated but no token yet"
+// race. We poll getSession() every 200ms up to ~2s; if the token still
+// hasn't materialised we surface the retryable "error" card (NOT
+// "guest" — a signed-in user without a token is hitting a propagation
+// race, not a sign-out, and shouldn't be stranded). In practice the
+// token is in storage well within the first poll.
+const TOKEN_WAIT_MS = 2000
+const TOKEN_POLL_MS = 200
+
 export default function AdminPage() {
-  const { isAuthenticated } = useAuth()
-  // Server-validated admin status. The /api/admin/me endpoint runs the
-  // SAME requireAdmin() check the data routes use, so the UI gate can
-  // never disagree with the API gate (and ADMIN_EMAILS overrides apply).
-  const [adminState, setAdminState] = useState<"checking" | "yes" | "no">("checking")
+  const { user, isAuthenticated, authReady, authVersion, openSignInModal } = useAuth()
+  const pathname = usePathname()
+  const [gate, setGate] = useState<AdminGate>("checking")
+  // Bumped manually when the user clicks "Try again" so the check
+  // effect re-runs without needing an underlying auth state change.
+  const [retryNonce, setRetryNonce] = useState(0)
 
   useEffect(() => {
+    // Single, structured diagnostic line so it's easy to spot in
+    // DevTools when something looks off. Includes everything the spec
+    // asked us to surface, plus an explicit redirectTarget=null to
+    // make it obvious this page never navigates away.
+    console.log("[admin] gate state", {
+      pathname,
+      authReady,
+      isAuthenticated,
+      authVersion,
+      userEmail: user?.email ?? null,
+      gate,
+      redirectTarget: null,
+    })
+  }, [pathname, authReady, isAuthenticated, authVersion, user?.email, gate])
+
+  useEffect(() => {
+    // Wait for the AuthProvider to finish restoring the session before
+    // making any decision — otherwise a logged-in admin would briefly
+    // see "Sign in required" on every hard reload of /admin.
+    if (!authReady) {
+      setGate("checking")
+      return
+    }
+
+    if (!isAuthenticated) {
+      console.log("[admin] not signed in → showing guest prompt (no redirect)")
+      setGate("guest")
+      return
+    }
+
     let cancelled = false
-    async function check() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) {
-        if (!cancelled) setAdminState("no")
-        return
-      }
+    setGate("checking")
+    ;(async () => {
       try {
+        // Brief poll for the session token. Covers the race where
+        // `isAuthenticated` is already true (auth-context state) but
+        // the Supabase storage write for the token hasn't propagated
+        // to getSession() yet. Without this, the user could be stuck
+        // on "guest" until they manually refresh.
+        let token: string | undefined
+        const deadline = Date.now() + TOKEN_WAIT_MS
+        while (!cancelled) {
+          const { data: { session } } = await supabase.auth.getSession()
+          token = session?.access_token
+          if (token) break
+          if (Date.now() >= deadline) break
+          await new Promise((r) => setTimeout(r, TOKEN_POLL_MS))
+        }
+        if (cancelled) return
+
+        if (!token) {
+          // Authenticated in context but no token in storage even
+          // after a short retry window. We deliberately do NOT fall
+          // back to "guest" here — a real signed-in admin in this
+          // state is hitting a token propagation race, not a sign-out,
+          // and "guest" has no retry path so they'd be stranded.
+          // "error" is retryable (Try again button + auto-recheck on
+          // the next authVersion bump) and is the correct UX.
+          console.warn("[admin] isAuthenticated=true but no session token after retry; surfacing retryable error")
+          setGate("error")
+          return
+        }
+
         const res = await fetch("/api/admin/me", {
-          headers: { Authorization: `Bearer ${session.access_token}` },
+          headers: { Authorization: `Bearer ${token}` },
           cache: "no-store",
         })
-        const json = (await res.json()) as { is_admin?: boolean }
-        if (!cancelled) setAdminState(json.is_admin ? "yes" : "no")
-      } catch {
-        if (!cancelled) setAdminState("no")
+
+        if (!res.ok) {
+          // Non-2xx — could be a Vercel cold-start hiccup, a 5xx, or a
+          // CORS/network glitch. Do NOT treat this as "denied" —
+          // surface a retryable error instead. Real admin denial only
+          // ever comes back as 200 + { is_admin: false }.
+          console.error(`[admin] /api/admin/me HTTP ${res.status} — treating as transient error`)
+          if (!cancelled) setGate("error")
+          return
+        }
+
+        const json = (await res.json().catch(() => null)) as
+          | { is_admin?: boolean; email?: string }
+          | null
+        if (cancelled) return
+
+        if (!json || typeof json.is_admin !== "boolean") {
+          console.error("[admin] /api/admin/me malformed body — treating as transient error", json)
+          setGate("error")
+          return
+        }
+
+        const isAdmin = json.is_admin
+        console.log("[admin] /api/admin/me result", {
+          status: res.status,
+          isAdmin,
+          email: json.email ?? user?.email ?? null,
+        })
+        setGate(isAdmin ? "ok" : "denied")
+      } catch (err) {
+        if (!cancelled) {
+          console.error("[admin] /api/admin/me request threw — treating as transient error", err)
+          setGate("error")
+        }
       }
-    }
-    check()
+    })()
+
     return () => {
       cancelled = true
     }
-  }, [isAuthenticated])
+    // `authVersion` is included so the check re-runs on every auth
+    // event (sign-in, token refresh, etc.) even if the email hasn't
+    // changed. `retryNonce` lets the user manually retry from the
+    // error card.
+  }, [authReady, isAuthenticated, authVersion, user?.email, retryNonce])
 
-  if (adminState === "checking") {
+  if (gate === "checking") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background text-muted-foreground">
         <Loader2 className="w-6 h-6 animate-spin" />
@@ -336,15 +485,82 @@ export default function AdminPage() {
     )
   }
 
-  if (adminState === "no") {
+  if (gate === "guest") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+        <div className="max-w-md w-full glass-modal rounded-xl p-8 text-center">
+          <LogIn className="w-12 h-12 mx-auto text-sky-400 mb-4" />
+          <h1 className="text-xl font-semibold text-white mb-2">Sign in required</h1>
+          <p className="text-sm text-muted-foreground mb-6">
+            The admin panel is only available to authorized administrators. Please sign in
+            with your admin account to continue.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2 justify-center">
+            <button
+              type="button"
+              onClick={openSignInModal}
+              className="px-4 py-2 rounded-lg bg-sky-500/90 hover:bg-sky-500 text-white text-sm font-medium transition-colors"
+            >
+              Sign in
+            </button>
+            <Link
+              href="/feed"
+              className="px-4 py-2 rounded-lg border border-white/10 text-white/80 hover:bg-white/5 text-sm font-medium transition-colors"
+            >
+              Back to feed
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (gate === "denied") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background px-4">
         <div className="max-w-md w-full glass-modal rounded-xl p-8 text-center">
           <ShieldAlert className="w-12 h-12 mx-auto text-rose-400 mb-4" />
           <h1 className="text-xl font-semibold text-white mb-2">Access denied</h1>
-          <p className="text-sm text-muted-foreground">
-            This page is restricted to administrators.
+          <p className="text-sm text-muted-foreground mb-6">
+            Your account ({user?.email ?? "unknown"}) is not in the administrator allow-list.
+            Contact the site owner if you believe this is a mistake.
           </p>
+          <Link
+            href="/feed"
+            className="inline-block px-4 py-2 rounded-lg border border-white/10 text-white/80 hover:bg-white/5 text-sm font-medium transition-colors"
+          >
+            Back to feed
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  if (gate === "error") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+        <div className="max-w-md w-full glass-modal rounded-xl p-8 text-center">
+          <ShieldAlert className="w-12 h-12 mx-auto text-amber-400 mb-4" />
+          <h1 className="text-xl font-semibold text-white mb-2">Couldn't verify access</h1>
+          <p className="text-sm text-muted-foreground mb-6">
+            We couldn't reach the admin check service. This is usually a temporary network
+            issue — please try again.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2 justify-center">
+            <button
+              type="button"
+              onClick={() => setRetryNonce((n) => n + 1)}
+              className="px-4 py-2 rounded-lg bg-amber-500/90 hover:bg-amber-500 text-white text-sm font-medium transition-colors"
+            >
+              Try again
+            </button>
+            <Link
+              href="/feed"
+              className="px-4 py-2 rounded-lg border border-white/10 text-white/80 hover:bg-white/5 text-sm font-medium transition-colors"
+            >
+              Back to feed
+            </Link>
+          </div>
         </div>
       </div>
     )
