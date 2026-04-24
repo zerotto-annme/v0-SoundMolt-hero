@@ -466,5 +466,82 @@
   -webkit-backdrop-filter: blur(4px);
 }
 
+/* ────────────────────────────────────────────────────────────────────
+ * Bottom global player — premium glass surface.
+ * Visually separates the persistent playback bar from the page content
+ * with a deeper translucent navy, strong backdrop blur, a hairline top
+ * highlight, a soft upward shadow, and a faint teal glow accent that
+ * hints at the active accent color without being noisy. Pure visual —
+ * no pointer-events / z-index / layout effects.
+ * ──────────────────────────────────────────────────────────────────── */
+.player-glass {
+  background-color: rgba(10, 14, 26, 0.78);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 -12px 36px -12px rgba(0, 0, 0, 0.55),
+    0 -2px 24px -8px rgba(0, 255, 198, 0.10);
+}
+
+/* Player progress slider — clearer active fill in teal, muted inactive
+ * track. Targets shadcn slider data-slots so functionality is untouched. */
+.player-progress [data-slot="slider-track"] {
+  background-color: rgba(255, 255, 255, 0.10);
+  height: 4px;
+}
+.player-progress [data-slot="slider-range"] {
+  background-image: linear-gradient(90deg, var(--glow-primary) 0%, var(--glow-secondary) 100%);
+  box-shadow: 0 0 8px -1px rgba(0, 255, 198, 0.35);
+}
+.player-progress [data-slot="slider-thumb"] {
+  width: 12px;
+  height: 12px;
+  background-color: #ffffff;
+  border-color: var(--glow-primary);
+  box-shadow: 0 0 10px -1px rgba(0, 255, 198, 0.55);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+.player-progress:hover [data-slot="slider-thumb"],
+.player-progress [data-slot="slider-thumb"]:focus-visible {
+  opacity: 1;
+}
+
+/* Player volume slider — same look but always smaller / more subdued */
+.player-volume [data-slot="slider-track"] {
+  background-color: rgba(255, 255, 255, 0.10);
+  height: 3px;
+}
+.player-volume [data-slot="slider-range"] {
+  background-color: rgba(255, 255, 255, 0.55);
+}
+.player-volume:hover [data-slot="slider-range"] {
+  background-color: var(--glow-primary);
+}
+.player-volume [data-slot="slider-thumb"] {
+  width: 10px;
+  height: 10px;
+  background-color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.55);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+.player-volume:hover [data-slot="slider-thumb"] {
+  opacity: 1;
+  border-color: var(--glow-primary);
+}
+
+/* Right-side icon buttons — muted by default, soft teal on hover */
+.player-icon-btn {
+  color: var(--muted-foreground);
+  transition: color 150ms ease, background-color 150ms ease;
+}
+.player-icon-btn:hover {
+  color: var(--glow-primary);
+  background-color: rgba(0, 255, 198, 0.08);
+}
+
 } /* end @layer components */
 

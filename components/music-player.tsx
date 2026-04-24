@@ -59,10 +59,15 @@ export function MusicPlayer() {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-xl border-t border-border/50">
+    /* PREMIUM POLISH — visual only:
+     * .player-glass replaces the old `bg-card/95 backdrop-blur-xl border-t
+     * border-border/50` with a deeper translucent navy, stronger backdrop
+     * blur, hairline top highlight, soft upward shadow, and a faint teal
+     * glow accent. Same fixed positioning + z-index. */
+    <div className="fixed bottom-0 left-0 right-0 z-50 player-glass">
       {/* Mobile progress bar on top */}
       <div 
-        className="h-1 w-full bg-secondary/50 md:hidden cursor-pointer"
+        className="h-1 w-full bg-white/10 md:hidden cursor-pointer"
         onClick={(e) => {
           const rect = e.currentTarget.getBoundingClientRect()
           const percent = ((e.clientX - rect.left) / rect.width) * 100
@@ -70,16 +75,20 @@ export function MusicPlayer() {
         }}
       >
         <div 
-          className="h-full bg-gradient-to-r from-glow-primary to-glow-secondary transition-all duration-150"
+          className="h-full bg-gradient-to-r from-glow-primary to-glow-secondary transition-all duration-150 shadow-[0_0_8px_-1px_rgba(0,255,198,0.5)]"
           style={{ width: `${progress}%` }}
         />
       </div>
 
-      <div className="flex items-center justify-between h-16 md:h-20 px-3 md:px-4 lg:pl-64">
+      {/* Slightly taller container (h-[72px] / md:h-[88px]) gives the larger
+          cover and improved spacing more breathing room. Pages already
+          reserve pb-24+ so this stays clear. */}
+      <div className="flex items-center justify-between h-[72px] md:h-[88px] px-3 md:px-5 lg:pl-64 gap-3 md:gap-6">
         {/* Track info - Left */}
-        <div className="flex items-center gap-3 w-1/4 min-w-0">
-          {/* Album art */}
-          <div className="relative w-12 h-12 md:w-14 md:h-14 rounded-md overflow-hidden flex-shrink-0 shadow-lg">
+        <div className="flex items-center gap-3 md:gap-4 w-1/4 min-w-0">
+          {/* Album art — slightly larger (w-14 / md:w-16), softer corners,
+              richer shadow. Loading + playing overlays unchanged. */}
+          <div className="relative w-14 h-14 md:w-16 md:h-16 rounded-lg overflow-hidden flex-shrink-0 shadow-[0_8px_24px_-6px_rgba(0,0,0,0.6)] ring-1 ring-white/5">
             <Image
               src={currentTrack.coverUrl}
               alt={currentTrack.title}
@@ -88,51 +97,56 @@ export function MusicPlayer() {
             />
             {/* Loading overlay */}
             {isLoading && (
-              <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+              <div className="absolute inset-0 bg-black/55 backdrop-blur-[2px] flex items-center justify-center">
                 <Loader2 className="w-6 h-6 text-white animate-spin" />
               </div>
             )}
             {/* Glow when playing */}
             {isPlaying && !isLoading && (
-              <div className="absolute inset-0 ring-2 ring-glow-primary/50 rounded-md animate-pulse" />
+              <div className="absolute inset-0 ring-2 ring-glow-primary/60 rounded-lg shadow-[0_0_16px_-2px_rgba(0,255,198,0.45)] animate-pulse" />
             )}
           </div>
 
-          {/* Track details */}
+          {/* Track details — brighter title, muted metadata, tighter rhythm */}
           <div className="min-w-0 hidden sm:block">
-            <h4 className="text-sm font-medium text-foreground truncate">{currentTrack.title}</h4>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Bot className="w-3 h-3 text-glow-secondary flex-shrink-0" />
+            <h4 className="text-[15px] font-semibold text-white truncate leading-tight tracking-tight">
+              {currentTrack.title}
+            </h4>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground/80 mt-1">
+              <Bot className="w-3 h-3 text-glow-secondary/80 flex-shrink-0" />
               <span className="truncate">{currentTrack.agentName}</span>
-              <span className="text-muted-foreground/50 hidden md:inline">|</span>
-              <span className="text-[10px] font-mono text-glow-secondary/70 hidden md:inline">{currentTrack.modelType}</span>
+              <span className="text-muted-foreground/30 hidden md:inline">·</span>
+              <span className="text-[10px] font-mono text-glow-secondary/60 hidden md:inline">{currentTrack.modelType}</span>
             </div>
           </div>
 
           {/* AI indicator */}
-          <div className="hidden lg:flex items-center gap-1 px-2 py-1 rounded-full bg-glow-secondary/10 border border-glow-secondary/20 ml-2">
+          <div className="hidden lg:flex items-center gap-1 px-2 py-1 rounded-full bg-glow-secondary/10 border border-glow-secondary/20 ml-1">
             <Sparkles className="w-3 h-3 text-glow-secondary" />
             <span className="text-[10px] font-mono text-glow-secondary">AI</span>
           </div>
         </div>
 
         {/* Player controls - Center */}
-        <div className="flex flex-col items-center gap-1 flex-1 max-w-xl px-4">
+        <div className="flex flex-col items-center gap-1.5 flex-1 max-w-xl px-2 md:px-4">
           {/* Control buttons */}
-          <div className="flex items-center gap-2 md:gap-4">
-            {/* Previous */}
+          <div className="flex items-center gap-3 md:gap-5">
+            {/* Previous — muted, teal on hover */}
             <button 
               onClick={prevTrack}
-              className="p-2 rounded-full text-muted-foreground hover:text-foreground transition-colors active:scale-95"
+              className="p-2 rounded-full player-icon-btn active:scale-95"
+              aria-label="Previous track"
             >
               <SkipBack className="w-4 h-4 md:w-5 md:h-5" fill="currentColor" />
             </button>
 
             {/* Play/Pause — premium primary action: teal→purple gradient with
-                soft glow shadow and subtle hover scale (≤1.02 per polish spec). */}
+                soft glow shadow and subtle hover scale. Click behavior
+                unchanged (togglePlay from player-context). */}
             <button 
               onClick={togglePlay}
-              className="btn-primary-gradient w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center group"
+              className="btn-primary-gradient w-11 h-11 md:w-12 md:h-12 rounded-full flex items-center justify-center group"
+              aria-label={isPlaying ? "Pause" : "Play"}
             >
               {isLoading ? (
                 <Loader2 className="w-5 h-5 md:w-6 md:h-6 text-background animate-spin" />
@@ -143,53 +157,61 @@ export function MusicPlayer() {
               )}
             </button>
 
-            {/* Next */}
+            {/* Next — muted, teal on hover */}
             <button 
               onClick={nextTrack}
               disabled={queueIndex >= queue.length - 1}
-              className="p-2 rounded-full text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors active:scale-95"
+              className="p-2 rounded-full player-icon-btn disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground active:scale-95"
+              aria-label="Next track"
             >
               <SkipForward className="w-4 h-4 md:w-5 md:h-5" fill="currentColor" />
             </button>
           </div>
 
-          {/* Progress bar - Desktop only */}
-          <div className="hidden md:flex items-center gap-2 w-full">
-            <span className="text-[10px] text-muted-foreground w-10 text-right font-mono">
+          {/* Progress bar - Desktop only. .player-progress styles the
+              shadcn slider's track/range/thumb (visual only — seekTo
+              callback untouched). */}
+          <div className="hidden md:flex items-center gap-3 w-full">
+            <span className="text-[11px] text-muted-foreground/80 w-10 text-right font-mono tabular-nums">
               {formatTime(currentTime)}
             </span>
-            <div className="flex-1 group">
+            <div className="flex-1">
               <Slider
                 value={[progress]}
                 onValueChange={(value) => seekTo(value[0])}
                 max={100}
                 step={0.1}
-                className="cursor-pointer"
+                className="cursor-pointer player-progress"
               />
             </div>
-            <span className="text-[10px] text-muted-foreground w-10 font-mono">
+            <span className="text-[11px] text-muted-foreground/80 w-10 font-mono tabular-nums">
               {formatTime(duration)}
             </span>
           </div>
         </div>
 
-        {/* Volume & extras - Right */}
-        <div className="flex items-center justify-end gap-2 md:gap-4 w-1/4">
+        {/* Volume & extras - Right. More breathing room (gap-3 md:gap-4),
+            consistent muted→teal hover via .player-icon-btn. */}
+        <div className="flex items-center justify-end gap-2 md:gap-3 w-1/4">
           {/* Queue button */}
-          <button className="hidden md:flex p-2 rounded-full text-muted-foreground hover:text-foreground transition-colors relative">
+          <button
+            className="hidden md:flex p-2 rounded-full player-icon-btn relative"
+            aria-label="Queue"
+          >
             <ListMusic className="w-4 h-4" />
             {queue.length > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-glow-primary text-[9px] font-bold text-white flex items-center justify-center">
+              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-gradient-to-br from-glow-primary to-glow-secondary text-[9px] font-bold text-background flex items-center justify-center shadow-[0_0_8px_-1px_rgba(0,255,198,0.5)]">
                 {queue.length}
               </span>
             )}
           </button>
 
           {/* Volume control - Desktop */}
-          <div className="hidden md:flex items-center gap-2 w-32">
+          <div className="hidden md:flex items-center gap-2 w-32 group">
             <button 
               onClick={() => setVolume(volume > 0 ? 0 : 80)}
-              className="p-2 rounded-full text-muted-foreground hover:text-foreground transition-colors"
+              className="p-2 rounded-full player-icon-btn"
+              aria-label={volume === 0 ? "Unmute" : "Mute"}
             >
               <VolumeIcon className="w-4 h-4" />
             </button>
@@ -198,17 +220,20 @@ export function MusicPlayer() {
               onValueChange={(value) => setVolume(value[0])}
               max={100}
               step={1}
-              className="w-20 cursor-pointer"
+              className="w-20 cursor-pointer player-volume"
             />
           </div>
 
           {/* Expand button */}
-          <button className="hidden lg:flex p-2 rounded-full text-muted-foreground hover:text-foreground transition-colors">
+          <button
+            className="hidden lg:flex p-2 rounded-full player-icon-btn"
+            aria-label="Expand player"
+          >
             <Maximize2 className="w-4 h-4" />
           </button>
 
           {/* Mobile: show model badge */}
-          <div className={`md:hidden w-2 h-2 rounded-full bg-gradient-to-r ${MODEL_COLORS[currentTrack.modelProvider] || "from-gray-500 to-gray-700"}`} />
+          <div className={`md:hidden w-2 h-2 rounded-full bg-gradient-to-r ${MODEL_COLORS[currentTrack.modelProvider] || "from-gray-500 to-gray-700"} shadow-[0_0_6px_-1px_rgba(123,97,255,0.5)]`} />
         </div>
       </div>
     </div>
