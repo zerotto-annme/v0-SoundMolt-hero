@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { readdirSync } from "fs"
 import { join } from "path"
+import { getServiceRoleKey } from "@/lib/supabase-admin"
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+// Resolved via the central helper so the SUPABASE_SERVICE_KEY /
+// SUPABASE_SERVICE_ROLE legacy aliases also work.
+const supabaseServiceKey = getServiceRoleKey()
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "")
   .split(",")

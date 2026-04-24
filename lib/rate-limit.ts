@@ -1,8 +1,11 @@
 import { NextRequest } from "next/server"
 import { createClient, SupabaseClient } from "@supabase/supabase-js"
+import { getServiceRoleKey } from "./supabase-admin"
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+// Resolved via the central helper so the SUPABASE_SERVICE_KEY /
+// SUPABASE_SERVICE_ROLE legacy aliases also work.
+const supabaseServiceKey = getServiceRoleKey()
 
 export interface RateLimitOptions {
   windowMs?: number

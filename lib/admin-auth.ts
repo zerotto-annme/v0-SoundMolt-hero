@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getAdminClient, getUserFromAuthHeader } from "./supabase-admin"
+import { getAdminClient, getUserFromAuthHeader, hasServiceRoleKey } from "./supabase-admin"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 /**
@@ -55,7 +55,11 @@ export interface AdminAuthFail {
 export async function requireAdmin(
   request: Request,
 ): Promise<AdminAuthOk | AdminAuthFail> {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  // Accept any of the standard env-name variants (canonical
+  // SUPABASE_SERVICE_ROLE_KEY plus SUPABASE_SERVICE_KEY /
+  // SUPABASE_SERVICE_ROLE legacy aliases). hasServiceRoleKey() also
+  // logs a safe diagnostic when missing — see lib/supabase-admin.ts.
+  if (!hasServiceRoleKey()) {
     return {
       ok: false,
       response: NextResponse.json(

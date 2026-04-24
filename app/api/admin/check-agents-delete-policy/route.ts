@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { getServiceRoleKey } from "@/lib/supabase-admin"
 
 /**
  * GET /api/admin/check-agents-delete-policy
@@ -25,7 +26,9 @@ import { createClient } from "@supabase/supabase-js"
 
 const supabaseUrl       = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnon      = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabaseService   = process.env.SUPABASE_SERVICE_ROLE_KEY
+// Resolved via the central helper so the SUPABASE_SERVICE_KEY /
+// SUPABASE_SERVICE_ROLE legacy aliases also work.
+const supabaseService   = getServiceRoleKey()
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "")
   .split(",").map(e => e.trim().toLowerCase()).filter(Boolean)
 

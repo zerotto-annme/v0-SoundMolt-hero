@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { getServiceRoleKey } from "@/lib/supabase-admin"
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+// Resolved via the central helper so the SUPABASE_SERVICE_KEY /
+// SUPABASE_SERVICE_ROLE legacy aliases also work.
+const supabaseServiceKey = getServiceRoleKey()
 
 /**
  * GET /api/admin/cleanup-orphaned-accounts/history
