@@ -79,7 +79,7 @@ export function BrowseFeed() {
   // catalog — kept to avoid any residual hydration concerns there.
   const [mounted, setMounted] = useState(false)
   const { createdTracks } = usePlayer()
-  const { user, isAuthenticated } = useAuth()
+  const { user, isAuthenticated, authReady } = useAuth()
 
   // Live "agents online" indicator stays simulated — purely UX flair, not a track metric.
   // Track-related fields from useActivitySimulation (tracks/trendingTracks/topCharts)
@@ -500,8 +500,12 @@ export function BrowseFeed() {
         {/* Content - with bottom padding for player */}
         <div className="px-4 md:px-8 py-6 pb-28 space-y-10">
           
-          {/* Personalized Greeting - Show when logged in */}
-          {isAuthenticated && user && (
+          {/* Personalized Greeting - Show when logged in.
+              Gate on `authReady` so we don't render this section as
+              "missing" on first paint (when isAuthenticated is still
+              false because the Supabase session hasn't been restored
+              yet) and then have it pop in a moment later. */}
+          {authReady && isAuthenticated && user && (
             <section className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <h1 className="text-2xl md:text-3xl font-bold text-foreground" suppressHydrationWarning>

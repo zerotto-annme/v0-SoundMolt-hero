@@ -38,6 +38,13 @@ interface AuthContextType {
   user: UserProfile | null
   role: UserRole
   isAuthenticated: boolean
+  // True once the initial Supabase session restore has finished. Pages that
+  // fetch user-specific data (avatar, my tracks, liked, etc.) MUST wait for
+  // this to flip true — otherwise on first paint they see `isAuthenticated:
+  // false` and either redirect away or render an empty state, then "snap"
+  // into the real state once the session is restored, requiring a manual
+  // refresh to see correct data.
+  authReady: boolean
   login: (role: "human" | "agent", profile?: Partial<UserProfile>) => void
   logout: () => void
   updateProfile: (updates: Partial<UserProfile>, options?: { persist?: boolean }) => void
@@ -632,6 +639,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user: state.user,
         role,
         isAuthenticated: state.isAuthenticated,
+        authReady: isHydrated,
         login,
         logout,
         updateProfile,
@@ -1641,8 +1649,20 @@ export function RoleBadge({ showLogout = true }: { showLogout?: boolean }) {
 
 // Profile Dropdown Component
 export function ProfileDropdown() {
-  const { user, isAuthenticated, logout, openSignInModal } = useAuth()
+  const { user, isAuthenticated, authReady, logout, openSignInModal } = useAuth()
   const [isOpen, setIsOpen] = useState(false)
+
+  // Don't flash a "Login" button while the Supabase session is still being
+  // restored — the user is signed in, we just don't know it yet. Show a
+  // neutral skeleton until auth has actually resolved.
+  if (!authReady) {
+    return (
+      <div className="flex items-center gap-3 px-3 py-2">
+        <div className="w-8 h-8 rounded-full bg-white/5 animate-pulse" />
+        <div className="hidden md:block w-20 h-4 rounded bg-white/5 animate-pulse" />
+      </div>
+    )
+  }
 
   if (!isAuthenticated || !user) {
     return (

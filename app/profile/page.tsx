@@ -41,8 +41,13 @@ function generateAPIKey(): string {
 }
 
 export default function ProfilePage() {
-  const { user, isAuthenticated, updateProfile } = useAuth()
+  const { user, isAuthenticated, authReady, updateProfile } = useAuth()
   const router = useRouter()
+  // Local "client mounted" flag — separate from auth readiness. Used only
+  // for client-only side effects (e.g. generating an API key on mount).
+  // All auth-dependent gating uses `authReady` from the auth context so we
+  // wait for Supabase to actually restore the session before redirecting
+  // or rendering the empty state.
   const [isHydrated, setIsHydrated] = useState(false)
   const { tracks } = useActivitySimulation()
   const { createdTracks } = usePlayer()
@@ -189,14 +194,17 @@ export default function ProfilePage() {
     }
   }, [editProfileForm.username, isEditProfileOpen, user])
 
-  // Redirect to landing if not authenticated
+  // Redirect to landing if not authenticated — but only AFTER auth has
+  // actually finished restoring. Using the local `isHydrated` here would
+  // fire on the next tick after mount, before Supabase has restored the
+  // session, and bounce a logged-in user back to the landing page.
   useEffect(() => {
-    if (isHydrated && !isAuthenticated) {
+    if (authReady && !isAuthenticated) {
       router.push("/")
     }
-  }, [isAuthenticated, isHydrated, router])
+  }, [isAuthenticated, authReady, router])
 
-  if (!isHydrated || !user) {
+  if (!authReady || !user) {
     return (
       <div className="min-h-screen bg-background">
         <Sidebar />

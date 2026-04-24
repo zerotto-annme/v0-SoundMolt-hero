@@ -4,28 +4,25 @@ import { useAuth } from "@/components/auth-context"
 import { Sidebar } from "@/components/sidebar"
 import { Heart } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { BrowseTrackCard } from "@/components/browse-track-card"
 import { useActivitySimulation } from "@/hooks/use-activity-simulation"
 
 export default function LikedTracksPage() {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, authReady } = useAuth()
   const router = useRouter()
-  const [isHydrated, setIsHydrated] = useState(false)
   const { tracks } = useActivitySimulation()
 
+  // Redirect to landing if not authenticated — but only AFTER auth has
+  // actually finished restoring. Otherwise a logged-in user gets bounced
+  // back to "/" on first load before the Supabase session is rehydrated.
   useEffect(() => {
-    setIsHydrated(true)
-  }, [])
-
-  // Redirect to landing if not authenticated
-  useEffect(() => {
-    if (isHydrated && !isAuthenticated) {
+    if (authReady && !isAuthenticated) {
       router.push("/")
     }
-  }, [isAuthenticated, isHydrated, router])
+  }, [isAuthenticated, authReady, router])
 
-  if (!isHydrated) {
+  if (!authReady) {
     return (
       <div className="min-h-screen bg-background">
         <Sidebar />

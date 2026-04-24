@@ -61,9 +61,8 @@ function TrackActionsMenu({ track, onEdit, onDelete, onPublish, isOpen, onClose 
 }
 
 export default function MyTracksPage() {
-  const { user, isAuthenticated } = useAuth()
+  const { user, isAuthenticated, authReady } = useAuth()
   const router = useRouter()
-  const [isHydrated, setIsHydrated] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null)
@@ -72,24 +71,45 @@ export default function MyTracksPage() {
   const [editingTrack, setEditingTrack] = useState<Track | null>(null)
   const [detailTrack, setDetailTrack] = useState<Track | null>(null)
   const [supabaseTracks, setSupabaseTracks] = useState<Track[]>([])
-  const [tracksLoading, setTracksLoading] = useState(false)
+  // Start in loading state — without this, the first render briefly flashes
+  // the "No tracks yet" empty state before the fetch effect kicks in.
+  const [tracksLoading, setTracksLoading] = useState(true)
+  // Gates the empty state: an empty array is only "empty" once we've actually
+  // tried to fetch as the authenticated user. Before that it just means
+  // "still loading auth or tracks".
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
   const { createdTracks, playTrack, currentTrack, isPlaying, togglePlay, removeCreatedTrack } = usePlayer()
 
   const fetchTracks = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
+    // Trust the auth context — by the time this runs the gating effect has
+    // already verified `authReady && isAuthenticated && user?.id`. Calling
+    // `supabase.auth.getSession()` here would re-introduce the race we
+    // just fixed, and on a transient null result would leave the UI stuck
+    // on "Loading your tracks…" forever.
+    const userId = user?.id
+    if (!userId) {
+      // Defensive: gating effect should have prevented this, but if we land
+      // here flip hasLoadedOnce so the empty state can render and any
+      // redirect effect can take over instead of an infinite loading spinner.
+      setSupabaseTracks([])
+      setTracksLoading(false)
+      setHasLoadedOnce(true)
+      return
+    }
     setTracksLoading(true)
     const { data, error } = await supabase
       .from("tracks")
       .select("*")
-      .eq("user_id", session.user.id)
+      .eq("user_id", userId)
       .order("created_at", { ascending: false })
     setTracksLoading(false)
+    setHasLoadedOnce(true)
     if (error || !data) return
+    const ownerName = user?.username || user?.name || user?.email?.split("@")[0] || "You"
     const mapped: Track[] = data.map((row) => ({
       id: row.id,
       title: row.title,
-      agentName: session.user.user_metadata?.username || session.user.email?.split("@")[0] || "You",
+      agentName: ownerName,
       modelType: "Uploaded",
       modelProvider: "user",
       coverUrl: row.cover_url || "",
@@ -109,21 +129,34 @@ export default function MyTracksPage() {
       createdAt: new Date(row.created_at).getTime(),
     }))
     setSupabaseTracks(mapped)
-  }, [])
+  }, [user?.id, user?.username, user?.name, user?.email])
 
+  // Wait for the auth context to finish restoring the Supabase session before
+  // we ever touch the tracks table — otherwise the very first render fires
+  // `getSession()` before the SDK has rehydrated the cookie and we get an
+  // empty result, which previously rendered the "No tracks yet" empty state
+  // until the user manually refreshed.
   useEffect(() => {
-    setIsHydrated(true)
-    fetchTracks()
-  }, [fetchTracks])
+    if (!authReady) return
+    if (isAuthenticated && user?.id) {
+      fetchTracks()
+    } else {
+      // Auth resolved as signed-out — stop the loading skeleton so the
+      // redirect effect below can take over.
+      setTracksLoading(false)
+    }
+  }, [authReady, isAuthenticated, user?.id, fetchTracks])
 
-  // Redirect to landing if not authenticated
+  // Redirect to landing if not authenticated — but only AFTER auth has
+  // actually finished restoring. Doing this before authReady is what caused
+  // the previous "kicked back to landing on first load" bug.
   useEffect(() => {
-    if (isHydrated && !isAuthenticated) {
+    if (authReady && !isAuthenticated) {
       router.push("/")
     }
-  }, [isAuthenticated, isHydrated, router])
+  }, [isAuthenticated, authReady, router])
 
-  if (!isHydrated || !user) {
+  if (!authReady || !user) {
     return (
       <div className="min-h-screen bg-background">
         <Sidebar />
@@ -191,7 +224,7 @@ export default function MyTracksPage() {
                 <p className="text-sm text-white/50 mb-1">Your Collection</p>
                 <h1 className="text-4xl font-bold text-white">My Tracks</h1>
                 <p className="text-white/50 text-sm mt-2">
-                  {tracksLoading ? "Loading…" : `${displayTracks.length} tracks | ${formatPlays(totalPlays)} plays`}
+                  {tracksLoading || !hasLoadedOnce ? "Loading…" : `${displayTracks.length} tracks | ${formatPlays(totalPlays)} plays`}
                 </p>
               </div>
             </div>
@@ -208,7 +241,13 @@ export default function MyTracksPage() {
 
         {/* Content */}
         <div className="px-8 py-6">
-          {displayTracks.length > 0 ? (
+          {/* While auth or the first tracks fetch is still in flight we show
+              a skeleton instead of the empty state — flashing "No tracks yet"
+              before the real data arrives is what made it look like uploads
+              had vanished until the user manually refreshed. */}
+          {(!hasLoadedOnce || tracksLoading) && displayTracks.length === 0 ? (
+            <div className="py-20 text-center text-white/40">Loading your tracks…</div>
+          ) : displayTracks.length > 0 ? (
             <div className="space-y-2">
               {/* Table Header */}
               <div className="grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-4 px-4 py-2 text-xs text-white/40 uppercase tracking-wider border-b border-border/30">

@@ -38,7 +38,14 @@ export function Sidebar({ onUploadSuccess }: { onUploadSuccess?: () => void } = 
   const [isCreateMenuOpen, setIsCreateMenuOpen] = useState(false)
   const { recentActivity, tracks: dynamicTracks } = useActivitySimulation()
   const { createdTracks } = usePlayer()
-  const { requireAuth, user, isAuthenticated } = useAuth()
+  const { requireAuth, user, isAuthenticated, authReady } = useAuth()
+  // Only render auth-gated items once auth has actually resolved. Before
+  // authReady flips true we leave those slots empty rather than guessing —
+  // showing them to a guest who isn't actually signed in would be wrong,
+  // and showing them as missing to a signed-in user is just a sub-second
+  // flicker (the ProfileDropdown above renders a neutral skeleton in the
+  // meantime so the top of the sidebar isn't visibly empty).
+  const showAuthedUi = authReady && isAuthenticated
   
   const handleCreateClick = () => {
     if (process.env.NODE_ENV !== "production") {
@@ -98,7 +105,7 @@ export function Sidebar({ onUploadSuccess }: { onUploadSuccess?: () => void } = 
         </div>
 
         {/* Create button with dropdown - visible for authenticated users */}
-        {isAuthenticated && (
+        {showAuthedUi && (
           <div className="relative mb-6">
             <Button
               onClick={handleCreateClick}
@@ -171,7 +178,7 @@ export function Sidebar({ onUploadSuccess }: { onUploadSuccess?: () => void } = 
                 </Link>
 
                 {/* Studio Agents - inserted right after Home (idx 0) */}
-                {idx === 0 && isAuthenticated && (
+                {idx === 0 && showAuthedUi && (
                   <Link
                     href="/studio-agents"
                     className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 mt-1 ${
@@ -189,7 +196,7 @@ export function Sidebar({ onUploadSuccess }: { onUploadSuccess?: () => void } = 
           })}
 
           {/* Discussions - Authenticated users */}
-          {isAuthenticated && (
+          {showAuthedUi && (
             <Link
               href="/discussions"
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
@@ -233,11 +240,11 @@ export function Sidebar({ onUploadSuccess }: { onUploadSuccess?: () => void } = 
         </div>
 
         {/* Quick links - Show for authenticated users */}
-        {isAuthenticated && (
+        {showAuthedUi && (
           <div className="border-t border-border/50 pt-4 mb-4">
             <nav className="space-y-1">
               {/* My Tracks - Authenticated users */}
-              {isAuthenticated && (
+              {showAuthedUi && (
                 <Link 
                   href="/my-tracks" 
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
