@@ -185,6 +185,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       audioRef.current.addEventListener('canplay', () => {
         setState(prev => ({ ...prev, isLoading: false }))
       })
+
+      // ── REGRESSION FIX (infinite loading spinner) ────────────────────
+      // Without an 'error' handler the audio element can fail to load
+      // (404 / unsupported codec / network blip) and `isLoading` would
+      // remain true forever — the loading spinner on the play button and
+      // album art would spin indefinitely. Always clear loading state
+      // and stop the playing flag when the underlying media element
+      // reports an error or stalls so the UI can recover and the user
+      // can click play again to retry.
+      audioRef.current.addEventListener('error', () => {
+        const err = audioRef.current?.error
+        console.error('[player] audio element error:', err?.code, err?.message)
+        setState(prev => ({ ...prev, isLoading: false, isPlaying: false }))
+      })
     }
 
     return () => {
@@ -248,7 +262,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         audioRef.current.pause()
         return
       }
-      audioRef.current.play().catch(console.error)
+      // REGRESSION FIX: if play() rejects (audio in error state from a
+      // previous failed load, src never validated, etc.) clear isLoading
+      // so the spinner doesn't hang forever — the user sees the play
+      // icon again and can retry.
+      audioRef.current.play().catch((err) => {
+        console.error('[player] play() rejected on same track:', err)
+        setState((prev) => ({ ...prev, isPlaying: false, isLoading: false }))
+      })
       setState((prev) => ({ ...prev, isPlaying: true }))
       return
     }
@@ -283,19 +304,53 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       currentTrackIdRef.current = track.id
       audioRef.current.src = audioUrl
       audioRef.current.load()
-      audioRef.current.play().catch(console.error)
+      // REGRESSION FIX: clear isLoading on play rejection so spinner
+      // doesn't hang on a bad source — user can click again to retry.
+      audioRef.current.play().catch((err) => {
+        console.error('[player] play() rejected on new track:', err)
+        setState((prev) => ({ ...prev, isPlaying: false, isLoading: false }))
+      })
     }
   }, [])
 
   const togglePlay = useCallback(() => {
-    if (audioRef.current) {
-      if (audioRef.current.paused) {
-        audioRef.current.play().catch(console.error)
-      } else {
-        audioRef.current.pause()
-      }
+    if (!audioRef.current) return
+
+    // REGRESSION FIX (root cause of "play button doesn't start audio"):
+    // If the audio element has no src, has errored, or its src no longer
+    // matches the current track's audioUrl, calling .play() throws a
+    // NotSupportedError. Recover by re-running the full load+play flow
+    // through playTrack so the user's click reliably starts playback
+    // instead of silently failing.
+    const expectedSrc = state.currentTrack?.audioUrl
+    const actualSrc = audioRef.current.src
+    const needsReload =
+      !!audioRef.current.error ||
+      !actualSrc ||
+      (expectedSrc && !actualSrc.endsWith(expectedSrc) && actualSrc !== expectedSrc)
+
+    if (needsReload && state.currentTrack) {
+      // Force a fresh load by clearing the cached id, then route through
+      // playTrack which sets src + load() + play().
+      currentTrackIdRef.current = null
+      playTrack(state.currentTrack)
+      return
     }
-  }, [])
+
+    if (audioRef.current.paused) {
+      audioRef.current.play().catch((err) => {
+        console.error('[player] togglePlay play() rejected, retrying via reload:', err)
+        if (state.currentTrack) {
+          currentTrackIdRef.current = null
+          playTrack(state.currentTrack)
+        } else {
+          setState((prev) => ({ ...prev, isPlaying: false, isLoading: false }))
+        }
+      })
+    } else {
+      audioRef.current.pause()
+    }
+  }, [state.currentTrack, playTrack])
 
   const nextTrack = useCallback(() => {
     setState((prev) => {
