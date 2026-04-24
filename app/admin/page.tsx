@@ -81,23 +81,123 @@ interface HealthData {
 type Section = "overview" | "tracks" | "users" | "agents" | "health"
 
 // ── Helpers ─────────────────────────────────────────────────────────
-async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
+
+/**
+ * Default request timeout in ms. Long enough to comfortably cover all
+ * "fast" admin endpoints (overview / users / tracks / health are all
+ * sub-second in practice), short enough that a hung request surfaces
+ * a real error instead of a permanent spinner.
+ *
+ * Slow operations (Essentia re-analyze) opt in to a higher value via
+ * `timeoutMs` on the call site — see `adminFetch` callers below.
+ */
+const ADMIN_FETCH_DEFAULT_TIMEOUT_MS = 25_000
+/**
+ * Re-analyze (Essentia) realistically runs 10–20s end-to-end and can
+ * peak around 60s on cold caches; we give it a generous 90s window so
+ * slow but successful runs aren't surfaced as fake "timed out" errors.
+ */
+const ADMIN_FETCH_ANALYZE_TIMEOUT_MS = 90_000
+
+interface AdminFetchInit extends RequestInit {
+  /** Override request timeout in ms. Defaults to 25s. */
+  timeoutMs?: number
+}
+
+/**
+ * Wrapper around fetch() that:
+ *   • Attaches the current user's Supabase JWT as Bearer auth.
+ *   • Aborts the request after a configurable timeout (default 25s,
+ *     90s for Essentia re-analyze) so a stuck server can never lock
+ *     a button forever.
+ *   • Parses non-2xx responses into a readable Error message
+ *     (extracts `error` / `message` from JSON, falls back to body text,
+ *     finally to `HTTP <status>`).
+ *   • Logs every request to the browser console as
+ *     `[admin] → METHOD /path` and on completion as
+ *     `[admin] ✓ METHOD /path STATUS (Nms)` so admins can debug
+ *     stuck UI directly from DevTools without server access.
+ */
+async function adminFetch<T>(path: string, init?: AdminFetchInit): Promise<T> {
+  const method = (init?.method ?? "GET").toUpperCase()
+  const timeoutMs = init?.timeoutMs ?? ADMIN_FETCH_DEFAULT_TIMEOUT_MS
+  const startedAt = (typeof performance !== "undefined" ? performance.now() : Date.now())
+
+  console.info(`[admin] → ${method} ${path}`)
+
   const { data: { session } } = await supabase.auth.getSession()
   const token = session?.access_token
-  if (!token) throw new Error("Not authenticated")
-  const res = await fetch(path, {
-    ...init,
-    headers: {
-      ...(init?.headers ?? {}),
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-  })
-  if (!res.ok) {
-    const text = await res.text().catch(() => "")
-    throw new Error(`${res.status}: ${text || res.statusText}`)
+  if (!token) {
+    console.error(`[admin] ✗ ${method} ${path}: no session token`)
+    throw new Error("Session expired — please refresh the page and sign in again.")
   }
-  return res.json() as Promise<T>
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const res = await fetch(path, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        ...(init?.headers ?? {}),
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    })
+    const ms = Math.round(
+      (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt,
+    )
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "")
+      let msg = res.statusText || `HTTP ${res.status}`
+      // Most of our admin/* and tracks/* mutation routes return
+      // `{ error: "..." }` on failure — surface that verbatim instead
+      // of dumping the full JSON blob into the toast.
+      if (text) {
+        try {
+          const parsed = JSON.parse(text) as { error?: string; message?: string }
+          msg = parsed.error ?? parsed.message ?? text.slice(0, 200)
+        } catch {
+          msg = text.slice(0, 200)
+        }
+      }
+      console.error(`[admin] ✗ ${method} ${path} ${res.status} (${ms}ms): ${msg}`)
+      throw new Error(`${res.status} — ${msg}`)
+    }
+
+    console.info(`[admin] ✓ ${method} ${path} ${res.status} (${ms}ms)`)
+    // Await the body parse INSIDE the try so:
+    //   1. A stalled body stream is still bounded by the AbortController
+    //      (fetch ties its body to the signal; abort() rejects the
+    //      pending json() with AbortError, which we translate below).
+    //   2. A malformed body surfaces as a catchable JSON parse error
+    //      with logging context, not an unhandled rejection.
+    //   3. The `finally` clearTimeout(timer) actually waits for parsing
+    //      to finish — otherwise the timer would fire after a slow body
+    //      parse on a successful response and call abort() on a
+    //      now-finished request (harmless, but pointlessly noisy).
+    const json = (await res.json().catch((e) => {
+      console.error(`[admin] ✗ ${method} ${path}: invalid JSON response`, e)
+      throw new Error(`Invalid JSON response from server (${res.status}).`)
+    })) as T
+    return json
+  } catch (e) {
+    // AbortController.abort() triggers a DOMException with name "AbortError"
+    // — translate that into a human-readable timeout message before it
+    // bubbles up into the action handlers.
+    if ((e as { name?: string }).name === "AbortError") {
+      const seconds = Math.round(timeoutMs / 1000)
+      console.error(`[admin] ⏱ ${method} ${path}: timed out after ${seconds}s`)
+      throw new Error(
+        `Request timed out after ${seconds}s. The server is taking longer than expected — try again or check the server logs.`,
+      )
+    }
+    throw e
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 function formatDate(ts: string | null | undefined): string {
@@ -236,9 +336,88 @@ export default function AdminPage() {
   return <AdminDashboard />
 }
 
+// ── Notification system ─────────────────────────────────────────────
+//
+// In-page toast/banner that replaces the previous `alert()` calls. The
+// reasons we're not using `alert()` anymore:
+//   • A modal alert blocks the entire page; the user can't see what
+//     state the panel is in and can't compare the message to the row
+//     that triggered it.
+//   • Errors from the original implementation often arrived as a
+//     stringified status code ("401: ...") which users dismissed
+//     without reading. The toast variant stays visible for 6s, can
+//     be re-read, and is colour-coded by kind.
+//   • Non-error feedback (e.g. "Re-analyze started, can take ~20s")
+//     can be surfaced without the modal jail.
+//
+// `Notice.id` is a monotonic counter, used to ensure the auto-dismiss
+// timer only clears the *current* notice — if a second notice arrives
+// before the first times out, the first one's timer is overwritten and
+// the new one gets its own 6s window.
+type NoticeKind = "info" | "success" | "error"
+interface Notice {
+  id: number
+  kind: NoticeKind
+  message: string
+}
+
+const NOTICE_TIMEOUT_MS = 6000
+
+type Notify = (message: string, kind?: NoticeKind) => void
+
+const NOTICE_PALETTE: Record<NoticeKind, string> = {
+  info:    "border-sky-500/40 bg-sky-500/10 text-sky-100",
+  success: "border-emerald-500/40 bg-emerald-500/10 text-emerald-100",
+  error:   "border-rose-500/40 bg-rose-500/10 text-rose-100",
+}
+
+function NoticeBanner({ notice, onDismiss }: { notice: Notice; onDismiss: () => void }) {
+  return (
+    <div
+      role={notice.kind === "error" ? "alert" : "status"}
+      aria-live={notice.kind === "error" ? "assertive" : "polite"}
+      className={`mb-4 flex items-start gap-3 rounded-lg border px-4 py-3 text-sm ${NOTICE_PALETTE[notice.kind]}`}
+    >
+      <span className="flex-1 leading-snug break-words">{notice.message}</span>
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label="Dismiss notification"
+        className="text-current/60 hover:text-current transition-colors text-lg leading-none"
+      >
+        ×
+      </button>
+    </div>
+  )
+}
+
 // ── Dashboard ───────────────────────────────────────────────────────
 function AdminDashboard() {
   const [section, setSection] = useState<Section>("overview")
+  const [notice, setNotice] = useState<Notice | null>(null)
+  // Counter used to give each notice a stable id; the auto-dismiss
+  // timer matches against it so superseded notices don't clear newer
+  // ones.
+  const noticeIdRef = useRef(0)
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const notify = useCallback<Notify>((message, kind = "info") => {
+    const id = ++noticeIdRef.current
+    setNotice({ id, kind, message })
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current)
+    noticeTimerRef.current = setTimeout(() => {
+      // Only clear if a newer notice hasn't already replaced us — this
+      // matters because every notify() call schedules a new timer, so
+      // the *previous* timer might fire after a newer notice is shown.
+      setNotice((curr) => (curr?.id === id ? null : curr))
+    }, NOTICE_TIMEOUT_MS)
+  }, [])
+  // Cancel the auto-dismiss timer if the dashboard unmounts mid-toast,
+  // otherwise React will warn about setState on an unmounted component.
+  useEffect(() => {
+    return () => {
+      if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current)
+    }
+  }, [])
 
   // All resource state is hoisted here so it persists across tab switches.
   // Cached data is rendered immediately when the user revisits a tab.
@@ -307,14 +486,17 @@ function AdminDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 md:px-8 py-8">
+        {notice && (
+          <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} />
+        )}
         {section === "overview" && <OverviewSection res={overview} />}
         {section === "tracks" && (
-          <TracksSection res={tracks} onTrackChanged={reloadTrackData} />
+          <TracksSection res={tracks} onTrackChanged={reloadTrackData} notify={notify} />
         )}
         {section === "users" && <UsersSection res={users} />}
-        {section === "agents" && <AgentsSection res={agents} />}
+        {section === "agents" && <AgentsSection res={agents} notify={notify} />}
         {section === "health" && (
-          <HealthSection res={health} onTrackChanged={reloadTrackData} />
+          <HealthSection res={health} onTrackChanged={reloadTrackData} notify={notify} />
         )}
       </main>
     </div>
@@ -360,9 +542,11 @@ function OverviewSection({ res }: { res: AdminResource<Overview> }) {
 function TracksSection({
   res,
   onTrackChanged,
+  notify,
 }: {
   res: AdminResource<{ tracks: AdminTrack[] }>
   onTrackChanged: () => Promise<void> | void
+  notify: Notify
 }) {
   const { data, loading, error, reload } = res
   const tracks = data?.tracks ?? []
@@ -376,9 +560,15 @@ function TracksSection({
         method: "PATCH",
         body: JSON.stringify({ action }),
       })
+      notify(
+        action === "publish"
+          ? `Published "${t.title}".`
+          : `Hidden "${t.title}" — no longer public.`,
+        "success",
+      )
       await onTrackChanged()
     } catch (e) {
-      alert(`Failed: ${(e as Error).message}`)
+      notify(`${action === "publish" ? "Publish" : "Hide"} failed: ${(e as Error).message}`, "error")
     } finally {
       setBusyId(null)
     }
@@ -389,9 +579,10 @@ function TracksSection({
     setBusyId(t.id)
     try {
       await adminFetch(`/api/admin/tracks/${t.id}`, { method: "DELETE" })
+      notify(`Deleted "${t.title}".`, "success")
       await onTrackChanged()
     } catch (e) {
-      alert(`Failed: ${(e as Error).message}`)
+      notify(`Delete failed: ${(e as Error).message}`, "error")
     } finally {
       setBusyId(null)
     }
@@ -399,14 +590,23 @@ function TracksSection({
 
   async function reanalyze(t: AdminTrack) {
     setBusyId(t.id)
+    // Up-front "this is going to take a while" hint — without it the
+    // user just sees a spinner for 10–20s and assumes it's hung.
+    notify(`Analyzing "${t.title}"… this can take 10–60s, please wait.`, "info")
     try {
       // POSTs to the public /api/tracks/:id/analyze endpoint with the
       // admin's own Supabase JWT — the route accepts admin tokens as
       // a third auth path alongside owner JWT and agent bearer key.
-      await adminFetch(`/api/tracks/${t.id}/analyze`, { method: "POST" })
+      // Override the default 25s timeout: Essentia legitimately runs
+      // 10–20s and can spike near 60s on cold starts.
+      await adminFetch(`/api/tracks/${t.id}/analyze`, {
+        method: "POST",
+        timeoutMs: ADMIN_FETCH_ANALYZE_TIMEOUT_MS,
+      })
+      notify(`Re-analyze finished for "${t.title}".`, "success")
       await onTrackChanged()
     } catch (e) {
-      alert(`Re-analyze failed: ${(e as Error).message}`)
+      notify(`Re-analyze failed: ${(e as Error).message}`, "error")
     } finally {
       setBusyId(null)
     }
@@ -564,7 +764,13 @@ function UsersSection({ res }: { res: AdminResource<{ users: AdminUser[] }> }) {
 }
 
 // ── Agents ──────────────────────────────────────────────────────────
-function AgentsSection({ res }: { res: AdminResource<{ agents: AdminAgent[] }> }) {
+function AgentsSection({
+  res,
+  notify,
+}: {
+  res: AdminResource<{ agents: AdminAgent[] }>
+  notify: Notify
+}) {
   const { data, loading, error, reload } = res
   const agents = data?.agents ?? []
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -577,9 +783,13 @@ function AgentsSection({ res }: { res: AdminResource<{ agents: AdminAgent[] }> }
         method: "PATCH",
         body: JSON.stringify({ status: next }),
       })
+      notify(
+        `Agent ${a.name ?? shortId(a.id)} → ${next}.`,
+        "success",
+      )
       await reload()
     } catch (e) {
-      alert(`Failed: ${(e as Error).message}`)
+      notify(`Failed to update agent: ${(e as Error).message}`, "error")
     } finally {
       setBusyId(null)
     }
@@ -639,9 +849,11 @@ interface FixProgress {
 function HealthSection({
   res,
   onTrackChanged,
+  notify,
 }: {
   res: AdminResource<HealthData>
   onTrackChanged: () => Promise<void> | void
+  notify: Notify
 }) {
   const { data, loading, error, reload } = res
   // Per-row spinner key — disables the action cluster of the affected row
@@ -666,11 +878,17 @@ function HealthSection({
 
   async function reanalyze(trackId: string) {
     setBusyId(trackId)
+    notify(`Analyzing track ${shortId(trackId)}… this can take 10–60s.`, "info")
     try {
-      await adminFetch(`/api/tracks/${trackId}/analyze`, { method: "POST" })
+      // 90s timeout — Essentia legitimately runs 10-20s and can spike to ~60s.
+      await adminFetch(`/api/tracks/${trackId}/analyze`, {
+        method: "POST",
+        timeoutMs: ADMIN_FETCH_ANALYZE_TIMEOUT_MS,
+      })
+      notify(`Re-analyze finished for ${shortId(trackId)}.`, "success")
       await onTrackChanged()
     } catch (e) {
-      alert(`Re-analyze failed: ${(e as Error).message}`)
+      notify(`Re-analyze failed: ${(e as Error).message}`, "error")
     } finally {
       setBusyId(null)
     }
@@ -683,9 +901,10 @@ function HealthSection({
         method: "PATCH",
         body: JSON.stringify({ action: "unpublish" }),
       })
+      notify(`Hidden ${shortId(trackId)} — no longer public.`, "success")
       await onTrackChanged()
     } catch (e) {
-      alert(`Hide failed: ${(e as Error).message}`)
+      notify(`Hide failed: ${(e as Error).message}`, "error")
     } finally {
       setBusyId(null)
     }
@@ -696,9 +915,10 @@ function HealthSection({
     setBusyId(trackId)
     try {
       await adminFetch(`/api/admin/tracks/${trackId}`, { method: "DELETE" })
+      notify(`Deleted "${title}".`, "success")
       await onTrackChanged()
     } catch (e) {
-      alert(`Delete failed: ${(e as Error).message}`)
+      notify(`Delete failed: ${(e as Error).message}`, "error")
     } finally {
       setBusyId(null)
     }
@@ -740,7 +960,11 @@ function HealthSection({
         // mutating state and stop kicking off new ones.
         if (!mountedRef.current) return
         try {
-          await adminFetch(`/api/tracks/${trackIds[i]}/analyze`, { method: "POST" })
+          // 90s timeout — same Essentia call as the per-row Re-analyze.
+          await adminFetch(`/api/tracks/${trackIds[i]}/analyze`, {
+            method: "POST",
+            timeoutMs: ADMIN_FETCH_ANALYZE_TIMEOUT_MS,
+          })
         } catch {
           failed++
         }
@@ -763,11 +987,15 @@ function HealthSection({
       // throw path would soft-brick the UI until full reload.
       if (mountedRef.current) {
         setFixProgress(null)
+        const ok = trackIds.length - failed
         if (failed > 0) {
-          alert(
-            `Re-analyze finished: ${trackIds.length - failed} succeeded, ${failed} failed. ` +
-              `Failed tracks remain in the list — click Re-analyze on each to see the error.`,
+          notify(
+            `Re-analyze finished: ${ok} succeeded, ${failed} failed. ` +
+              `Failed tracks stay in the list — click Re-analyze on each to see the error.`,
+            "error",
           )
+        } else {
+          notify(`Re-analyze finished: ${ok} succeeded.`, "success")
         }
       }
     }

@@ -37,6 +37,14 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Top-level try/catch is a safety net for the admin panel: every
+  // mutation route MUST return a JSON body (even on unexpected throws)
+  // because the panel's per-row spinner only releases inside its
+  // `finally { setBusyId(null) }` after the fetch settles. A bare
+  // 500 with an empty body would still settle the fetch — but a
+  // sync throw at the top of the handler before NextResponse.json
+  // is constructed would leak through as a Next runtime error page.
+  try {
   const { id } = await params
   const admin  = getAdminClient()
 
@@ -113,4 +121,14 @@ export async function POST(
     },
     { status: 201 },
   )
+  } catch (e) {
+    console.error("[tracks/analyze POST] unexpected:", e)
+    return NextResponse.json(
+      {
+        success: false,
+        error: e instanceof Error ? e.message : "Unexpected server error",
+      },
+      { status: 500 },
+    )
+  }
 }
