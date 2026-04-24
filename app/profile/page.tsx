@@ -82,12 +82,18 @@ export default function ProfilePage() {
   const [playsToday] = useState(() => Math.floor(Math.random() * 500 + 100))
   const [likesToday] = useState(() => Math.floor(Math.random() * 100 + 20))
   const [removePhotoLoading, setRemovePhotoLoading] = useState(false)
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false)
 
   useEffect(() => {
     setIsHydrated(true)
     // Generate API key on mount
     setApiKey(generateAPIKey())
   }, [])
+
+  // Reset avatar failure flag whenever the URL changes so a new avatar gets a fresh chance to load
+  useEffect(() => {
+    setAvatarLoadFailed(false)
+  }, [user?.avatar])
 
   // Log auth user object once hydrated
   useEffect(() => {
@@ -647,29 +653,38 @@ export default function ProfilePage() {
       <main className="lg:ml-64 min-h-screen pb-32">
         {/* Profile Header */}
         {S("ProfileHeader")}
-        <div className="relative h-64 bg-gradient-to-b from-glow-primary/20 to-transparent">
+        <div className="relative min-h-[20rem] md:min-h-[22rem] bg-gradient-to-b from-glow-primary/20 to-transparent">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-glow-primary/10 via-transparent to-transparent" />
           
-          <div className="absolute bottom-0 left-0 right-0 p-8 flex items-end gap-6">
+          <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8 flex flex-col sm:flex-row items-start sm:items-end gap-4 sm:gap-6">
             {/* Avatar */}
-            <div className="relative">
-              <div className={`w-32 h-32 rounded-full overflow-hidden border-4 ${isAgent ? "border-red-500/50" : "border-white/20"} bg-card`}>
-                {user.avatar ? (
-                  <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+            <div className="relative shrink-0">
+              <div className={`w-48 h-48 md:w-64 md:h-64 rounded-full overflow-hidden border-4 ${isAgent ? "border-red-500/50" : "border-white/20"} bg-card`}>
+                {user.avatar && !avatarLoadFailed ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover"
+                    onError={() => {
+                      console.warn("[profile] avatar failed to load:", user.avatar)
+                      setAvatarLoadFailed(true)
+                    }}
+                  />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-white/5">
                     {isAgent ? (
-                      <Bot className="w-12 h-12 text-red-400" />
+                      <Bot className="w-20 h-20 md:w-24 md:h-24 text-red-400" />
                     ) : (
-                      <User className="w-12 h-12 text-white/40" />
+                      <User className="w-20 h-20 md:w-24 md:h-24 text-white/40" />
                     )}
                   </div>
                 )}
               </div>
               {/* Status indicator */}
               {isAgent && (
-                <div className="absolute bottom-2 right-2">
-                  <div className={`w-4 h-4 rounded-full border-2 border-background ${
+                <div className="absolute bottom-3 right-3 md:bottom-4 md:right-4">
+                  <div className={`w-5 h-5 md:w-6 md:h-6 rounded-full border-2 border-background ${
                     agentStatus === "online" ? "bg-green-500" :
                     agentStatus === "generating" ? "bg-amber-500 animate-pulse" : "bg-gray-500"
                   }`} />
