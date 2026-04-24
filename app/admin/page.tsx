@@ -627,6 +627,15 @@ function AgentsSection({ res }: { res: AdminResource<{ agents: AdminAgent[] }> }
 }
 
 // ── System health ───────────────────────────────────────────────────
+type HealthBlockId = "missing-audio" | "missing-analysis" | "failed-analysis"
+
+interface FixProgress {
+  block: HealthBlockId
+  done: number
+  total: number
+  failed: number
+}
+
 function HealthSection({
   res,
   onTrackChanged,
@@ -635,7 +644,25 @@ function HealthSection({
   onTrackChanged: () => Promise<void> | void
 }) {
   const { data, loading, error, reload } = res
+  // Per-row spinner key — disables the action cluster of the affected row
+  // while a single-track mutation is in flight.
   const [busyId, setBusyId] = useState<string | null>(null)
+  // Bulk re-analyze progress, owned by the section so only one block can
+  // be "fixing" at a time. Cleared when the loop finishes (whether the
+  // analyze loop or the post-loop refresh succeeded or threw).
+  const [fixProgress, setFixProgress] = useState<FixProgress | null>(null)
+  // Mounted-guard: the bulk re-analyze loop can outlive the user's view
+  // of this section (they may switch tabs or unmount the dashboard
+  // entirely). Without a guard we'd setState after unmount and trigger
+  // React warnings, plus alert() the user about results they no longer
+  // care about.
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   async function reanalyze(trackId: string) {
     setBusyId(trackId)
@@ -677,6 +704,75 @@ function HealthSection({
     }
   }
 
+  /**
+   * Bulk re-analyze: walks the supplied track ids one at a time, POSTing
+   * to /api/tracks/:id/analyze for each. Sequential (not Promise.all) for
+   * three reasons:
+   *   1. Essentia analysis is CPU-heavy on the server — parallel fan-out
+   *      would either queue or thrash.
+   *   2. We can show a real "N of M" progress without coordinating
+   *      partial-failure state across concurrent promises.
+   *   3. If the user closes the tab mid-run, fewer half-finished runs
+   *      are left dangling.
+   * Errors are counted per-track but never abort the loop — the goal is
+   * "fix as many as possible". A summary alert is shown at the end if
+   * any track failed.
+   */
+  async function fixAll(block: HealthBlockId, trackIds: string[]) {
+    if (trackIds.length === 0) return
+    // Bidirectional lock: refuse to start a bulk run if EITHER another
+    // bulk is already going OR a per-row mutation is in flight. Without
+    // this guard a per-row Re-analyze + bulk loop could race on the same
+    // track and produce duplicate analyse calls.
+    if (fixProgress || busyId) return
+    const ok = confirm(
+      `Re-analyze ${trackIds.length} track${trackIds.length === 1 ? "" : "s"}? ` +
+        `This may take a while — they'll be processed one at a time.`,
+    )
+    if (!ok) return
+
+    setFixProgress({ block, done: 0, total: trackIds.length, failed: 0 })
+    let failed = 0
+    try {
+      for (let i = 0; i < trackIds.length; i++) {
+        // Bail out early if the section unmounted (user navigated away).
+        // In-flight requests still complete server-side, but we stop
+        // mutating state and stop kicking off new ones.
+        if (!mountedRef.current) return
+        try {
+          await adminFetch(`/api/tracks/${trackIds[i]}/analyze`, { method: "POST" })
+        } catch {
+          failed++
+        }
+        if (mountedRef.current) {
+          // Bump progress on every iteration regardless of success/failure.
+          setFixProgress({ block, done: i + 1, total: trackIds.length, failed })
+        }
+      }
+      // Refresh both Tracks and System health. Wrapped separately so a
+      // refresh failure doesn't leak a permanently-locked "isFixing" UI
+      // (the outer finally will still clear fixProgress).
+      try {
+        await onTrackChanged()
+      } catch (e) {
+        console.error("[admin/health] fixAll: onTrackChanged failed", e)
+      }
+    } finally {
+      // Always clear the progress chip — this is the lock that disables
+      // every Re-analyze button in the section. Skipping this on the
+      // throw path would soft-brick the UI until full reload.
+      if (mountedRef.current) {
+        setFixProgress(null)
+        if (failed > 0) {
+          alert(
+            `Re-analyze finished: ${trackIds.length - failed} succeeded, ${failed} failed. ` +
+              `Failed tracks remain in the list — click Re-analyze on each to see the error.`,
+          )
+        }
+      }
+    }
+  }
+
   return (
     <SectionShell
       title="System health"
@@ -685,9 +781,13 @@ function HealthSection({
       onRefresh={reload}
     >
       {data && (
-        <div className="space-y-8">
+        <div className="space-y-6">
           <HealthBlock
-            title={`Tracks missing audio_url (${data.missing_audio_url.length})`}
+            id="missing-audio"
+            tone="critical"
+            icon="❌"
+            title={`Missing audio (${data.missing_audio_url.length})`}
+            description="These tracks have no audio_url. Without audio they can't be played or analysed — usually safe to delete."
             empty="All tracks have an audio URL."
             rows={data.missing_audio_url.map((t) => ({
               key: t.id,
@@ -705,9 +805,18 @@ function HealthSection({
             onReanalyze={reanalyze}
             onHide={unpublish}
             onDelete={deleteTrack}
+            // No "Fix all (Re-analyze)" button here on purpose: every
+            // call would 400 (Track has no audio_url to analyse). The
+            // real fix is "Delete" or re-uploading the audio elsewhere.
+            onFixAll={null}
+            fixProgress={null}
           />
           <HealthBlock
-            title={`Tracks missing analysis (${data.missing_analysis.length})`}
+            id="missing-analysis"
+            tone="warning"
+            icon="⚠️"
+            title={`Missing analysis (${data.missing_analysis.length})`}
+            description="These tracks were never analysed. Run Re-analyze to populate the analysis row."
             empty="Every track has at least one analysis row."
             rows={data.missing_analysis.map((t) => ({
               key: t.id,
@@ -725,9 +834,20 @@ function HealthSection({
             onReanalyze={reanalyze}
             onHide={unpublish}
             onDelete={deleteTrack}
+            onFixAll={() =>
+              fixAll(
+                "missing-analysis",
+                data.missing_analysis.map((t) => t.id),
+              )
+            }
+            fixProgress={fixProgress?.block === "missing-analysis" ? fixProgress : null}
           />
           <HealthBlock
+            id="failed-analysis"
+            tone="error"
+            icon="🔴"
             title={`Failed / empty analyses (${data.failed_analysis.length})`}
+            description="These analysis runs returned empty results. Re-analyze should overwrite the broken row with a fresh one."
             empty="No failed or empty analyses detected in the recent batch."
             rows={data.failed_analysis.map((r) => ({
               key: r.id,
@@ -745,6 +865,15 @@ function HealthSection({
             onReanalyze={reanalyze}
             onHide={unpublish}
             onDelete={deleteTrack}
+            onFixAll={() =>
+              fixAll(
+                "failed-analysis",
+                // De-duplicate: the same track may have multiple failed
+                // analysis rows; we only need to re-run analysis once.
+                Array.from(new Set(data.failed_analysis.map((r) => r.track_id))),
+              )
+            }
+            fixProgress={fixProgress?.block === "failed-analysis" ? fixProgress : null}
           />
         </div>
       )}
@@ -906,32 +1035,133 @@ interface HealthRow {
   audioPresent: boolean
 }
 
+/**
+ * Visual severity for a health block. Each tone maps to a coordinated
+ * border / background / accent palette plus a label colour for the
+ * "Fix all" button so admin can scan the section at a glance.
+ */
+type HealthTone = "critical" | "warning" | "error"
+
+const HEALTH_TONES: Record<
+  HealthTone,
+  { border: string; bg: string; rule: string; chip: string; fixBtn: string }
+> = {
+  critical: {
+    border: "border-rose-500/40",
+    bg: "bg-rose-500/5",
+    rule: "divide-rose-500/15",
+    chip: "bg-rose-500/15 text-rose-200 border-rose-500/30",
+    fixBtn:
+      "border-rose-500/40 text-rose-200 hover:bg-rose-500/15 hover:border-rose-400",
+  },
+  warning: {
+    border: "border-amber-500/40",
+    bg: "bg-amber-500/5",
+    rule: "divide-amber-500/15",
+    chip: "bg-amber-500/15 text-amber-200 border-amber-500/30",
+    fixBtn:
+      "border-amber-500/40 text-amber-200 hover:bg-amber-500/15 hover:border-amber-400",
+  },
+  error: {
+    border: "border-rose-600/60",
+    bg: "bg-rose-600/10",
+    rule: "divide-rose-600/20",
+    chip: "bg-rose-600/20 text-rose-100 border-rose-500/40",
+    fixBtn:
+      "border-rose-500/50 text-rose-100 hover:bg-rose-600/20 hover:border-rose-400",
+  },
+}
+
 function HealthBlock({
+  id,
+  tone,
+  icon,
   title,
+  description,
   empty,
   rows,
   busyId,
   onReanalyze,
   onHide,
   onDelete,
+  onFixAll,
+  fixProgress,
 }: {
+  id: HealthBlockId
+  tone: HealthTone
+  icon: string
   title: string
+  description?: string
   empty: string
   rows: HealthRow[]
   busyId: string | null
   onReanalyze: (trackId: string) => void
   onHide: (trackId: string) => void
   onDelete: (trackId: string, title: string) => void
+  /** Optional bulk re-analyze handler. Hidden when null. */
+  onFixAll: (() => void) | null
+  /** Live progress for the bulk re-analyze on THIS block, or null. */
+  fixProgress: FixProgress | null
 }) {
+  const palette = HEALTH_TONES[tone]
+  const isFixing = !!fixProgress
+  const empty_ = rows.length === 0
+
   return (
-    <div>
-      <h3 className="text-sm font-semibold text-white mb-2">{title}</h3>
-      {rows.length === 0 ? (
-        <div className="text-xs text-muted-foreground border border-dashed border-white/10 rounded-md p-3">
-          {empty}
+    <div
+      data-health-block={id}
+      className={`rounded-xl border ${palette.border} ${palette.bg} backdrop-blur-sm`}
+    >
+      <header className="flex items-start justify-between gap-3 px-4 py-3 border-b border-white/5">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <span aria-hidden>{icon}</span>
+            <span className="truncate">{title}</span>
+          </h3>
+          {description && (
+            <p className="text-xs text-muted-foreground mt-1">{description}</p>
+          )}
         </div>
+        {onFixAll && !empty_ && (
+          <div className="flex items-center gap-2 shrink-0">
+            {isFixing && (
+              <span
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-[11px] font-medium tabular-nums ${palette.chip}`}
+              >
+                <Loader2 className="w-3 h-3 animate-spin" aria-hidden />
+                Re-analyzing {fixProgress!.done} / {fixProgress!.total}
+                {fixProgress!.failed > 0 && (
+                  <span className="text-rose-300">· {fixProgress!.failed} failed</span>
+                )}
+              </span>
+            )}
+            <button
+              onClick={onFixAll}
+              // Disable while a bulk run is going OR while a single-row
+              // mutation is in flight anywhere in the section — see the
+              // bidirectional lock note in fixAll().
+              disabled={isFixing || busyId !== null}
+              aria-busy={isFixing}
+              title={
+                busyId
+                  ? "Wait for the in-flight per-row action to finish"
+                  : `Re-analyze every track in this list (${rows.length})`
+              }
+              className={`text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${palette.fixBtn}`}
+            >
+              <Sparkles className="w-3.5 h-3.5" aria-hidden />
+              Fix all (Re-analyze)
+            </button>
+          </div>
+        )}
+      </header>
+      {empty_ ? (
+        <div className="px-4 py-3 text-xs text-muted-foreground">{empty}</div>
       ) : (
-        <div className="rounded-lg border border-white/10 bg-card/40 divide-y divide-white/5">
+        <div className={`divide-y ${palette.rule}`}>
           {rows.map((r) => (
             <div
               key={r.key}
@@ -950,7 +1180,7 @@ function HealthBlock({
                 title={r.title}
                 published={r.published}
                 audioPresent={r.audioPresent}
-                busy={busyId === r.trackId}
+                busy={busyId === r.trackId || isFixing}
                 onReanalyze={() => onReanalyze(r.trackId)}
                 // From a health list it's rare to want to PUBLISH a still-
                 // broken track, so we only expose the toggle when it's
