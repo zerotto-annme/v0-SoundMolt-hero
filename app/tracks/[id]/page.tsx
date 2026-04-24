@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation"
 import type { Metadata } from "next"
+import { createClient } from "@supabase/supabase-js"
 import { getAdminClient } from "@/lib/supabase-admin"
 import { SEED_TRACKS } from "@/lib/seed-tracks"
 import { CANONICAL_BASE_URL } from "@/lib/site"
@@ -28,6 +29,23 @@ interface PageProps {
   params: Promise<{ id: string }>
 }
 
+// Public Supabase client used as a TRACK-fetch fallback when the
+// service-role key isn't configured (e.g. a Vercel project that only
+// has NEXT_PUBLIC_* env vars wired up). RLS on public.tracks already
+// permits "public can read all tracks", so anon is sufficient to load
+// the track itself. Agent enrichment still needs service-role because
+// public.agents has owner-only RLS — we degrade gracefully when it's
+// unavailable rather than 404'ing the whole page.
+function getPublicClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!url || !anon) return null
+  return createClient(url, anon, { auth: { persistSession: false } })
+}
+
+const TRACK_FIELDS =
+  "id, title, style, description, audio_url, original_audio_url, stream_audio_url, cover_url, download_enabled, source_type, plays, likes, duration_seconds, created_at, agent_id"
+
 async function resolveTrack(id: string): Promise<ResolvedTrack | null> {
   // 1) Seed lookup — IDs like "seed_42". Cheap, in-memory, no I/O.
   const seed = SEED_TRACKS.find((t) => t.id === id)
@@ -50,31 +68,52 @@ async function resolveTrack(id: string): Promise<ResolvedTrack | null> {
   }
 
   // 2) Supabase lookup — real published tracks (UUID id).
-  // Service-role client bypasses RLS so we can join the agent profile
-  // (agents has owner-only RLS) in the same request.
-  let admin
+  //
+  // Resilience: try service-role admin client first (full access, also
+  // unlocks agent enrichment), but fall back to the public anon client
+  // when SUPABASE_SERVICE_ROLE_KEY isn't configured. RLS on public.tracks
+  // permits anonymous SELECT, so the track itself loads either way. This
+  // makes the share link work on Vercel projects that only have the
+  // NEXT_PUBLIC_* env vars (a common v0.app / preview deployment state).
+  let admin: ReturnType<typeof getAdminClient> | null = null
   try {
     admin = getAdminClient()
   } catch {
-    // SUPABASE_SERVICE_ROLE_KEY missing → can't resolve DB tracks.
+    admin = null
+  }
+
+  const trackClient = admin ?? getPublicClient()
+  if (!trackClient) {
+    // Neither service-role nor anon credentials available — environment
+    // is fundamentally misconfigured. Log so it shows up in server logs.
+    console.error(
+      "[/tracks/[id]] Cannot resolve track: missing both SUPABASE_SERVICE_ROLE_KEY and NEXT_PUBLIC_SUPABASE_ANON_KEY"
+    )
     return null
   }
 
-  const { data: row, error } = await admin
+  const { data: row, error } = await trackClient
     .from("tracks")
-    .select(
-      "id, title, style, description, audio_url, original_audio_url, stream_audio_url, cover_url, download_enabled, source_type, plays, likes, duration_seconds, created_at, agent_id"
-    )
+    .select(TRACK_FIELDS)
     .eq("id", id)
     .maybeSingle()
 
-  if (error || !row) return null
+  if (error) {
+    console.warn(
+      `[/tracks/[id]] Supabase lookup failed for ${id} (using ${admin ? "service-role" : "anon"} client):`,
+      error.message
+    )
+    return null
+  }
+  if (!row) return null
 
-  // Optional agent enrichment for display (name, model, provider).
+  // Optional agent enrichment — requires service-role because public.agents
+  // has owner-only RLS. Degrade silently if not available; the track still
+  // renders with a placeholder agent name rather than 404'ing.
   let agentName = "Unknown agent"
   let modelType = ""
   let modelProvider = ""
-  if (row.agent_id) {
+  if (row.agent_id && admin) {
     const { data: agent } = await admin
       .from("agents")
       .select("name, model_name, provider")
