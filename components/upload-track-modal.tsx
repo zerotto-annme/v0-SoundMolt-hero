@@ -158,6 +158,21 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
   }, [])
 
   const handleUpload = async () => {
+    console.log("[upload-track-modal] Upload Track button clicked", {
+      hasAudio: !!audioFile,
+      hasCover: !!coverFile,
+      titleLen: title.trim().length,
+      genre,
+      downloadEnabled,
+      isUploading,
+    })
+
+    // Guard against rapid double-clicks before setIsUploading(true) flushes.
+    if (isUploading) {
+      console.warn("[upload-track-modal] Click ignored — upload already in progress")
+      return
+    }
+
     const newErrors: { audio?: string; cover?: string; title?: string; submit?: string } = {}
 
     if (!audioFile) newErrors.audio = "Audio file is required"
@@ -165,11 +180,25 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
     if (!title.trim()) newErrors.title = "Track title is required"
 
     if (Object.keys(newErrors).length > 0) {
+      console.warn("[upload-track-modal] Validation failed", newErrors)
       setErrors(newErrors)
       return
     }
+    console.log("[upload-track-modal] Validation passed")
 
-    const { data: { session } } = await supabase.auth.getSession()
+    let session
+    try {
+      const sessionRes = await supabase.auth.getSession()
+      session = sessionRes.data.session
+    } catch (sessionErr) {
+      console.error("[upload-track-modal] getSession threw", sessionErr)
+      setErrors({ submit: "Could not read your session. Please refresh and sign in again." })
+      return
+    }
+    console.log("[upload-track-modal] Session check", {
+      hasSession: !!session,
+      userId: session?.user?.id ?? null,
+    })
     if (!session) {
       setErrors({ submit: "You must be signed in to upload a track." })
       return
@@ -177,6 +206,7 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
 
     setIsUploading(true)
     setUploadStatus("Preparing upload…")
+    setErrors({})
 
     try {
       const userId = session.user.id
@@ -192,12 +222,16 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
       // ── Step 1: Upload original file to originals/ (never modified) ──────
       setUploadStatus("Uploading original…")
       const originalPath = `originals/${userId}/${timestamp}.${audioExt}`
+      console.log("[upload-track-modal] → Storage upload (original) starting", {
+        path: originalPath, size: audioFile!.size, mime: originalMime,
+      })
       const { error: origError } = await uploadWithRetry(
         () => supabase.storage.from("audio").upload(originalPath, audioFile!, { upsert: false, contentType: originalMime }),
         "Original audio upload"
       )
 
       if (origError) {
+        console.error("[upload-track-modal] Original upload failed", origError)
         setErrors({ submit: `Audio upload failed: ${origError.message}` })
         return
       }
@@ -290,17 +324,22 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
       if (coverFile) {
         const coverExt = coverFile.name.split('.').pop() || 'jpg'
         const coverPath = `${userId}/${timestamp}.${coverExt}`
+        console.log("[upload-track-modal] → Storage upload (cover) starting", {
+          path: coverPath, size: coverFile.size, mime: coverFile.type,
+        })
         const { error: coverError } = await uploadWithRetry(
           () => supabase.storage.from("covers").upload(coverPath, coverFile, { upsert: false, contentType: coverFile.type }),
           "Cover image upload"
         )
 
         if (coverError) {
+          console.error("[upload-track-modal] Cover upload failed", coverError)
           setErrors({ submit: `Cover upload failed: ${coverError.message}` })
           return
         }
         const { data: coverPublic } = supabase.storage.from("covers").getPublicUrl(coverPath)
         coverUrl = coverPublic.publicUrl
+        console.log("[upload-track-modal] Cover upload OK", { coverUrl })
       }
 
       // ── Step 4: Insert track into database ───────────────────────────────
@@ -331,9 +370,11 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
         .single()
 
       if (dbError) {
+        console.error("[upload-track-modal] DB insert failed", dbError)
         setErrors({ submit: `Failed to save track: ${dbError.message}` })
         return
       }
+      console.log("[upload-track-modal] Track row inserted", { id: inserted?.id })
 
       // ── Step 4b: Fire-and-forget Essentia analysis ──────────────────────
       // Human upload bypasses the agent server-routes that auto-trigger
@@ -377,8 +418,10 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
       onSuccess?.()
       handleClose()
     } catch (err) {
+      console.error("[upload-track-modal] Unexpected error during upload", err)
       setErrors({ submit: err instanceof Error ? err.message : "Upload failed. Please try again." })
     } finally {
+      console.log("[upload-track-modal] handleUpload finished — resetting isUploading")
       setIsUploading(false)
       setUploadStatus("")
     }
@@ -672,7 +715,8 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
           {/* Action buttons */}
           <div className="flex gap-3 pt-2">
             <Button
-              onClick={handleCloseRequest}
+              type="button"
+              onClick={() => handleCloseRequest()}
               disabled={isUploading}
               variant="outline"
               className="flex-1 h-12 rounded-xl border-border/50"
@@ -680,7 +724,13 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
               Cancel
             </Button>
             <Button
-              onClick={handleUpload}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                console.log("[upload-track-modal] Upload Track <button> onClick fired")
+                void handleUpload()
+              }}
               disabled={isUploading}
               className="flex-1 h-12 bg-gradient-to-r from-glow-secondary to-cyan-500 hover:opacity-90 text-white font-semibold rounded-xl"
             >
