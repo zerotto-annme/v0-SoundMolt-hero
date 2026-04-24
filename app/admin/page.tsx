@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useAuth } from "@/components/auth-context"
 import { supabase } from "@/lib/supabase"
 import {
@@ -102,6 +102,64 @@ function shortId(id: string | null | undefined): string {
   return id.length > 12 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id
 }
 
+// ── Resource hook ───────────────────────────────────────────────────
+//
+// Owns the data/loading/error state for ONE admin endpoint.
+// Lives in the parent <AdminDashboard /> so state survives tab switches:
+//   • cached data is shown immediately when re-visiting a tab
+//   • auto-fetch fires only the first time a tab becomes active
+//     (or when the user explicitly calls reload())
+//   • in-flight request is cancelled if the resource becomes inactive
+//     or if reload() is called again — no orphaned setState calls,
+//     no race between StrictMode double-mount and slow fetches
+//
+interface AdminResource<T> {
+  data: T | null
+  loading: boolean
+  error: string | null
+  reload: () => Promise<void>
+}
+
+function useAdminResource<T>(path: string, active: boolean): AdminResource<T> {
+  const [data, setData] = useState<T | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  // Marks "we have at least attempted to load this resource". Prevents the
+  // auto-fetch effect from re-firing forever after an error.
+  const triedRef = useRef(false)
+  // Tracks the most recent in-flight request so we can ignore stale responses.
+  const reqIdRef = useRef(0)
+
+  const reload = useCallback(async () => {
+    const myId = ++reqIdRef.current
+    setLoading(true)
+    setError(null)
+    triedRef.current = true
+    try {
+      const json = await adminFetch<T>(path)
+      // Drop result if a newer reload() superseded us.
+      if (reqIdRef.current === myId) setData(json)
+    } catch (e) {
+      if (reqIdRef.current === myId) setError((e as Error).message)
+    } finally {
+      if (reqIdRef.current === myId) setLoading(false)
+    }
+  }, [path])
+
+  // Auto-load when this resource's tab becomes active for the first time.
+  // Will NOT auto-retry after an error — user must hit Refresh — to avoid
+  // a tight infinite loop on a persistently failing endpoint.
+  useEffect(() => {
+    if (!active) return
+    if (data !== null) return
+    if (loading) return
+    if (triedRef.current) return
+    void reload()
+  }, [active, data, loading, reload])
+
+  return { data, loading, error, reload }
+}
+
 // ── Page ────────────────────────────────────────────────────────────
 export default function AdminPage() {
   const { isAuthenticated } = useAuth()
@@ -113,8 +171,6 @@ export default function AdminPage() {
   useEffect(() => {
     let cancelled = false
     async function check() {
-      // Wait for auth to settle: if we're definitively unauthenticated
-      // there's no token to send and we can short-circuit to "no".
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) {
         if (!cancelled) setAdminState("no")
@@ -166,6 +222,29 @@ export default function AdminPage() {
 function AdminDashboard() {
   const [section, setSection] = useState<Section>("overview")
 
+  // All resource state is hoisted here so it persists across tab switches.
+  // Cached data is rendered immediately when the user revisits a tab.
+  const overview = useAdminResource<Overview>(
+    "/api/admin/overview",
+    section === "overview",
+  )
+  const tracks = useAdminResource<{ tracks: AdminTrack[] }>(
+    "/api/admin/tracks?limit=200",
+    section === "tracks",
+  )
+  const users = useAdminResource<{ users: AdminUser[] }>(
+    "/api/admin/users",
+    section === "users",
+  )
+  const agents = useAdminResource<{ agents: AdminAgent[] }>(
+    "/api/admin/agents",
+    section === "agents",
+  )
+  const health = useAdminResource<HealthData>(
+    "/api/admin/health",
+    section === "health",
+  )
+
   const sections: Array<{ id: Section; label: string }> = [
     { id: "overview", label: "Overview" },
     { id: "tracks", label: "Tracks" },
@@ -201,38 +280,19 @@ function AdminDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 md:px-8 py-8">
-        {section === "overview" && <OverviewSection />}
-        {section === "tracks" && <TracksSection />}
-        {section === "users" && <UsersSection />}
-        {section === "agents" && <AgentsSection />}
-        {section === "health" && <HealthSection />}
+        {section === "overview" && <OverviewSection res={overview} />}
+        {section === "tracks" && <TracksSection res={tracks} />}
+        {section === "users" && <UsersSection res={users} />}
+        {section === "agents" && <AgentsSection res={agents} />}
+        {section === "health" && <HealthSection res={health} />}
       </main>
     </div>
   )
 }
 
 // ── Overview ────────────────────────────────────────────────────────
-function OverviewSection() {
-  const [data, setData] = useState<Overview | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      setData(await adminFetch<Overview>("/api/admin/overview"))
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    load()
-  }, [load])
-
+function OverviewSection({ res }: { res: AdminResource<Overview> }) {
+  const { data, loading, error, reload } = res
   const cards = data
     ? [
         { label: "Total users", value: data.users },
@@ -245,7 +305,7 @@ function OverviewSection() {
     : []
 
   return (
-    <SectionShell title="Overview" loading={loading} error={error} onRefresh={load}>
+    <SectionShell title="Overview" loading={loading && !data} error={error} onRefresh={reload}>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {cards.map((c) => (
           <div
@@ -266,28 +326,10 @@ function OverviewSection() {
 }
 
 // ── Tracks ──────────────────────────────────────────────────────────
-function TracksSection() {
-  const [tracks, setTracks] = useState<AdminTrack[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+function TracksSection({ res }: { res: AdminResource<{ tracks: AdminTrack[] }> }) {
+  const { data, loading, error, reload } = res
+  const tracks = data?.tracks ?? []
   const [busyId, setBusyId] = useState<string | null>(null)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await adminFetch<{ tracks: AdminTrack[] }>("/api/admin/tracks?limit=200")
-      setTracks(data.tracks)
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    load()
-  }, [load])
 
   async function togglePublish(t: AdminTrack) {
     const action = t.published_at ? "unpublish" : "publish"
@@ -297,7 +339,7 @@ function TracksSection() {
         method: "PATCH",
         body: JSON.stringify({ action }),
       })
-      await load()
+      await reload()
     } catch (e) {
       alert(`Failed: ${(e as Error).message}`)
     } finally {
@@ -310,7 +352,7 @@ function TracksSection() {
     setBusyId(t.id)
     try {
       await adminFetch(`/api/admin/tracks/${t.id}`, { method: "DELETE" })
-      await load()
+      await reload()
     } catch (e) {
       alert(`Failed: ${(e as Error).message}`)
     } finally {
@@ -319,7 +361,12 @@ function TracksSection() {
   }
 
   return (
-    <SectionShell title={`Tracks (${tracks.length})`} loading={loading} error={error} onRefresh={load}>
+    <SectionShell
+      title={`Tracks (${tracks.length})`}
+      loading={loading && !data}
+      error={error}
+      onRefresh={reload}
+    >
       <DataTable
         head={["Title", "Owner", "Agent", "Audio", "Analysis", "Published", "Actions"]}
         rows={tracks.map((t) => [
@@ -367,30 +414,17 @@ function TracksSection() {
 }
 
 // ── Users ───────────────────────────────────────────────────────────
-function UsersSection() {
-  const [users, setUsers] = useState<AdminUser[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await adminFetch<{ users: AdminUser[] }>("/api/admin/users")
-      setUsers(data.users)
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    load()
-  }, [load])
+function UsersSection({ res }: { res: AdminResource<{ users: AdminUser[] }> }) {
+  const { data, loading, error, reload } = res
+  const users = data?.users ?? []
 
   return (
-    <SectionShell title={`Users (${users.length})`} loading={loading} error={error} onRefresh={load}>
+    <SectionShell
+      title={`Users (${users.length})`}
+      loading={loading && !data}
+      error={error}
+      onRefresh={reload}
+    >
       <DataTable
         head={["Email", "User ID", "Created", "Tracks"]}
         rows={users.map((u) => [
@@ -405,28 +439,10 @@ function UsersSection() {
 }
 
 // ── Agents ──────────────────────────────────────────────────────────
-function AgentsSection() {
-  const [agents, setAgents] = useState<AdminAgent[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+function AgentsSection({ res }: { res: AdminResource<{ agents: AdminAgent[] }> }) {
+  const { data, loading, error, reload } = res
+  const agents = data?.agents ?? []
   const [busyId, setBusyId] = useState<string | null>(null)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await adminFetch<{ agents: AdminAgent[] }>("/api/admin/agents")
-      setAgents(data.agents)
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    load()
-  }, [load])
 
   async function toggleStatus(a: AdminAgent) {
     const next = a.status === "active" ? "inactive" : "active"
@@ -436,7 +452,7 @@ function AgentsSection() {
         method: "PATCH",
         body: JSON.stringify({ status: next }),
       })
-      await load()
+      await reload()
     } catch (e) {
       alert(`Failed: ${(e as Error).message}`)
     } finally {
@@ -445,7 +461,12 @@ function AgentsSection() {
   }
 
   return (
-    <SectionShell title={`Agents (${agents.length})`} loading={loading} error={error} onRefresh={load}>
+    <SectionShell
+      title={`Agents (${agents.length})`}
+      loading={loading && !data}
+      error={error}
+      onRefresh={reload}
+    >
       <DataTable
         head={["Name", "Capabilities", "Status", "Owner", "Last activity", "Actions"]}
         rows={agents.map((a) => [
@@ -481,29 +502,16 @@ function AgentsSection() {
 }
 
 // ── System health ───────────────────────────────────────────────────
-function HealthSection() {
-  const [data, setData] = useState<HealthData | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      setData(await adminFetch<HealthData>("/api/admin/health"))
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    load()
-  }, [load])
+function HealthSection({ res }: { res: AdminResource<HealthData> }) {
+  const { data, loading, error, reload } = res
 
   return (
-    <SectionShell title="System health" loading={loading} error={error} onRefresh={load}>
+    <SectionShell
+      title="System health"
+      loading={loading && !data}
+      error={error}
+      onRefresh={reload}
+    >
       {data && (
         <div className="space-y-8">
           <HealthBlock
