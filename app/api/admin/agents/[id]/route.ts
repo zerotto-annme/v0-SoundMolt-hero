@@ -45,8 +45,18 @@ export async function PATCH(
     .single()
 
   if (error) {
-    console.error("[admin/agents PATCH] update failed:", error)
-    return NextResponse.json({ error: "Update failed" }, { status: 500 })
+    console.error("[admin/agents PATCH] supabase update failed:", {
+      id,
+      patch: { status: body.status },
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    })
+    return NextResponse.json(
+      { error: error.message, error_code: error.code },
+      { status: 500 },
+    )
   }
 
   return NextResponse.json({ agent: data })

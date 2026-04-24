@@ -47,9 +47,10 @@ interface AdminAgent {
   name: string
   user_id: string
   owner_email: string | null
-  provider: string | null
-  model_name: string | null
   status: string
+  capabilities: string[]
+  connection_code: string | null
+  connected_at: string | null
   last_active_at: string | null
   created_at: string
 }
@@ -446,11 +447,11 @@ function AgentsSection() {
   return (
     <SectionShell title={`Agents (${agents.length})`} loading={loading} error={error} onRefresh={load}>
       <DataTable
-        head={["Name", "Provider / Model", "Status", "Owner", "Last activity", "Actions"]}
+        head={["Name", "Capabilities", "Status", "Owner", "Last activity", "Actions"]}
         rows={agents.map((a) => [
           <span key="n" className="font-medium text-white">{a.name}</span>,
-          <span key="pm" className="text-xs text-muted-foreground">
-            {a.provider ?? "—"}{a.model_name ? ` · ${a.model_name}` : ""}
+          <span key="cap" className="text-xs text-muted-foreground">
+            {a.capabilities.length > 0 ? a.capabilities.join(", ") : "—"}
           </span>,
           <Pill key="s" tone={a.status === "active" ? "ok" : "warn"}>{a.status}</Pill>,
           <span key="o" className="text-xs">
