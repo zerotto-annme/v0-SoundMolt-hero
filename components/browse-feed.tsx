@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import Image from "next/image"
 import { Search, ChevronRight, TrendingUp, Zap, Sparkles, Bot, Music, Headphones, Radio, Activity, Plus, User, Loader2, Crown, Flame, Play, Heart, ListMusic } from "lucide-react"
 import { BrowseTrackCard } from "./browse-track-card"
@@ -72,6 +72,9 @@ export function BrowseFeed() {
   // the very first paint (before the effect runs). Empty states only render
   // AFTER the first fetch completes.
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
+  // Surfaced when the Supabase tracks fetch fails. Replaces the previous
+  // silent console.warn behaviour that caused the feed to look stuck.
+  const [feedError, setFeedError] = useState<string | null>(null)
   // mounted gates the still-simulated TopArtistsRow which uses static AGENTS
   // catalog — kept to avoid any residual hydration concerns there.
   const [mounted, setMounted] = useState(false)
@@ -83,33 +86,65 @@ export function BrowseFeed() {
   // were intentionally REMOVED — every track section below is now driven by Supabase.
   const { agentsOnline } = useActivitySimulation()
 
-  // Fetch real PUBLISHED tracks from Supabase — single source of truth for the
-  // entire homepage. Filters mirror what the admin "Tracks" panel considers
-  // public-visible:
-  //   - `published_at IS NOT NULL`           (track has been published)
+  // Fetch real tracks from Supabase — single source of truth for the
+  // entire homepage. The only hard filter is that audio must actually be
+  // present:
   //   - `audio_url IS NOT NULL AND <> ''`    (audio is actually present)
-  // The empty-string check matches admin/health semantics (`audio_url.eq.`) so
-  // we don't surface tracks the admin panel reports as "missing audio".
+  //
+  // NOTE: We intentionally do NOT filter on `published_at IS NOT NULL` here.
+  // The Publish/Hide admin actions are not yet wired end-to-end, and the
+  // human upload modal does not stamp `published_at`, so requiring it would
+  // hide every uploaded track and leave the feed permanently empty.
+  // Once those admin actions are confirmed working, restore the filter.
+  //
   // We pull up to 100 rows so Top Charts (Top 100) can render from real data.
+  //
+  // Request sequencing — fetches can overlap (mount, visibility-change,
+  // sidebar `onUploadSuccess`, and the feedError Retry button). Without a
+  // version guard an older slower request could finish last and overwrite
+  // a newer result, e.g. wiping the freshly-uploaded track the user just
+  // saved. We bump a counter on each invocation and only commit state when
+  // we're still the most recent run.
+  const fetchSeqRef = useRef(0)
   const fetchSupabaseTracks = useCallback(async () => {
+    const mySeq = ++fetchSeqRef.current
+    const isLatest = () => fetchSeqRef.current === mySeq
     setIsLoadingFeed(true)
+    setFeedError(null)
+    console.log("[feed] fetch started", { seq: mySeq })
     try {
-      // Step 1: fetch published tracks with non-empty audio
+      // Step 1: fetch tracks with non-empty audio
       const { data: trackRows, error: trackError } = await supabase
         .from("tracks")
         .select("*")
-        .not("published_at", "is", null)
         .not("audio_url", "is", null)
         .neq("audio_url", "")
         .order("created_at", { ascending: false })
         .limit(100)
 
+      console.log("[feed] tracks query response", {
+        seq: mySeq,
+        ok: !trackError,
+        count: trackRows?.length ?? 0,
+        errorMessage: trackError?.message ?? null,
+      })
+
+      if (!isLatest()) {
+        console.log("[feed] superseded — discarding result", { seq: mySeq })
+        return
+      }
+
       if (trackError) {
-        console.warn("[feed] Supabase tracks fetch error:", trackError.message)
+        console.error("[feed] Supabase tracks fetch error:", trackError)
+        setFeedError(trackError.message || "Could not load feed.")
+        setSupabaseTracks([])
+        setArtistMeta({})
         return
       }
       if (!trackRows || trackRows.length === 0) {
+        console.log("[feed] no tracks returned — feed will render empty state")
         setSupabaseTracks([])
+        setArtistMeta({})
         return
       }
 
@@ -117,7 +152,15 @@ export function BrowseFeed() {
       // also fetch agent rows for any tracks that were created by an AI agent.
       // We do both in parallel — neither depends on the other and we use the
       // results to populate `artistMeta` for the Top Artists section.
-      const userIds = [...new Set(trackRows.map((r) => r.user_id as string))]
+      // Defensively filter out null/empty IDs — Supabase `.in("id", [null])`
+      // produces a 400 and would silently degrade the profile/agent join.
+      const userIds = [
+        ...new Set(
+          trackRows
+            .map((r) => r.user_id as string | null | undefined)
+            .filter((v): v is string => !!v),
+        ),
+      ]
       const agentIds = [
         ...new Set(
           trackRows
@@ -232,13 +275,27 @@ export function BrowseFeed() {
           artistAvatarUrl: artistAvatar,
         }
       })
+      console.log("[feed] mapped tracks", { seq: mySeq, mapped: mapped.length })
+      if (!isLatest()) {
+        console.log("[feed] superseded before commit — discarding mapped result", { seq: mySeq })
+        return
+      }
       setSupabaseTracks(mapped)
       setArtistMeta(nextArtistMeta)
     } catch (e) {
-      console.warn("[feed] Failed to fetch tracks:", e)
+      console.error("[feed] Failed to fetch tracks:", e)
+      if (!isLatest()) return
+      setFeedError(e instanceof Error ? e.message : "Could not load feed.")
+      setSupabaseTracks([])
+      setArtistMeta({})
     } finally {
-      setIsLoadingFeed(false)
-      setHasLoadedOnce(true)
+      // Only the most recent run is allowed to flip the loading flags;
+      // otherwise an older finish could re-show the spinner over fresh data.
+      if (isLatest()) {
+        setIsLoadingFeed(false)
+        setHasLoadedOnce(true)
+      }
+      console.log("[feed] fetch finished", { seq: mySeq, latest: isLatest() })
     }
   }, [])
 
@@ -544,6 +601,28 @@ export function BrowseFeed() {
           {/* Main content (when no search or style filter) */}
           {!filteredTracks && !selectedStyle && (
             <>
+              {/* Feed error banner — surfaces fetch failures instead of leaving
+                  every section spinning forever. */}
+              {feedError && (
+                <section className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-sm text-red-200">
+                    <Activity className="w-4 h-4 text-red-400" />
+                    <span>
+                      Could not load feed: <span className="font-mono">{feedError}</span>
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fetchSupabaseTracks()}
+                    className="border-red-500/40 text-red-100 hover:bg-red-500/20"
+                  >
+                    Retry
+                  </Button>
+                </section>
+              )}
+
               {/* Hero section */}
               <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-glow-primary/20 via-background to-glow-secondary/20 p-6 md:p-8">
                 <div className="absolute inset-0 bg-[linear-gradient(to_right,transparent_0%,rgba(255,255,255,0.03)_50%,transparent_100%)] animate-pulse" style={{ animationDuration: "3s" }} />
@@ -609,7 +688,7 @@ export function BrowseFeed() {
                   </div>
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">
-                    No tracks yet.
+                    No published tracks yet
                   </div>
                 )}
               </section>
@@ -666,7 +745,7 @@ export function BrowseFeed() {
                     </div>
                   ) : (
                     <div className="text-center py-12 text-muted-foreground">
-                      No tracks yet.
+                      No published tracks yet
                     </div>
                   )}
                 </div>
@@ -815,7 +894,7 @@ export function BrowseFeed() {
                   </div>
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">
-                    No tracks yet.
+                    No published tracks yet
                   </div>
                 )}
               </section>
