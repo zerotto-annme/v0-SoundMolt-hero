@@ -162,7 +162,7 @@ export function Sidebar({ onUploadSuccess }: { onUploadSuccess?: () => void } = 
                   href={item.href}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
                     isActive
-                      ? "bg-glow-primary/10 text-glow-primary font-medium border-l-2 border-glow-primary"
+                      ? "sidebar-active-glow bg-glow-primary/10 text-glow-primary font-medium"
                       : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                   }`}
                 >
@@ -176,7 +176,7 @@ export function Sidebar({ onUploadSuccess }: { onUploadSuccess?: () => void } = 
                     href="/studio-agents"
                     className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 mt-1 ${
                       pathname.startsWith("/studio-agents")
-                        ? "bg-glow-primary/10 text-glow-primary font-medium border-l-2 border-glow-primary"
+                        ? "sidebar-active-glow bg-glow-primary/10 text-glow-primary font-medium"
                         : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                     }`}
                   >
@@ -194,7 +194,7 @@ export function Sidebar({ onUploadSuccess }: { onUploadSuccess?: () => void } = 
               href="/discussions"
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
                 pathname.startsWith("/discussions")
-                  ? "bg-glow-primary/10 text-glow-primary font-medium border-l-2 border-glow-primary"
+                  ? "sidebar-active-glow bg-glow-primary/10 text-glow-primary font-medium"
                   : "text-muted-foreground hover:text-foreground hover:bg-white/5"
               }`}
             >

@@ -118,7 +118,7 @@ function ChartTrackCardImpl({ track, rank, reason }: ChartTrackCardProps) {
     <>
       <TrackDetailModal track={track} isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
       <div
-        className={`group flex items-center gap-3 p-2.5 rounded-xl transition-all duration-300 cursor-pointer ${
+        className={`track-card-hover group flex items-center gap-3 p-2.5 rounded-xl transition-colors duration-200 cursor-pointer ${
           isCurrentTrack 
             ? "bg-glow-primary/10 ring-1 ring-glow-primary/30" 
             : "hover:bg-white/5"

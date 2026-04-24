@@ -7,7 +7,10 @@ function Card({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="card"
       className={cn(
-        'bg-card text-card-foreground flex flex-col gap-6 rounded-xl border py-6 shadow-sm',
+        // Premium polish: card-premium adds soft border + inner highlight +
+        // soft shadow + gentle lift/teal halo on hover. Tailwind classes
+        // passed via className still take precedence (composes additively).
+        'card-premium bg-card text-card-foreground flex flex-col gap-6 rounded-xl py-6',
         className,
       )}
       {...props}

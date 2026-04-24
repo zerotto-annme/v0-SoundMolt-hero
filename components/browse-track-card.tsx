@@ -121,7 +121,7 @@ function BrowseTrackCardImpl({ track, variant = "medium", rank, reason }: Browse
       <>
         <TrackDetailModal track={track} isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
         <div
-          className={`group flex items-center gap-4 p-2 rounded-lg hover:bg-white/8 transition-all duration-300 cursor-pointer ${isCurrentTrack ? "bg-glow-primary/10" : ""}`}
+          className={`track-card-hover group flex items-center gap-4 p-2 rounded-lg hover:bg-white/8 transition-colors duration-200 cursor-pointer ${isCurrentTrack ? "bg-glow-primary/10" : ""}`}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={() => setIsHovered(false)}
           onClick={handleCardClick}

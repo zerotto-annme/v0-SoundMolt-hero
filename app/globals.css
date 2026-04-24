@@ -108,8 +108,22 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* Premium body backdrop — subtle radial depth, avoids flat black.
+   * Two soft accent washes (teal top-left, purple bottom-right) on the
+   * dark navy base create depth without competing with foreground content.
+   * background-attachment: fixed → wash stays anchored as user scrolls. */
   body {
     @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(ellipse 70% 55% at 15% 0%, rgba(0, 255, 198, 0.055), transparent 60%),
+      radial-gradient(ellipse 60% 50% at 85% 100%, rgba(123, 97, 255, 0.05), transparent 65%);
+    background-attachment: fixed;
+  }
+  /* Mobile / coarse-pointer devices: background-attachment: fixed is a known
+   * Safari iOS perf/jank pain point and is often ignored. Fall back to
+   * scroll attachment — washes still render, just scroll with content. */
+  @media (hover: none), (pointer: coarse) {
+    body { background-attachment: scroll; }
   }
 }
 
@@ -325,4 +339,132 @@
   color: #0A0E1A;
 }
 .btn-post-gradient:hover { opacity: 0.9; }
+
+/* ──────────────────────────────────────────────────────────────────
+ * Premium polish utilities — depth, glass, glow, hover elevation
+ *
+ * IMPORTANT: wrapped in `@layer components` so Tailwind's `utilities`
+ * layer (border-*, bg-*, shadow-*, etc.) takes precedence. This means
+ * caller classes like `bg-card/50` or `border-border/50` reliably
+ * override our defaults — fixing the cascade composability concern.
+ * ────────────────────────────────────────────────────────────────── */
+
+@layer components {
+
+/* Card surface with soft border, subtle inner highlight, soft shadow,
+ * and gentle lift + teal glow on hover. Composes with Tailwind utility
+ * classes — caller utilities win because they live in the utilities
+ * layer (declared after components). */
+.card-premium {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 4px 24px -8px rgba(0, 0, 0, 0.5);
+  transition:
+    transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 200ms ease,
+    border-color 200ms ease;
+}
+.card-premium:hover {
+  transform: translateY(-2px);
+  border-color: rgba(0, 255, 198, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 12px 36px -10px rgba(0, 0, 0, 0.6),
+    0 0 24px -6px rgba(0, 255, 198, 0.18);
+}
+
+/* Track card hover — subtle gradient border halo + soft lift. Use on
+ * the OUTER wrapper of track tiles; inner content keeps its own bg. */
+.track-card-hover {
+  position: relative;
+  transition:
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 180ms ease;
+}
+.track-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 10px 32px -10px rgba(0, 0, 0, 0.55),
+    0 0 28px -6px rgba(0, 255, 198, 0.22);
+}
+
+/* Modal glass surface — deep navy frosted glass with soft border,
+ * top highlight, and outer shadow. Backdrop blur composites cleanly
+ * over the radial body backdrop. */
+.glass-modal {
+  background-color: rgba(14, 18, 30, 0.85);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.10),
+    0 24px 60px -12px rgba(0, 0, 0, 0.7),
+    0 0 40px -10px rgba(0, 255, 198, 0.08);
+}
+
+/* Premium primary action — teal → purple gradient with soft glow.
+ * Used for the music player Play button and other hero CTAs. */
+.btn-primary-gradient {
+  background-image:
+    linear-gradient(135deg, var(--glow-primary) 0%, var(--glow-secondary) 100%);
+  color: #0A0E1A;
+  box-shadow:
+    0 4px 20px -4px rgba(0, 255, 198, 0.30),
+    0 2px 8px -2px rgba(123, 97, 255, 0.20);
+  transition:
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 180ms ease,
+    opacity 180ms ease;
+}
+.btn-primary-gradient:hover {
+  transform: scale(1.02);
+  box-shadow:
+    0 6px 28px -4px rgba(0, 255, 198, 0.45),
+    0 4px 12px -2px rgba(123, 97, 255, 0.30);
+}
+.btn-primary-gradient:active {
+  transform: scale(0.97);
+}
+
+/* Secondary action — dark glass with subtle border, hover gains teal hint */
+.btn-glass {
+  background-color: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--foreground);
+  transition: background-color 180ms ease, border-color 180ms ease;
+}
+.btn-glass:hover {
+  background-color: rgba(255, 255, 255, 0.07);
+  border-color: rgba(0, 255, 198, 0.22);
+}
+
+/* Sidebar active item — subtle teal bg + thin glowing left border.
+ * Composes additively with the existing border-l-2 on the link. */
+.sidebar-active-glow {
+  box-shadow:
+    inset 2px 0 0 var(--glow-primary),
+    -2px 0 12px -2px rgba(0, 255, 198, 0.25);
+}
+
+/* Dialog close button — softly glow on hover */
+.dialog-close-glow {
+  transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+.dialog-close-glow:hover {
+  background-color: rgba(0, 255, 198, 0.10);
+  color: var(--glow-primary);
+  box-shadow: 0 0 16px -2px rgba(0, 255, 198, 0.30);
+}
+
+/* Smoother backdrop for modal overlay — slight blur + deeper darken */
+.modal-backdrop {
+  background-color: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+} /* end @layer components */
 
