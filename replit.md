@@ -324,10 +324,12 @@ A hidden moderation dashboard for the platform owner. **Not linked from the side
 
 ### Access control
 
-- Gate: the user's Supabase email must be in `ADMIN_EMAILS` (comma-separated env var). When `ADMIN_EMAILS` is unset, the gate falls back to a hardcoded default (`andrewkarme@gmail.com`).
+- Gate (server): the user's Supabase email must be in `ADMIN_EMAILS` (comma-separated env var). When `ADMIN_EMAILS` is unset, the gate falls back to a hardcoded default (`andrewkarme@gmail.com`).
 - Single source of truth: `requireAdmin()` in `lib/admin-auth.ts`. It validates the `Authorization: Bearer <jwt>` header, calls `auth.getUser()` with the **anon** key (not the service key), then checks the email allow-list.
 - Every `/api/admin/*` route in this panel calls `requireAdmin()` itself — the UI gate is a UX hint, not a security boundary.
-- The client `/admin` page (`app/admin/page.tsx`) calls `GET /api/admin/me` to decide whether to render the dashboard or the Access Denied card. `/api/admin/me` calls the same `requireAdmin()` so UI and API can never disagree (including on `ADMIN_EMAILS` overrides).
+- Gate (client): `app/admin/page.tsx` first checks the user's email against a CLIENT-SIDE allow-list (`lib/admin-emails-client.ts`, sourced from `NEXT_PUBLIC_ADMIN_EMAILS` with a hardcoded `andrewkarme@gmail.com` fallback). A known admin email is granted the dashboard immediately — no `/api/admin/me` round-trip — so a Vercel cold start or transient API error can never strand a known admin on the "Couldn't verify access" card. The data routes still re-validate the JWT server-side on every fetch.
+- For non-allow-listed emails the page falls back to `GET /api/admin/me` to decide between dashboard / Access Denied / retryable error. `/api/admin/me` ALWAYS returns JSON with shape `{ isAdmin, is_admin, email, reason }` — the route is wrapped in a top-level try/catch so an exception becomes a structured 500 body, never a raw HTML error.
+- Required env vars: `ADMIN_EMAILS` (server, comma-separated) and `NEXT_PUBLIC_ADMIN_EMAILS` (client, comma-separated, inlined into the bundle at build). Both default to `andrewkarme@gmail.com` if unset.
 - **The service role key never touches the client** — `lib/supabase-admin.ts` (`getAdminClient()`) is server-only.
 
 ### Sections & endpoints

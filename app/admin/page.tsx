@@ -5,6 +5,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useAuth } from "@/components/auth-context"
 import { supabase } from "@/lib/supabase"
+import { isClientAdminEmail } from "@/lib/admin-emails-client"
 import {
   Loader2,
   ShieldAlert,
@@ -394,6 +395,34 @@ export default function AdminPage() {
       return
     }
 
+    // CLIENT-SIDE FAST PATH for known admin emails.
+    //
+    // If the signed-in user's email is in NEXT_PUBLIC_ADMIN_EMAILS
+    // (or the hardcoded default), grant the admin dashboard
+    // IMMEDIATELY — no spinner, no server round-trip blocking the
+    // render. The /api/admin/* data routes still re-validate the
+    // JWT server-side, so this is purely a UX optimization to
+    // eliminate the "Couldn't verify access" failure mode on
+    // Vercel cold starts / transient API issues.
+    //
+    // Spec acceptance: "andrewkarme@gmail.com can always open
+    // /admin on Vercel; if admin check API fails, known admin
+    // still enters."
+    const knownAdmin = isClientAdminEmail(user?.email)
+    if (knownAdmin) {
+      console.log("[admin] known admin email → granting access immediately (no API gate)", {
+        email: user?.email,
+      })
+      setGate("ok")
+      // We intentionally don't kick off the /api/admin/me probe in
+      // this path. The data-route fetches inside <AdminDashboard />
+      // will surface any real auth issue as a per-request error
+      // on whatever the admin actually clicks. Burning a probe
+      // request just to log a redundant true/true result adds
+      // latency for no UX benefit.
+      return
+    }
+
     let cancelled = false
     setGate("checking")
     ;(async () => {
@@ -422,6 +451,11 @@ export default function AdminPage() {
           // and "guest" has no retry path so they'd be stranded.
           // "error" is retryable (Try again button + auto-recheck on
           // the next authVersion bump) and is the correct UX.
+          //
+          // (The known-admin fast path above already short-circuits
+          // for andrewkarme@gmail.com, so this branch only runs for
+          // non-allow-listed users where the retry semantics are
+          // appropriate.)
           console.warn("[admin] isAuthenticated=true but no session token after retry; surfacing retryable error")
           setGate("error")
           return
@@ -432,32 +466,42 @@ export default function AdminPage() {
           cache: "no-store",
         })
 
+        // Try to parse the body regardless of status — the route
+        // contract is "always JSON". If parsing fails we fall through
+        // to the transient-error path.
+        const json = (await res.json().catch(() => null)) as
+          | { isAdmin?: boolean; is_admin?: boolean; email?: string; reason?: string }
+          | null
+
         if (!res.ok) {
-          // Non-2xx — could be a Vercel cold-start hiccup, a 5xx, or a
-          // CORS/network glitch. Do NOT treat this as "denied" —
-          // surface a retryable error instead. Real admin denial only
-          // ever comes back as 200 + { is_admin: false }.
-          console.error(`[admin] /api/admin/me HTTP ${res.status} — treating as transient error`)
+          // Non-2xx — could be a Vercel cold-start hiccup, a 5xx, or
+          // a CORS/network glitch. The known-admin email is already
+          // handled above, so any non-admin email reaching this
+          // branch sees the retryable error card. Real admin denial
+          // only ever comes back as 200 + { isAdmin: false }.
+          console.error(`[admin] /api/admin/me HTTP ${res.status} — treating as transient error`, json)
           if (!cancelled) setGate("error")
           return
         }
 
-        const json = (await res.json().catch(() => null)) as
-          | { is_admin?: boolean; email?: string }
-          | null
         if (cancelled) return
 
-        if (!json || typeof json.is_admin !== "boolean") {
+        const isAdmin =
+          typeof json?.isAdmin === "boolean" ? json.isAdmin
+            : typeof json?.is_admin === "boolean" ? json.is_admin
+            : null
+
+        if (isAdmin === null) {
           console.error("[admin] /api/admin/me malformed body — treating as transient error", json)
           setGate("error")
           return
         }
 
-        const isAdmin = json.is_admin
         console.log("[admin] /api/admin/me result", {
           status: res.status,
           isAdmin,
-          email: json.email ?? user?.email ?? null,
+          email: json?.email ?? user?.email ?? null,
+          reason: json?.reason ?? null,
         })
         setGate(isAdmin ? "ok" : "denied")
       } catch (err) {
