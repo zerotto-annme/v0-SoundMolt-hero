@@ -61,7 +61,7 @@ function TrackActionsMenu({ track, onEdit, onDelete, onPublish, isOpen, onClose 
 }
 
 export default function MyTracksPage() {
-  const { user, isAuthenticated, authReady } = useAuth()
+  const { user, isAuthenticated, authReady, authVersion } = useAuth()
   const router = useRouter()
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
@@ -97,6 +97,9 @@ export default function MyTracksPage() {
       return
     }
     setTracksLoading(true)
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[my-tracks] refetch started", { userId })
+    }
     const { data, error } = await supabase
       .from("tracks")
       .select("*")
@@ -104,7 +107,15 @@ export default function MyTracksPage() {
       .order("created_at", { ascending: false })
     setTracksLoading(false)
     setHasLoadedOnce(true)
-    if (error || !data) return
+    if (error || !data) {
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[my-tracks] refetch error", { userId, error: error?.message })
+      }
+      return
+    }
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[my-tracks] refetch result", { userId, count: data.length })
+    }
     const ownerName = user?.username || user?.name || user?.email?.split("@")[0] || "You"
     const mapped: Track[] = data.map((row) => ({
       id: row.id,
@@ -139,13 +150,21 @@ export default function MyTracksPage() {
   useEffect(() => {
     if (!authReady) return
     if (isAuthenticated && user?.id) {
+      // Reset hasLoadedOnce on every auth-version bump so the loading
+      // skeleton (not the "0 tracks" empty state) is what the user sees
+      // while the post-login refetch is in flight.
+      setHasLoadedOnce(false)
+      setTracksLoading(true)
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[my-tracks] auth changed — refetching", { userId: user.id, authVersion })
+      }
       fetchTracks()
     } else {
       // Auth resolved as signed-out — stop the loading skeleton so the
       // redirect effect below can take over.
       setTracksLoading(false)
     }
-  }, [authReady, isAuthenticated, user?.id, fetchTracks])
+  }, [authReady, authVersion, isAuthenticated, user?.id, fetchTracks])
 
   // Redirect to landing if not authenticated — but only AFTER auth has
   // actually finished restoring. Doing this before authReady is what caused

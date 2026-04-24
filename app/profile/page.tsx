@@ -41,7 +41,7 @@ function generateAPIKey(): string {
 }
 
 export default function ProfilePage() {
-  const { user, isAuthenticated, authReady, updateProfile } = useAuth()
+  const { user, isAuthenticated, authReady, authVersion, updateProfile } = useAuth()
   const router = useRouter()
   // Local "client mounted" flag — separate from auth readiness. Used only
   // for client-only side effects (e.g. generating an API key on mount).
@@ -120,10 +120,13 @@ export default function ProfilePage() {
       : null)
   }, [isHydrated, user])
 
-  // Fetch and log the raw Supabase profile row for this user
+  // Fetch and log the raw Supabase profile row for this user. Re-runs on
+  // every authVersion bump so post-login the latest profile data lands
+  // without a manual refresh.
   useEffect(() => {
-    if (!isHydrated || !user?.id || user.role !== "human") return
+    if (!authReady || !user?.id || user.role !== "human") return
     const fetchAndLogProfile = async () => {
+      console.log("[profile] refetch started", { userId: user.id, authVersion })
       try {
         const { data, error } = await supabase
           .from("profiles")
@@ -133,14 +136,14 @@ export default function ProfilePage() {
         if (error) {
           console.error("[profile] fetched profile error:", error.message, error)
         } else {
-          console.log("[profile] fetched profile row:", data)
+          console.log("[profile] refetch result", { userId: user.id, hasRow: !!data })
         }
       } catch (err) {
         console.error("[profile] fetched profile unexpected error:", err instanceof Error ? err.stack : err)
       }
     }
     fetchAndLogProfile()
-  }, [isHydrated, user?.id, user?.role])
+  }, [authReady, authVersion, user?.id, user?.role])
 
   useEffect(() => {
     if (user) {

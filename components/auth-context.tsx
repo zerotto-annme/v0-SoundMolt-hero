@@ -45,6 +45,16 @@ interface AuthContextType {
   // into the real state once the session is restored, requiring a manual
   // refresh to see correct data.
   authReady: boolean
+  // Monotonically-increasing counter that bumps every time Supabase emits a
+  // session-affecting auth event (INITIAL_SESSION, SIGNED_IN,
+  // TOKEN_REFRESHED, USER_UPDATED). Components that fetch user-dependent
+  // data should include this in their effect dependencies so they refetch
+  // automatically right after a login/refresh — without this, post-login
+  // the fetch effect doesn't re-run (user.id may already match the hook's
+  // initial null→value transition that happened in a different render
+  // cycle than the auth event), so the user sees stale empty state until
+  // they manually reload.
+  authVersion: number
   login: (role: "human" | "agent", profile?: Partial<UserProfile>) => void
   logout: () => void
   updateProfile: (updates: Partial<UserProfile>, options?: { persist?: boolean }) => void
@@ -340,6 +350,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [showAgentOnlyModal, setShowAgentOnlyModal] = useState(false)
   const [showSetUsernameModal, setShowSetUsernameModal] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
+  // See `authVersion` doc on AuthContextType for why this exists.
+  const [authVersion, setAuthVersion] = useState(0)
   const router = useRouter()
   // Stable ref so realtime callbacks can read the latest user without adding
   // `state.user` to every effect dependency array (which would cause unwanted
@@ -370,6 +382,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             createdAt: new Date(sbUser.created_at).getTime(),
           }
           setState({ user: userProfile, isAuthenticated: true })
+          // Bump version so any data hooks that mounted while session was
+          // still null know to refetch with the now-known user id.
+          setAuthVersion((v) => {
+            const next = v + 1
+            if (process.env.NODE_ENV !== "production") {
+              console.log("[auth] authVersion bumped (restoreSession)", { event: "RESTORE_SESSION", authVersion: next, userId: sbUser.id })
+            }
+            return next
+          })
           if (profileUsernameIsNull) {
             setShowSetUsernameModal(true)
           }
@@ -403,6 +424,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Subscribe to Supabase auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[auth] onAuthStateChange event", { event, hasSession: !!session, userId: session?.user?.id ?? null })
+      }
       if (event === "SIGNED_OUT") {
         setState(prev => {
           if (prev.user?.role === "human") {
@@ -411,7 +435,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return prev
         })
         setShowSetUsernameModal(false)
-      } else if (session?.user && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION")) {
+        // Bump on sign-out too so dependent hooks clear their cached data.
+        setAuthVersion((v) => {
+          const next = v + 1
+          if (process.env.NODE_ENV !== "production") {
+            console.log("[auth] authVersion bumped (SIGNED_OUT)", { event, authVersion: next })
+          }
+          return next
+        })
+      } else if (
+        session?.user &&
+        (event === "SIGNED_IN" ||
+          event === "TOKEN_REFRESHED" ||
+          event === "INITIAL_SESSION" ||
+          event === "USER_UPDATED")
+      ) {
         const sbUser = session.user
         const merged = await fetchProfileData(sbUser)
         const username = merged?.username || sbUser.email?.split("@")[0] || "User"
@@ -429,6 +467,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           createdAt: new Date(sbUser.created_at).getTime(),
         }
         setState({ user: userProfile, isAuthenticated: true })
+        // Force every data hook listening on `authVersion` to refetch — this
+        // is the line that makes the avatar / My Tracks / Feed appear right
+        // after login without a manual browser refresh.
+        setAuthVersion((v) => {
+          const next = v + 1
+          if (process.env.NODE_ENV !== "production") {
+            console.log("[auth] authVersion bumped", { event, authVersion: next, userId: sbUser.id })
+          }
+          return next
+        })
         if (profileUsernameIsNull) {
           setShowSetUsernameModal(true)
         } else {
@@ -474,11 +522,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setState({ user, isAuthenticated: true })
+    // Bump for the agent login path too — Supabase's onAuthStateChange
+    // doesn't fire for non-Supabase agent sessions, so dependent hooks
+    // would otherwise miss the transition.
+    setAuthVersion((v) => {
+      const next = v + 1
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[auth] authVersion bumped (login)", { event: "MANUAL_LOGIN", authVersion: next, userId: user.id })
+      }
+      return next
+    })
   }, [])
 
   const logout = useCallback(async () => {
     const currentRole = state.user?.role
     setState({ user: null, isAuthenticated: false })
+    setAuthVersion((v) => {
+      const next = v + 1
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[auth] authVersion bumped (logout)", { event: "MANUAL_LOGOUT", authVersion: next })
+      }
+      return next
+    })
     localStorage.removeItem(STORAGE_KEY)
     if (typeof window !== "undefined") {
       try { window.dispatchEvent(new CustomEvent("soundmolt:logout")) } catch {}
@@ -640,6 +705,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role,
         isAuthenticated: state.isAuthenticated,
         authReady: isHydrated,
+        authVersion,
         login,
         logout,
         updateProfile,

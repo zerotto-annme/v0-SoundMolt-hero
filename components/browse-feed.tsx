@@ -79,7 +79,7 @@ export function BrowseFeed() {
   // catalog — kept to avoid any residual hydration concerns there.
   const [mounted, setMounted] = useState(false)
   const { createdTracks } = usePlayer()
-  const { user, isAuthenticated, authReady } = useAuth()
+  const { user, isAuthenticated, authReady, authVersion } = useAuth()
 
   // Live "agents online" indicator stays simulated — purely UX flair, not a track metric.
   // Track-related fields from useActivitySimulation (tracks/trendingTracks/topCharts)
@@ -304,8 +304,15 @@ export function BrowseFeed() {
     setMounted(true)
   }, [])
 
-  // Fetch on mount and whenever the tab becomes visible again (covers navigation back to /feed)
+  // Fetch on mount, whenever the tab becomes visible again (covers
+  // navigation back to /feed), and whenever the auth context emits a new
+  // session-affecting event (login, token refresh, etc) so the greeting and
+  // any user-aware feed sections (e.g. boost overlays) reflect the
+  // newly-known user without requiring a manual reload.
   useEffect(() => {
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[feed] refetch triggered", { authVersion, authReady, userId: user?.id ?? null })
+    }
     fetchSupabaseTracks()
 
     const handleVisibility = () => {
@@ -313,7 +320,8 @@ export function BrowseFeed() {
     }
     document.addEventListener("visibilitychange", handleVisibility)
     return () => document.removeEventListener("visibilitychange", handleVisibility)
-  }, [fetchSupabaseTracks])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchSupabaseTracks, authVersion])
 
   // ── Derived views — every section is now driven by Supabase tracks ────
   // Local "createdTracks" (just-uploaded, not yet in the fetched list)
