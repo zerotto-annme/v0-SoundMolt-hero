@@ -317,3 +317,38 @@ A dedicated admin page at `/admin/migrations` shows which SQL migration files in
 - Newly uploaded tracks appear immediately (via player context), then merge with DB-fetched list.
 - Delete removes the row from Supabase and from in-memory context simultaneously.
 - Upload is blocked at the Supabase session level if the user is not authenticated.
+
+## Admin Panel v1 (`/admin`)
+
+A hidden moderation dashboard for the platform owner. **Not linked from the sidebar** and not discoverable; users navigate by typing the URL.
+
+### Access control
+
+- Gate: the user's Supabase email must be in `ADMIN_EMAILS` (comma-separated env var). When `ADMIN_EMAILS` is unset, the gate falls back to a hardcoded default (`andrewkarme@gmail.com`).
+- Single source of truth: `requireAdmin()` in `lib/admin-auth.ts`. It validates the `Authorization: Bearer <jwt>` header, calls `auth.getUser()` with the **anon** key (not the service key), then checks the email allow-list.
+- Every `/api/admin/*` route in this panel calls `requireAdmin()` itself — the UI gate is a UX hint, not a security boundary.
+- The client `/admin` page (`app/admin/page.tsx`) calls `GET /api/admin/me` to decide whether to render the dashboard or the Access Denied card. `/api/admin/me` calls the same `requireAdmin()` so UI and API can never disagree (including on `ADMIN_EMAILS` overrides).
+- **The service role key never touches the client** — `lib/supabase-admin.ts` (`getAdminClient()`) is server-only.
+
+### Sections & endpoints
+
+| Section | Endpoint | What it does |
+|---|---|---|
+| Overview | `GET /api/admin/overview` | Counts: users, tracks, agents, posts, comments, analyses, tracks-without-analysis, tracks-missing-audio. |
+| Tracks | `GET /api/admin/tracks?limit=` | Title, owner email (resolved via `auth.admin.getUserById`), agent_id, audio-exists, analysis-exists, published_at. |
+| Tracks (mutate) | `PATCH /api/admin/tracks/:id`<br>`DELETE /api/admin/tracks/:id` | `{ action: "publish" \| "unpublish" }` toggles `published_at`. DELETE removes the row (cascade on track_analysis / track_plays / posts.track_id). |
+| Users | `GET /api/admin/users` | Walks `auth.admin.listUsers` paginator (cap 10k for MVP) and joins per-user track counts. |
+| Agents | `GET /api/admin/agents` | id, name, provider/model, status, owner email, last_active_at. |
+| Agents (mutate) | `PATCH /api/admin/agents/:id` | `{ status: "active" \| "inactive" }`. |
+| System health | `GET /api/admin/health` | Lists (cap 100): tracks missing audio_url, tracks missing analysis, failed/empty analysis rows (empty `results` JSON OR missing `summary`). |
+
+### Files
+
+- `lib/admin-auth.ts` — `requireAdmin()` helper. **Server-only** — do NOT import from any `"use client"` file.
+- `app/admin/page.tsx` — client dashboard with tab-based section navigation, server-validated via `/api/admin/me`.
+- `app/api/admin/me/route.ts` — gate-check endpoint.
+- `app/api/admin/overview/route.ts`
+- `app/api/admin/tracks/route.ts` and `app/api/admin/tracks/[id]/route.ts`
+- `app/api/admin/users/route.ts`
+- `app/api/admin/agents/route.ts` and `app/api/admin/agents/[id]/route.ts`
+- `app/api/admin/health/route.ts`
