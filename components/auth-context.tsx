@@ -359,15 +359,73 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // subscription teardowns on each profile update).
   const userRef = useRef(state.user)
   useEffect(() => { userRef.current = state.user }, [state.user])
+  // Epoch counter incremented on every auth event. Async profile-hydration
+  // work captures the epoch at start; if the epoch has changed by the time
+  // hydration resolves, the result is discarded. This prevents a slow
+  // SIGNED_IN profile fetch from overwriting a subsequent SIGNED_OUT.
+  const authEpochRef = useRef(0)
 
-  // Restore session from Supabase on mount, fall back to localStorage for agents
+  // Restore session from Supabase on mount, fall back to localStorage for agents.
+  //
+  // ROBUSTNESS NOTES:
+  //   • `setIsHydrated(true)` is in a finally so it ALWAYS fires, no matter
+  //     what throws. If `authReady` ever stays false the whole app hangs
+  //     (admin page, feed, my-tracks all wait on it). We defend that.
+  //   • `fetchProfileData` is wrapped in a 10s timeout so a stuck `profiles`
+  //     SELECT can't block hydration. On timeout we fall back to bare auth
+  //     metadata — the user gets a working session immediately and
+  //     `onAuthStateChange` will fill in the missing fields shortly after.
+  //   • As a last-resort safety net we schedule a 5s timer that forces
+  //     `isHydrated = true` even if the entire restoreSession promise
+  //     somehow hangs (network blackhole, navigator.locks contention, etc).
   useEffect(() => {
+    let cancelled = false
+
+    // Last-resort hydration safety net. If `restoreSession()` hasn't
+    // resolved within 5s for any reason — including total network failure
+    // or a wedged Supabase client lock — we force `authReady` to true so
+    // the UI can at least render the unauthenticated path (Sign in card,
+    // landing page, etc) instead of staying on a permanent spinner.
+    const hydrateGuardTimer = setTimeout(() => {
+      if (cancelled) return
+      console.warn("[auth] AUTH HYDRATION GUARD fired — forcing isHydrated=true after 5s")
+      setIsHydrated(true)
+    }, 5000)
+
     const restoreSession = async () => {
+      // Capture epoch at start; if onAuthStateChange fires (e.g. SIGNED_OUT)
+      // while we're hydrating, the captured epoch will lag behind
+      // authEpochRef.current and we drop our setState below. This prevents
+      // restoreSession from resurrecting a signed-out user. (Architect feedback.)
+      const startEpoch = authEpochRef.current
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        // Bound the initial getSession() too — on Vercel cold starts this
+        // has been observed to wait on a stale lock. 5s is generous; the
+        // outer hydrateGuardTimer is the absolute backstop.
+        const sessionResult = await withTimeout(
+          supabase.auth.getSession(),
+          5000,
+          "supabase.auth.getSession"
+        )
+        const session = sessionResult.data.session
         if (session?.user) {
           const sbUser = session.user
-          const merged = await fetchProfileData(sbUser)
+          // Bound profile hydration so a stuck SELECT can't block authReady.
+          let merged: Awaited<ReturnType<typeof fetchProfileData>> = null
+          try {
+            merged = await withTimeout(
+              fetchProfileData(sbUser),
+              10000,
+              "fetchProfileData (restoreSession)"
+            )
+          } catch (err) {
+            console.warn("[auth] restoreSession: fetchProfileData failed/timeout — using bare metadata", err)
+          }
+          if (cancelled) return
+          if (startEpoch !== authEpochRef.current) {
+            console.log("[auth] restoreSession: dropping stale write — auth event fired during hydration", { startEpoch, currentEpoch: authEpochRef.current })
+            return
+          }
           const username = merged?.username || sbUser.email?.split("@")[0] || "User"
           const avatar = merged?.avatar_url || generateAvatar(username, "human")
           const profileUsernameIsNull = merged?.profileUsernameIsNull ?? false
@@ -383,18 +441,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             createdAt: new Date(sbUser.created_at).getTime(),
           }
           setState({ user: userProfile, isAuthenticated: true })
-          // Bump version so any data hooks that mounted while session was
-          // still null know to refetch with the now-known user id.
           setAuthVersion((v) => {
             const next = v + 1
-            if (process.env.NODE_ENV !== "production") {
-              console.log("[auth] authVersion bumped (restoreSession)", { event: "RESTORE_SESSION", authVersion: next, userId: sbUser.id })
-            }
+            console.log("[auth] authVersion bumped (restoreSession)", { event: "RESTORE_SESSION", authVersion: next, userId: sbUser.id })
             return next
           })
-          if (profileUsernameIsNull) {
-            setShowSetUsernameModal(true)
-          }
+          if (profileUsernameIsNull) setShowSetUsernameModal(true)
         } else {
           // Fall back to localStorage for agent sessions
           const stored = localStorage.getItem(STORAGE_KEY)
@@ -405,7 +457,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
           }
         }
-      } catch {
+      } catch (err) {
+        console.warn("[auth] restoreSession failed — falling back to localStorage", err)
         try {
           const stored = localStorage.getItem(STORAGE_KEY)
           if (stored) {
@@ -417,34 +470,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch {
           localStorage.removeItem(STORAGE_KEY)
         }
+      } finally {
+        // CRITICAL: this MUST always run. authReady=false freezes the app.
+        if (!cancelled) {
+          clearTimeout(hydrateGuardTimer)
+          setIsHydrated(true)
+        }
       }
-      setIsHydrated(true)
     }
 
     restoreSession()
 
     // Subscribe to Supabase auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (process.env.NODE_ENV !== "production") {
-        console.log("[auth] onAuthStateChange event", { event, hasSession: !!session, userId: session?.user?.id ?? null })
-      }
+      // Bump the epoch FIRST so any in-flight async work from the previous
+      // event is invalidated before we kick off new async work below.
+      const myEpoch = ++authEpochRef.current
+      console.log("AUTH STATE CHANGE", { event, hasSession: !!session, userId: session?.user?.id ?? null, epoch: myEpoch })
+
+      // Safety net: any auth event also flips authReady=true. If
+      // restoreSession somehow stalled before reaching its finally, this
+      // recovers us as soon as Supabase fires INITIAL_SESSION/SIGNED_OUT/etc.
+      // (Spec: "authReady must become true after INITIAL_SESSION and SIGNED_OUT".)
+      setIsHydrated(true)
+
       if (event === "SIGNED_OUT") {
+        // Spec: "SIGNED_OUT must clear user/profile but not freeze app".
+        // We unconditionally clear the human session here. Agent sessions
+        // live in localStorage and aren't governed by Supabase auth, so
+        // we leave them in place; if you want full sign-out for agents,
+        // call logout() from the menu which clears both paths.
         setState(prev => {
-          if (prev.user?.role === "human") {
-            return { user: null, isAuthenticated: false }
-          }
-          return prev
+          if (prev.user?.role === "agent") return prev
+          return { user: null, isAuthenticated: false }
         })
         setShowSetUsernameModal(false)
-        // Bump on sign-out too so dependent hooks clear their cached data.
         setAuthVersion((v) => {
           const next = v + 1
-          if (process.env.NODE_ENV !== "production") {
-            console.log("[auth] authVersion bumped (SIGNED_OUT)", { event, authVersion: next })
-          }
+          console.log("[auth] authVersion bumped (SIGNED_OUT)", { event, authVersion: next })
           return next
         })
-      } else if (
+        return
+      }
+
+      if (
         session?.user &&
         (event === "SIGNED_IN" ||
           event === "TOKEN_REFRESHED" ||
@@ -452,7 +521,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           event === "USER_UPDATED")
       ) {
         const sbUser = session.user
-        const merged = await fetchProfileData(sbUser)
+
+        // Spec: "SIGNED_IN must set user immediately". Set a minimal user
+        // profile from auth metadata RIGHT AWAY so isAuthenticated flips
+        // even if profile hydration is slow or fails. The full profile
+        // is then merged in below as soon as fetchProfileData resolves.
+        if (event === "SIGNED_IN" || event === "INITIAL_SESSION") {
+          const fastUsername = sbUser.user_metadata?.username || sbUser.email?.split("@")[0] || "User"
+          setState(prev => {
+            if (prev.user?.id === sbUser.id) return prev
+            return {
+              user: {
+                id: sbUser.id,
+                role: "human",
+                name: fastUsername,
+                username: fastUsername,
+                email: sbUser.email,
+                avatar: sbUser.user_metadata?.avatar_url || generateAvatar(fastUsername, "human"),
+                avatarIsCustom: false,
+                createdAt: new Date(sbUser.created_at).getTime(),
+              },
+              isAuthenticated: true,
+            }
+          })
+        }
+
+        // Bound profile hydration so a stuck SELECT can't wedge the
+        // onAuthStateChange listener (which would silently drop future
+        // auth events).
+        let merged: Awaited<ReturnType<typeof fetchProfileData>> = null
+        try {
+          merged = await withTimeout(
+            fetchProfileData(sbUser),
+            10000,
+            "fetchProfileData (onAuthStateChange)"
+          )
+        } catch (err) {
+          console.warn("[auth] onAuthStateChange: fetchProfileData failed/timeout — keeping fast profile", err)
+        }
+
+        // Stale-event guard: if another auth event (e.g. SIGNED_OUT)
+        // fired while we were awaiting profile data, drop this result so
+        // we don't resurrect a stale user. (Architect feedback.)
+        if (myEpoch !== authEpochRef.current) {
+          console.log("[auth] dropping stale profile result", { event, myEpoch, currentEpoch: authEpochRef.current })
+          return
+        }
+
         const username = merged?.username || sbUser.email?.split("@")[0] || "User"
         const avatar = merged?.avatar_url || generateAvatar(username, "human")
         const profileUsernameIsNull = merged?.profileUsernameIsNull ?? false
@@ -468,25 +583,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           createdAt: new Date(sbUser.created_at).getTime(),
         }
         setState({ user: userProfile, isAuthenticated: true })
-        // Force every data hook listening on `authVersion` to refetch — this
-        // is the line that makes the avatar / My Tracks / Feed appear right
-        // after login without a manual browser refresh.
         setAuthVersion((v) => {
           const next = v + 1
-          if (process.env.NODE_ENV !== "production") {
-            console.log("[auth] authVersion bumped", { event, authVersion: next, userId: sbUser.id })
-          }
+          console.log("[auth] authVersion bumped", { event, authVersion: next, userId: sbUser.id })
           return next
         })
-        if (profileUsernameIsNull) {
-          setShowSetUsernameModal(true)
-        } else {
-          setShowSetUsernameModal(false)
-        }
+        if (profileUsernameIsNull) setShowSetUsernameModal(true)
+        else setShowSetUsernameModal(false)
       }
     })
 
     return () => {
+      cancelled = true
+      clearTimeout(hydrateGuardTimer)
       subscription.unsubscribe()
     }
   }, [])
@@ -1013,18 +1122,43 @@ function SignInModal({
           })
         }
       } else {
-        console.log("[auth] signIn started", { email: humanForm.email })
-        const { data, error } = await withTimeout(
-          supabase.auth.signInWithPassword({
-            email: humanForm.email,
-            password: humanForm.password,
-          }),
-          15000,
-          "supabase.auth.signInWithPassword"
-        )
+        console.log("AUTH SIGNIN START", { email: humanForm.email })
+        let authResult: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>
+        try {
+          authResult = await withTimeout(
+            supabase.auth.signInWithPassword({
+              email: humanForm.email,
+              password: humanForm.password,
+            }),
+            15000,
+            "supabase.auth.signInWithPassword"
+          )
+        } catch (timeoutErr) {
+          // signInWithPassword itself didn't return — almost always
+          // means the Supabase client lock is wedged. Try a one-shot
+          // recovery via getSession() in case the auth actually
+          // succeeded but the response promise got stranded.
+          console.warn("AUTH SIGNIN ERROR", { phase: "signInWithPassword", err: timeoutErr })
+          try {
+            const { data: recoveryData } = await withTimeout(
+              supabase.auth.getSession(),
+              3000,
+              "supabase.auth.getSession (recovery)"
+            )
+            if (recoveryData.session?.user) {
+              console.log("AUTH SIGNIN SUCCESS", { via: "getSession recovery", userId: recoveryData.session.user.id })
+              authResult = { data: { user: recoveryData.session.user, session: recoveryData.session }, error: null }
+            } else {
+              throw timeoutErr
+            }
+          } catch {
+            throw timeoutErr
+          }
+        }
 
+        const { data, error } = authResult
         if (error) {
-          console.log("[auth] signIn error", { message: error.message })
+          console.log("AUTH SIGNIN ERROR", { message: error.message })
           if (error.message.toLowerCase().includes("invalid login") || error.message.toLowerCase().includes("invalid credentials")) {
             setHumanErrors({ general: "Incorrect email or password" })
           } else {
@@ -1034,49 +1168,44 @@ function SignInModal({
         }
 
         if (data.user) {
-          console.log("[auth] signIn success", { userId: data.user.id })
-          // Bound profile hydration too — without this, a stalled `profiles`
-          // SELECT after a successful auth would still leave the modal
-          // stuck on "Signing in..." even though the user is technically
-          // logged in. On timeout, fall back to bare auth.user metadata so
-          // the modal always closes and onAuthStateChange's own
-          // fetchProfileData call (which is independent of this modal's
-          // lifecycle) can fill in the missing fields shortly after.
-          let merged: Awaited<ReturnType<typeof fetchProfileData>> = null
-          try {
-            merged = await withTimeout(
-              fetchProfileData(data.user),
-              10000,
-              "fetchProfileData"
-            )
-          } catch (err) {
-            console.warn("[auth] fetchProfileData failed/timeout — closing modal with bare profile", err)
-          }
-          const username = merged?.username || data.user.email?.split("@")[0] || "User"
-          const avatar = merged?.avatar_url || generateAvatar(username, "human")
-          const profileUsernameIsNull = merged?.profileUsernameIsNull ?? false
+          console.log("AUTH SIGNIN SUCCESS", { userId: data.user.id })
+          // CRITICAL: do NOT await fetchProfileData here. The whole-flow
+          // budget for the "Signing in..." button is 15s (spec). We've
+          // already spent up to 15s inside signInWithPassword; awaiting
+          // a 10s profile hydration on top of that would push the visible
+          // loading well past the budget.
+          //
+          // Instead: close the modal immediately with the bare auth-user
+          // metadata. The onAuthStateChange listener (registered in
+          // AuthProvider) will fire SIGNED_IN within milliseconds, run
+          // its OWN bounded fetchProfileData, and merge the richer
+          // profile into context state. Avatar/My Tracks/etc. update
+          // automatically via the authVersion ticker.
+          const fastUsername = data.user.user_metadata?.username || data.user.email?.split("@")[0] || "User"
+          const fastAvatar = data.user.user_metadata?.avatar_url || generateAvatar(fastUsername, "human")
           onLogin("human", {
             id: data.user.id,
-            username: profileUsernameIsNull ? undefined : username,
-            name: username,
-            artistName: merged?.artist_name,
+            username: fastUsername,
+            name: fastUsername,
             email: data.user.email,
-            avatar,
-            avatarIsCustom: merged?.avatarIsCustom ?? false,
+            avatar: fastAvatar,
+            avatarIsCustom: false,
             createdAt: new Date(data.user.created_at).getTime(),
           })
         }
       }
     } catch (err) {
       if (isTimeoutError(err)) {
-        console.error("[auth] signIn TIMEOUT", err)
+        console.error("AUTH SIGNIN ERROR", { reason: "timeout", err })
         setHumanErrors({ general: "Sign in timed out. Please try again." })
       } else {
-        console.error("[auth] signIn unexpected error", err)
+        console.error("AUTH SIGNIN ERROR", { reason: "unexpected", err })
         setHumanErrors({ general: "Something went wrong. Please try again." })
       }
     } finally {
-      console.log("[auth] signIn loading reset")
+      console.log("AUTH SIGNIN FINALLY", { resettingLoading: true })
+      // CRITICAL: ALWAYS reset loading. Spec: "ALWAYS set loading false in
+      // finally; never leave button stuck."
       setHumanLoading(false)
     }
   }

@@ -121,19 +121,19 @@ export default function LandingPage() {
           router.push("/feed")
         }
       } else if (humanMode === "signin") {
-        console.log("[landing] signIn started", { email: humanForm.email })
+        console.log("AUTH SIGNIN START", { email: humanForm.email, source: "landing" })
         const { data, error } = await withTimeout(
           supabase.auth.signInWithPassword({ email: humanForm.email, password: humanForm.password }),
           15000,
           "supabase.auth.signInWithPassword"
         )
         if (error) {
-          console.log("[landing] signIn error", { message: error.message })
+          console.log("AUTH SIGNIN ERROR", { source: "landing", message: error.message })
           setHumanFormError(error.message.toLowerCase().includes("invalid") ? "Incorrect email or password" : error.message)
           return
         }
         if (data.user) {
-          console.log("[landing] signIn success", { userId: data.user.id })
+          console.log("AUTH SIGNIN SUCCESS", { source: "landing", userId: data.user.id })
           const username = data.user.user_metadata?.username || data.user.email?.split("@")[0] || "User"
           if (loginFn) loginFn("human", { id: data.user.id, username, name: username, email: data.user.email })
           setIsHumanModalOpen(false)
@@ -152,14 +152,14 @@ export default function LandingPage() {
       }
     } catch (err) {
       if (isTimeoutError(err)) {
-        console.error("[landing] signIn TIMEOUT", err)
+        console.error("AUTH SIGNIN ERROR", { source: "landing", reason: "timeout", err })
         setHumanFormError("Sign in timed out. Please try again.")
       } else {
-        console.error("[landing] signIn unexpected error", err)
+        console.error("AUTH SIGNIN ERROR", { source: "landing", reason: "unexpected", err })
         setHumanFormError("Something went wrong. Please try again.")
       }
     } finally {
-      console.log("[landing] signIn loading reset")
+      console.log("AUTH SIGNIN FINALLY", { source: "landing", resettingLoading: true })
       setHumanLoading(false)
     }
   }, [humanMode, humanForm, loginFn, router])
