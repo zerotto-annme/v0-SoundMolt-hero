@@ -107,24 +107,63 @@ export function BrowseFeed() {
         if (p.username) usernameById[p.id] = p.username
       }
 
-      // Step 3: map to Track objects
-      const mapped: Track[] = trackRows.map((row) => ({
-        id: row.id,
-        title: row.title,
-        agentName: usernameById[row.user_id] || "Artist",
-        modelType: "Uploaded",
-        modelProvider: "user",
-        coverUrl: row.cover_url || "",
-        audioUrl: row.audio_url || row.original_audio_url || "",
-        originalAudioUrl: row.original_audio_url || row.audio_url || "",
-        plays: row.plays ?? 0,
-        likes: row.likes ?? 0,
-        style: row.style || "",
-        sourceType: (row.source_type as "uploaded" | "generated") || "uploaded",
-        description: row.description || undefined,
-        downloadEnabled: row.download_enabled,
-        createdAt: new Date(row.created_at).getTime(),
-      }))
+      // Step 3: pull admin Boost Stats from the public-safe aggregate
+      // view (NOT the raw audit table — that one carries reason +
+      // admin identity which we deliberately keep private).
+      //
+      // The public-facing display is `organic + boost`. The
+      // recommendation pipeline reads `tracks` directly (organic-only),
+      // so boosts can never poison taste-profile learning. We degrade
+      // gracefully if the view doesn't exist yet (migration 038 not
+      // applied) — every track simply gets a 0 boost.
+      const trackIds = trackRows.map((r) => r.id as string)
+      const boostByTrack: Record<
+        string,
+        { plays: number; likes: number; downloads: number }
+      > = {}
+      try {
+        const { data: boostRows, error: boostErr } = await supabase
+          .from("track_boost_totals")
+          .select("track_id, total_boost_plays, total_boost_likes, total_boost_downloads")
+          .in("track_id", trackIds)
+        if (boostErr) {
+          console.warn("[feed] boost fetch skipped:", boostErr.message)
+        } else {
+          for (const b of boostRows ?? []) {
+            boostByTrack[b.track_id] = {
+              plays: Number(b.total_boost_plays ?? 0),
+              likes: Number(b.total_boost_likes ?? 0),
+              downloads: Number(b.total_boost_downloads ?? 0),
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("[feed] boost fetch threw:", e)
+      }
+
+      // Step 4: map to Track objects, folding boost into the public
+      // display values for plays/likes/downloads.
+      const mapped: Track[] = trackRows.map((row) => {
+        const boost = boostByTrack[row.id] ?? { plays: 0, likes: 0, downloads: 0 }
+        return {
+          id: row.id,
+          title: row.title,
+          agentName: usernameById[row.user_id] || "Artist",
+          modelType: "Uploaded",
+          modelProvider: "user",
+          coverUrl: row.cover_url || "",
+          audioUrl: row.audio_url || row.original_audio_url || "",
+          originalAudioUrl: row.original_audio_url || row.audio_url || "",
+          plays: (row.plays ?? 0) + boost.plays,
+          likes: (row.likes ?? 0) + boost.likes,
+          downloads: (row.downloads ?? 0) + boost.downloads,
+          style: row.style || "",
+          sourceType: (row.source_type as "uploaded" | "generated") || "uploaded",
+          description: row.description || undefined,
+          downloadEnabled: row.download_enabled,
+          createdAt: new Date(row.created_at).getTime(),
+        }
+      })
       setSupabaseTracks(mapped)
     } catch (e) {
       console.warn("[feed] Failed to fetch tracks:", e)

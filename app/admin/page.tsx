@@ -14,7 +14,9 @@ import {
   PowerOff,
   ExternalLink,
   Sparkles,
+  TrendingUp,
 } from "lucide-react"
+import { BoostStatsModal, type BoostModalTrack } from "@/components/admin/boost-stats-modal"
 
 // ── Types ───────────────────────────────────────────────────────────
 interface Overview {
@@ -37,6 +39,21 @@ interface AdminTrack {
   analysis_exists: boolean
   published_at: string | null
   created_at: string
+  // Stat layers — `organic_*` is the analytics-safe truth from the
+  // `tracks` table; `boost_*` is the sum of admin-applied boosts from
+  // `track_stat_boosts`; `display_*` is what the public UI shows.
+  // All optional so the admin panel still works against an old API
+  // response where these fields don't exist yet.
+  organic_plays?: number
+  organic_likes?: number
+  organic_downloads?: number
+  boost_plays?: number
+  boost_likes?: number
+  boost_downloads?: number
+  boost_entry_count?: number
+  display_plays?: number
+  display_likes?: number
+  display_downloads?: number
 }
 interface AdminUser {
   id: string
@@ -551,6 +568,27 @@ function TracksSection({
   const { data, loading, error, reload } = res
   const tracks = data?.tracks ?? []
   const [busyId, setBusyId] = useState<string | null>(null)
+  // Track currently open in the Boost Stats modal — null means closed.
+  // We hold a snapshot of the row so the modal can show the
+  // organic/boost/display breakdown without re-fetching.
+  const [boostTarget, setBoostTarget] = useState<BoostModalTrack | null>(null)
+
+  function openBoost(t: AdminTrack) {
+    setBoostTarget({
+      id: t.id,
+      title: t.title,
+      organic_plays: t.organic_plays ?? 0,
+      organic_likes: t.organic_likes ?? 0,
+      organic_downloads: t.organic_downloads ?? 0,
+      boost_plays: t.boost_plays ?? 0,
+      boost_likes: t.boost_likes ?? 0,
+      boost_downloads: t.boost_downloads ?? 0,
+      display_plays: t.display_plays ?? (t.organic_plays ?? 0) + (t.boost_plays ?? 0),
+      display_likes: t.display_likes ?? (t.organic_likes ?? 0) + (t.boost_likes ?? 0),
+      display_downloads:
+        t.display_downloads ?? (t.organic_downloads ?? 0) + (t.boost_downloads ?? 0),
+    })
+  }
 
   async function togglePublish(t: AdminTrack) {
     const action = t.published_at ? "unpublish" : "publish"
@@ -620,7 +658,7 @@ function TracksSection({
       onRefresh={reload}
     >
       <DataTable
-        head={["Title", "Owner", "Agent", "Audio", "Analysis", "Published", "Actions"]}
+        head={["Title", "Owner", "Agent", "Audio", "Analysis", "Stats", "Published", "Actions"]}
         rows={tracks.map((t) => [
           <span key="t" className="font-medium text-white truncate block max-w-xs" title={t.title}>
             {t.title}
@@ -637,6 +675,7 @@ function TracksSection({
           <Pill key="an" tone={t.analysis_exists ? "ok" : "warn"}>
             {t.analysis_exists ? "yes" : "no"}
           </Pill>,
+          <TrackStatsCell key="stats" track={t} onBoost={() => openBoost(t)} />,
           <span key="p" className="text-xs text-muted-foreground">
             {t.published_at ? formatDate(t.published_at) : <Pill tone="warn">hidden</Pill>}
           </span>,
@@ -653,7 +692,78 @@ function TracksSection({
           />,
         ])}
       />
+      <BoostStatsModal
+        track={boostTarget}
+        isOpen={!!boostTarget}
+        onClose={() => setBoostTarget(null)}
+        adminFetch={adminFetch}
+        onApplied={async () => {
+          notify(`Boost applied to "${boostTarget?.title}".`, "success")
+          await onTrackChanged()
+        }}
+      />
     </SectionShell>
+  )
+}
+
+/**
+ * Single-cell summary of a track's display stats with a "Boost" trigger.
+ *
+ * Layout — three compact rows showing display total + a tiny "+N boost"
+ * subtitle when there's any inflation, so the admin can spot at a
+ * glance which tracks have been amplified. Clicking "Boost" opens the
+ * modal where they can apply more.
+ */
+function TrackStatsCell({ track, onBoost }: { track: AdminTrack; onBoost: () => void }) {
+  const display = {
+    plays: track.display_plays ?? (track.organic_plays ?? 0) + (track.boost_plays ?? 0),
+    likes: track.display_likes ?? (track.organic_likes ?? 0) + (track.boost_likes ?? 0),
+    downloads:
+      track.display_downloads ?? (track.organic_downloads ?? 0) + (track.boost_downloads ?? 0),
+  }
+  const boostP = track.boost_plays ?? 0
+  const boostL = track.boost_likes ?? 0
+  const boostD = track.boost_downloads ?? 0
+  const hasBoost = boostP > 0 || boostL > 0 || boostD > 0
+  return (
+    <div className="flex items-start gap-2">
+      <div className="text-[11px] tabular-nums font-mono leading-tight space-y-0.5">
+        <div className="text-foreground">
+          {display.plays.toLocaleString()}
+          {boostP > 0 && <span className="text-amber-400 ml-1">(+{boostP})</span>}
+          <span className="text-muted-foreground/60"> plays</span>
+        </div>
+        <div className="text-foreground">
+          {display.likes.toLocaleString()}
+          {boostL > 0 && <span className="text-amber-400 ml-1">(+{boostL})</span>}
+          <span className="text-muted-foreground/60"> likes</span>
+        </div>
+        <div className="text-foreground">
+          {display.downloads.toLocaleString()}
+          {boostD > 0 && <span className="text-amber-400 ml-1">(+{boostD})</span>}
+          <span className="text-muted-foreground/60"> dls</span>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onBoost}
+        title={
+          hasBoost
+            ? `Manage boost (${(track.boost_entry_count ?? 0)} entr${
+                (track.boost_entry_count ?? 0) === 1 ? "y" : "ies"
+              })`
+            : "Boost displayed stats for this track"
+        }
+        className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-xs transition-colors ${
+          hasBoost
+            ? "border-amber-500/50 text-amber-300 hover:bg-amber-500/10"
+            : "border-white/15 text-foreground hover:border-amber-500/40 hover:text-amber-300"
+        }`}
+      >
+        <TrendingUp className="w-3 h-3" />
+        Boost
+      </button>
+    </div>
   )
 }
 
