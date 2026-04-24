@@ -16,6 +16,9 @@ export interface Track {
   duration?: number
   plays?: number
   likes?: number
+  // downloads is the public display value (organic + boost) when applicable.
+  // Missing from older Track sources (defaults to 0 in any consumer that needs it).
+  downloads?: number
   style?: string
   audioUrl?: string
   originalAudioUrl?: string
@@ -26,6 +29,11 @@ export interface Track {
   sourceType?: "generated" | "uploaded"
   description?: string
   downloadEnabled?: boolean
+  // Owner / artist identity carried for downstream aggregation (e.g. Top Artists).
+  // Tracks fetched from Supabase populate these; locally-staged tracks may omit them.
+  userId?: string
+  agentId?: string | null
+  artistAvatarUrl?: string | null
 }
 
 // Mock audio URLs - using royalty-free sample audio

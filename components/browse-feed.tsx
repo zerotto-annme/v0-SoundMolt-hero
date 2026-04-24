@@ -2,9 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import Image from "next/image"
-import Link from "next/link"
 import { Search, ChevronRight, TrendingUp, Zap, Sparkles, Bot, Music, Headphones, Radio, Activity, Plus, User, Loader2, Crown, Flame, Play, Heart, ListMusic } from "lucide-react"
-import { AGENTS } from "@/lib/agents"
 import { BrowseTrackCard } from "./browse-track-card"
 import { ChartTrackCard } from "./chart-track-card"
 import { HorizontalShelf } from "./horizontal-shelf"
@@ -28,6 +26,20 @@ const STYLE_CONFIG: Record<StyleType, { label: string; gradient: string; icon: t
   cinematic: { label: "Cinematic", gradient: "from-indigo-500 to-purple-600", icon: Bot },
 }
 
+// Aggregated artist row for the "Top Artists" shelf — computed live from
+// the published-tracks query (see realArtists inside BrowseFeed). This is
+// the real-data replacement for the now-removed `Agent` shape from
+// lib/agents.ts (which was generated from seed/demo tracks).
+type RealArtist = {
+  key: string // agent_id when isAgent, else uploader user_id
+  name: string
+  avatarUrl: string | null
+  isAgent: boolean
+  trackCount: number
+  totalPlays: number
+  totalLikes: number
+}
+
 // Get time-based greeting
 function getGreeting(): string {
   const hour = new Date().getHours()
@@ -46,6 +58,12 @@ export function BrowseFeed() {
   const [selectedStyle, setSelectedStyle] = useState<StyleType | "other" | null>(null)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [supabaseTracks, setSupabaseTracks] = useState<Track[]>([])
+  // Maps populated alongside the tracks fetch so Top Artists can show real
+  // avatars / display names without a second round-trip per artist.
+  // Key is `agent_id` for AI-agent tracks, otherwise `user_id`.
+  const [artistMeta, setArtistMeta] = useState<
+    Record<string, { name: string; avatarUrl: string | null; isAgent: boolean }>
+  >({})
   // Start in loading state — without this, the first render would briefly
   // flash "No tracks yet" before the fetch effect kicks in.
   const [isLoadingFeed, setIsLoadingFeed] = useState(true)
@@ -95,16 +113,42 @@ export function BrowseFeed() {
         return
       }
 
-      // Step 2: fetch usernames for the track owners (no FK needed — plain .in() query)
+      // Step 2: fetch profile usernames + avatars for the track owners, and
+      // also fetch agent rows for any tracks that were created by an AI agent.
+      // We do both in parallel — neither depends on the other and we use the
+      // results to populate `artistMeta` for the Top Artists section.
       const userIds = [...new Set(trackRows.map((r) => r.user_id as string))]
-      const { data: profileRows } = await supabase
-        .from("profiles")
-        .select("id, username")
-        .in("id", userIds)
+      const agentIds = [
+        ...new Set(
+          trackRows
+            .map((r) => r.agent_id as string | null | undefined)
+            .filter((v): v is string => !!v),
+        ),
+      ]
+
+      const [profileResult, agentResult] = await Promise.all([
+        userIds.length > 0
+          ? supabase.from("profiles").select("id, username, avatar_url").in("id", userIds)
+          : Promise.resolve({ data: [], error: null } as const),
+        agentIds.length > 0
+          ? supabase.from("agents").select("id, name, avatar_url").in("id", agentIds)
+          : Promise.resolve({ data: [], error: null } as const),
+      ])
 
       const usernameById: Record<string, string> = {}
-      for (const p of profileRows ?? []) {
+      const profileAvatarById: Record<string, string | null> = {}
+      for (const p of profileResult.data ?? []) {
         if (p.username) usernameById[p.id] = p.username
+        profileAvatarById[p.id] = (p as any).avatar_url ?? null
+      }
+
+      const agentById: Record<string, { name: string; avatarUrl: string | null }> = {}
+      if (agentResult.error) {
+        console.warn("[feed] agents fetch failed:", agentResult.error.message)
+      } else {
+        for (const a of agentResult.data ?? []) {
+          agentById[a.id] = { name: a.name, avatarUrl: (a as any).avatar_url ?? null }
+        }
       }
 
       // Step 3: pull admin Boost Stats from the public-safe aggregate
@@ -142,15 +186,36 @@ export function BrowseFeed() {
       }
 
       // Step 4: map to Track objects, folding boost into the public
-      // display values for plays/likes/downloads.
+      // display values for plays/likes/downloads.  When the track has an
+      // agent_id we resolve the artist identity from the agents table
+      // (name + avatar); otherwise we fall back to the uploader profile.
+      // We also accumulate `artistMeta` keyed by `agent_id || user_id` so
+      // the Top Artists section can render real avatars / display names.
+      const nextArtistMeta: Record<
+        string,
+        { name: string; avatarUrl: string | null; isAgent: boolean }
+      > = {}
+
       const mapped: Track[] = trackRows.map((row) => {
         const boost = boostByTrack[row.id] ?? { plays: 0, likes: 0, downloads: 0 }
+        const agentInfo = row.agent_id ? agentById[row.agent_id] : undefined
+        const fallbackName = usernameById[row.user_id] || "Uploaded Artist"
+        const artistName = agentInfo?.name || fallbackName
+        const artistAvatar = agentInfo?.avatarUrl ?? profileAvatarById[row.user_id] ?? null
+        const artistKey = (row.agent_id as string | null) || (row.user_id as string)
+        if (artistKey && !nextArtistMeta[artistKey]) {
+          nextArtistMeta[artistKey] = {
+            name: artistName,
+            avatarUrl: artistAvatar,
+            isAgent: !!agentInfo,
+          }
+        }
         return {
           id: row.id,
           title: row.title,
-          agentName: usernameById[row.user_id] || "Artist",
-          modelType: "Uploaded",
-          modelProvider: "user",
+          agentName: artistName,
+          modelType: agentInfo ? "Agent" : "Uploaded",
+          modelProvider: agentInfo ? "agent" : "user",
           coverUrl: row.cover_url || "",
           audioUrl: row.audio_url || row.original_audio_url || "",
           originalAudioUrl: row.original_audio_url || row.audio_url || "",
@@ -162,9 +227,13 @@ export function BrowseFeed() {
           description: row.description || undefined,
           downloadEnabled: row.download_enabled,
           createdAt: new Date(row.created_at).getTime(),
+          userId: row.user_id,
+          agentId: (row.agent_id as string | null) ?? null,
+          artistAvatarUrl: artistAvatar,
         }
       })
       setSupabaseTracks(mapped)
+      setArtistMeta(nextArtistMeta)
     } catch (e) {
       console.warn("[feed] Failed to fetch tracks:", e)
     } finally {
@@ -200,10 +269,16 @@ export function BrowseFeed() {
     ? supabaseTracks
     : localOnlyCreated
 
-  // "Trending AI Tracks" — real tracks ordered by play count.
-  // Falls back to chronological order when no plays have been recorded yet.
+  // "Trending AI Tracks" — real tracks ordered by a composite engagement
+  // score that weights social signals more heavily than passive plays:
+  //   score = display_plays + display_likes * 5 + display_downloads * 10
+  // Display values already include any admin Boost applied above. When no
+  // engagement is recorded yet the array preserves the underlying
+  // chronological order from `supabaseTracks` (newest first).
+  const trendingScore = (t: Track) =>
+    (t.plays ?? 0) + (t.likes ?? 0) * 5 + (t.downloads ?? 0) * 10
   const trendingTracksReal: Track[] = [...supabaseTracks].sort(
-    (a, b) => (b.plays ?? 0) - (a.plays ?? 0),
+    (a, b) => trendingScore(b) - trendingScore(a),
   )
 
   // "Top Charts" — same ordering as Trending but capped per active tab and
@@ -221,13 +296,15 @@ export function BrowseFeed() {
       duration: t.duration ?? 0,
       plays: t.plays ?? 0,
       likes: t.likes ?? 0,
-      downloads: 0,
+      downloads: t.downloads ?? 0,
       uploadedAt: t.createdAt ? new Date(t.createdAt).toISOString() : new Date().toISOString(),
       rank: i + 1,
       previousRank: i + 1,
       movement: "same" as const,
       movementAmount: 0,
-      chartScore: t.plays ?? 0,
+      // Same engagement-weighted score used to order Trending — keeps the
+      // chart row's headline number consistent with the row's actual rank.
+      chartScore: trendingScore(t),
       weeklyTrendScore: 0,
     }))
 
@@ -249,12 +326,47 @@ export function BrowseFeed() {
   const recommendedReal = supabaseTracks.slice(0, 12)
 
   // Hero / footer aggregates — all derived from real data.
-  // "Artist count" = distinct artist names appearing across published tracks.
   const totalRealPlays = supabaseTracks.reduce((acc, t) => acc + (t.plays ?? 0), 0)
   const totalRealLikes = supabaseTracks.reduce((acc, t) => acc + (t.likes ?? 0), 0)
-  const realArtistCount = new Set(
-    supabaseTracks.map((t) => t.agentName).filter(Boolean),
-  ).size
+
+  // "Top Artists" — aggregate published tracks by their artist key
+  // (`agent_id` when present, else uploader `user_id`) and rank by total
+  // plays.  Display name + avatar come from `artistMeta`, which was
+  // populated alongside the tracks fetch (agents table for AI agents,
+  // profiles table for uploaders).  Falls back to the username already
+  // stored on the Track when meta isn't yet hydrated.
+  const realArtists: RealArtist[] = (() => {
+    const acc = new Map<string, RealArtist>()
+    for (const t of supabaseTracks) {
+      const key = t.agentId || t.userId
+      if (!key) continue
+      const meta = artistMeta[key]
+      const existing = acc.get(key)
+      if (existing) {
+        existing.trackCount += 1
+        existing.totalPlays += t.plays ?? 0
+        existing.totalLikes += t.likes ?? 0
+      } else {
+        acc.set(key, {
+          key,
+          name: meta?.name || t.agentName || "Artist",
+          avatarUrl: meta?.avatarUrl ?? t.artistAvatarUrl ?? null,
+          isAgent: meta?.isAgent ?? !!t.agentId,
+          trackCount: 1,
+          totalPlays: t.plays ?? 0,
+          totalLikes: t.likes ?? 0,
+        })
+      }
+    }
+    return [...acc.values()].sort(
+      (a, b) =>
+        b.totalPlays - a.totalPlays ||
+        b.totalLikes - a.totalLikes ||
+        b.trackCount - a.trackCount,
+    )
+  })()
+
+  const realArtistCount = realArtists.length
   const realStyleCount = new Set(
     supabaseTracks.map((t) => (t.style || "").toLowerCase()).filter(Boolean),
   ).size
@@ -582,8 +694,10 @@ export function BrowseFeed() {
                 </div>
               </section>
 
-              {/* Top Artists */}
-              {mounted && <TopArtistsRow />}
+              {/* Top Artists — driven by Supabase aggregation */}
+              {mounted && (
+                <TopArtistsRow artists={realArtists} hasLoadedOnce={hasLoadedOnce} />
+              )}
 
               {/* New Music Releases — driven by Supabase, newest first */}
               <section>
@@ -747,21 +861,50 @@ export function BrowseFeed() {
   )
 }
 
-function TopArtistsRow() {
-  const topArtists = AGENTS.slice(0, 50)
+function TopArtistsRow({
+  artists,
+  hasLoadedOnce,
+}: {
+  artists: RealArtist[]
+  hasLoadedOnce: boolean
+}) {
+  // Cap the shelf at 50 — anything beyond that is clutter for a horizontal row.
+  const topArtists = artists.slice(0, 50)
+  const initials = (name: string) =>
+    name
+      .split(/\s+/)
+      .map((p) => p[0])
+      .filter(Boolean)
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "?"
 
   return (
     <section>
       <div className="flex items-center gap-3 mb-4">
         <Crown className="w-5 h-5 text-amber-400" />
         <h2 className="text-xl font-bold text-foreground">Top Artists</h2>
-        <span className="px-2 py-0.5 text-xs font-mono rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
-          {topArtists.length} ranked
-        </span>
+        {topArtists.length > 0 && (
+          <span className="px-2 py-0.5 text-xs font-mono rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+            {topArtists.length} ranked
+          </span>
+        )}
       </div>
 
-      <HorizontalShelf ariaLabel="artists">
-        {topArtists.map((artist, idx) => {
+      {topArtists.length === 0 ? (
+        !hasLoadedOnce ? (
+          <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span>Loading artists…</span>
+          </div>
+        ) : (
+          <div className="text-center py-12 text-muted-foreground">
+            No artists yet.
+          </div>
+        )
+      ) : (
+        <HorizontalShelf ariaLabel="artists">
+          {topArtists.map((artist, idx) => {
             const rank = idx + 1
             const isTrending = rank <= 3
             const rankColor =
@@ -773,34 +916,30 @@ function TopArtistsRow() {
                 ? "from-orange-400 to-amber-700 text-black"
                 : "bg-black/60 text-white"
 
-            return (
-              <div
-                key={artist.id}
-                data-shelf-item
-                className="group relative shrink-0 w-[200px] bg-card/40 hover:bg-card/60 border border-border/30 hover:border-glow-primary/40 rounded-2xl p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_8px_30px_-8px_rgba(236,72,153,0.35)]"
-              >
-                <Link
-                  href={`/agent/${encodeURIComponent(artist.name)}`}
-                  className="block"
+            // Card body is identical for both branches; we only swap whether
+            // the wrapper is a Link (agent — real /agent/[name] page exists)
+            // or a plain div (uploaded user — no public profile route yet).
+            const body = (
+              <>
+                {/* Rank badge */}
+                <div
+                  className={`absolute top-3 left-3 z-10 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shadow-lg ${
+                    rank <= 3 ? `bg-gradient-to-br ${rankColor}` : rankColor
+                  }`}
                 >
-                  {/* Rank badge */}
-                  <div
-                    className={`absolute top-3 left-3 z-10 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shadow-lg ${
-                      rank <= 3 ? `bg-gradient-to-br ${rankColor}` : rankColor
-                    }`}
-                  >
-                    #{rank}
+                  #{rank}
+                </div>
+
+                {/* Trending indicator */}
+                {isTrending && (
+                  <div className="absolute top-3 right-3 z-10 px-1.5 h-5 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center gap-0.5">
+                    <Flame className="w-3 h-3 text-amber-400" />
                   </div>
+                )}
 
-                  {/* Trending indicator */}
-                  {isTrending && (
-                    <div className="absolute top-3 right-3 z-10 px-1.5 h-5 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center gap-0.5">
-                      <Flame className="w-3 h-3 text-amber-400" />
-                    </div>
-                  )}
-
-                  {/* Avatar */}
-                  <div className="relative aspect-square w-full rounded-full overflow-hidden mb-3 mx-auto bg-gradient-to-br from-glow-primary/20 to-glow-secondary/20">
+                {/* Avatar — falls back to gradient + initials when no avatar_url */}
+                <div className="relative aspect-square w-full rounded-full overflow-hidden mb-3 mx-auto bg-gradient-to-br from-glow-primary/20 to-glow-secondary/20">
+                  {artist.avatarUrl ? (
                     <Image
                       src={artist.avatarUrl}
                       alt={artist.name}
@@ -808,53 +947,71 @@ function TopArtistsRow() {
                       sizes="200px"
                       className="object-cover transition-transform duration-300 group-hover:scale-105"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-                  </div>
-
-                  {/* Name + verified */}
-                  <div className="text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      <h3 className="text-sm font-bold text-foreground truncate">
-                        {artist.name}
-                      </h3>
-                      {artist.verified && (
-                        <Sparkles className="w-3.5 h-3.5 text-glow-primary shrink-0" />
-                      )}
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center text-lg font-bold text-foreground/80">
+                      {initials(artist.name)}
                     </div>
-                    <p className="text-xs text-muted-foreground mb-3 truncate">
-                      {artist.label}
-                      <span className="ml-1.5 px-1.5 py-0.5 rounded bg-glow-primary/10 text-glow-primary text-[10px] font-mono">
-                        AI
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                </div>
+
+                {/* Name + source-type badge */}
+                <div className="text-center">
+                  <div className="flex items-center justify-center gap-1">
+                    <h3 className="text-sm font-bold text-foreground truncate">
+                      {artist.name}
+                    </h3>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-3 truncate">
+                    {artist.isAgent ? "AI Agent" : "Uploader"}
+                    <span className="ml-1.5 px-1.5 py-0.5 rounded bg-glow-primary/10 text-glow-primary text-[10px] font-mono">
+                      {artist.isAgent ? "AI" : "USR"}
+                    </span>
+                  </p>
+
+                  {/* Metrics */}
+                  <div className="flex items-center justify-around pt-3 border-t border-border/30 text-[11px]">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <Play className="w-3 h-3 text-muted-foreground" />
+                      <span className="font-semibold text-foreground">
+                        {formatPlays(artist.totalPlays)}
                       </span>
-                    </p>
-
-                    {/* Metrics */}
-                    <div className="flex items-center justify-around pt-3 border-t border-border/30 text-[11px]">
-                      <div className="flex flex-col items-center gap-0.5">
-                        <Play className="w-3 h-3 text-muted-foreground" />
-                        <span className="font-semibold text-foreground">
-                          {formatPlays(artist.totalPlays)}
-                        </span>
-                      </div>
-                      <div className="flex flex-col items-center gap-0.5">
-                        <Heart className="w-3 h-3 text-pink-400" />
-                        <span className="font-semibold text-foreground">
-                          {formatPlays(artist.totalLikes)}
-                        </span>
-                      </div>
-                      <div className="flex flex-col items-center gap-0.5">
-                        <ListMusic className="w-3 h-3 text-cyan-400" />
-                        <span className="font-semibold text-foreground">
-                          {artist.totalTracks}
-                        </span>
-                      </div>
+                    </div>
+                    <div className="flex flex-col items-center gap-0.5">
+                      <Heart className="w-3 h-3 text-pink-400" />
+                      <span className="font-semibold text-foreground">
+                        {formatPlays(artist.totalLikes)}
+                      </span>
+                    </div>
+                    <div className="flex flex-col items-center gap-0.5">
+                      <ListMusic className="w-3 h-3 text-cyan-400" />
+                      <span className="font-semibold text-foreground">
+                        {artist.trackCount}
+                      </span>
                     </div>
                   </div>
-                </Link>
+                </div>
+              </>
+            )
+
+            const cardClass =
+              "group relative shrink-0 w-[200px] bg-card/40 hover:bg-card/60 border border-border/30 hover:border-glow-primary/40 rounded-2xl p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_8px_30px_-8px_rgba(236,72,153,0.35)]"
+
+            // Cards are intentionally NOT wrapped in <Link> here.  The
+            // /agent/[name] route currently resolves from seed data
+            // (lib/agents.getAgentByName) and uploader profiles have no
+            // public profile route at all — linking either kind would
+            // produce a "not found" page.  We surface the real artist
+            // identity (avatar, name, totals) and leave navigation for
+            // the follow-up that wires up real agent / profile pages.
+            return (
+              <div key={artist.key} data-shelf-item className={cardClass}>
+                {body}
               </div>
             )
           })}
-      </HorizontalShelf>
+        </HorizontalShelf>
+      )}
     </section>
   )
 }

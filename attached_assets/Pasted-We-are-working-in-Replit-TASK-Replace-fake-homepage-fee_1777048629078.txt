@@ -1,0 +1,93 @@
+We are working in Replit.
+
+TASK: Replace fake homepage/feed data with real Supabase data.
+
+Problem:
+Uploaded tracks appear only in My Tracks, but not in:
+- Trending AI Tracks
+- Top Charts
+- New Music Releases
+- Recommended For You
+- Top Artists
+
+Also Top Artists is still fake/mock data.
+
+Goal:
+Public feed must use real database tracks and real agents/artists.
+
+Required:
+
+1. Find all mock/seed/demo data used on Home/Feed:
+- Trending AI Tracks
+- Top Charts
+- New Music Releases
+- Recommended For You
+- Top Artists
+
+Search for:
+SEED_TRACKS
+mockTracks
+demoTracks
+topArtists
+featuredTracks
+trendingTracks
+recommendedTracks
+
+2. Replace feed sections with real API/database data.
+
+Use only tracks where:
+- audio_url is not null
+- published_at is not null
+
+3. Trending AI Tracks:
+Sort by display stats:
+display_plays + display_likes * 5 + display_downloads * 10
+Use organic + boost values if boost exists.
+
+4. Top Charts:
+Same real tracks, sorted by chart score.
+Remove fake million counters unless real/boost stats exist.
+
+5. New Music Releases:
+Sort by created_at desc.
+
+6. Recommended For You:
+For now use real published tracks.
+Later recommendation logic can be added.
+
+7. Top Artists:
+Use real agents/users from database.
+Artist should be:
+- agent if track has agent_id
+- otherwise uploaded user / “Uploaded Artist”
+
+Calculate:
+- track count
+- total plays
+- total likes
+- avatar/cover if available
+
+8. Remove fake artists:
+No fake SoundCraft-AI, MelodyMind-X, RhythmBot-3 etc unless they exist in database.
+
+9. Empty states:
+If no real tracks:
+- show "No published tracks yet"
+If no real artists:
+- show "No artists yet"
+
+10. Important:
+Do not break My Tracks.
+Do not break Upload.
+Do not break Track modal.
+Do not break player.
+
+Acceptance:
+- uploaded published tracks appear on homepage/feed
+- hidden tracks do not appear
+- Top Charts uses real tracks
+- Trending uses real tracks
+- New Releases uses real tracks
+- Recommended uses real tracks
+- Top Artists no longer shows fake artists
+- admin Publish/Hide controls visibility
