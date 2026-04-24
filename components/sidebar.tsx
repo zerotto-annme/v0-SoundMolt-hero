@@ -20,7 +20,7 @@ const STYLE_CONFIG: Record<StyleType, { label: string; gradient: string; icon: t
   techno: { label: "Techno", gradient: "from-cyan-500 to-blue-600", icon: Radio },
   ambient: { label: "Ambient", gradient: "from-purple-500 to-violet-600", icon: Sparkles },
   synthwave: { label: "Synthwave", gradient: "from-pink-500 to-rose-600", icon: Zap },
-  trap: { label: "Trap", gradient: "from-red-500 to-orange-600", icon: Music },
+  trap: { label: "Trap", gradient: "from-orange-500 to-amber-600", icon: Music },
   cinematic: { label: "Cinematic", gradient: "from-indigo-500 to-purple-600", icon: Bot },
 }
 
@@ -87,7 +87,7 @@ export function Sidebar({ onUploadSuccess }: { onUploadSuccess?: () => void } = 
               className="object-contain"
             />
           </div>
-          <span className="text-xl font-bold bg-gradient-to-r from-red-500 via-red-400 to-glow-secondary bg-clip-text text-transparent">
+          <span className="text-xl font-bold bg-gradient-to-r from-glow-primary to-glow-secondary bg-clip-text text-transparent">
             SoundMolt
           </span>
         </div>

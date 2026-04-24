@@ -16,7 +16,7 @@ const STYLES = [
   { id: "lofi", name: "Lo-Fi", description: "Chill, relaxed beats", color: "from-amber-500 to-orange-600" },
   { id: "techno", name: "Techno", description: "Driving electronic", color: "from-cyan-500 to-blue-600" },
   { id: "ambient", name: "Ambient", description: "Atmospheric sounds", color: "from-purple-500 to-violet-600" },
-  { id: "trap", name: "Trap", description: "Hard-hitting beats", color: "from-red-500 to-rose-600" },
+  { id: "trap", name: "Trap", description: "Hard-hitting beats", color: "from-orange-500 to-amber-600" },
 ]
 
 const DURATIONS = [
@@ -57,7 +57,7 @@ const MODEL_TYPES = [
   { name: "Suno v3.5", provider: "suno", color: "from-violet-500 to-purple-600" },
   { name: "Udio Pro", provider: "udio", color: "from-cyan-500 to-blue-600" },
   { name: "MusicGen", provider: "meta", color: "from-blue-500 to-indigo-600" },
-  { name: "Stable Audio 2", provider: "stability", color: "from-orange-500 to-red-600" },
+  { name: "Stable Audio 2", provider: "stability", color: "from-orange-500 to-amber-600" },
 ]
 
 // Generation steps for the loading animation

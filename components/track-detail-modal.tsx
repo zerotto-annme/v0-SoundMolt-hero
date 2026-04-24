@@ -48,22 +48,24 @@ const AGENT_TYPE_ICONS: Record<AgentType, typeof Music> = {
   arranger: Layers,
 }
 
+// Per color spec: AI/agent labels/badges use unified secondary purple.
+// Categorical agent-type identity is preserved by the icon glyph, not color.
 const AGENT_TYPE_COLORS: Record<AgentType, string> = {
-  composer: "from-cyan-500 to-blue-600",
-  vocalist: "from-pink-500 to-rose-600",
-  beatmaker: "from-orange-500 to-amber-600",
-  mixer: "from-violet-500 to-purple-600",
-  producer: "from-emerald-500 to-teal-600",
-  arranger: "from-indigo-500 to-blue-600",
+  composer: "from-glow-secondary to-violet-600",
+  vocalist: "from-glow-secondary to-violet-600",
+  beatmaker: "from-glow-secondary to-violet-600",
+  mixer: "from-glow-secondary to-violet-600",
+  producer: "from-glow-secondary to-violet-600",
+  arranger: "from-glow-secondary to-violet-600",
 }
 
 const AGENT_TYPE_BG: Record<AgentType, string> = {
-  composer: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
-  vocalist: "bg-pink-500/20 text-pink-400 border-pink-500/30",
-  beatmaker: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-  mixer: "bg-violet-500/20 text-violet-400 border-violet-500/30",
-  producer: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-  arranger: "bg-indigo-500/20 text-indigo-400 border-indigo-500/30",
+  composer: "bg-glow-secondary/20 text-glow-secondary border-glow-secondary/30",
+  vocalist: "bg-glow-secondary/20 text-glow-secondary border-glow-secondary/30",
+  beatmaker: "bg-glow-secondary/20 text-glow-secondary border-glow-secondary/30",
+  mixer: "bg-glow-secondary/20 text-glow-secondary border-glow-secondary/30",
+  producer: "bg-glow-secondary/20 text-glow-secondary border-glow-secondary/30",
+  arranger: "bg-glow-secondary/20 text-glow-secondary border-glow-secondary/30",
 }
 
 const MODEL_COLORS: Record<string, string> = {
@@ -588,15 +590,17 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                 //    visible even in extreme narrow viewports where flex-1 +
                 //    gap-[2px] × 79 would otherwise compress them to 0.
                 //
-                // Past bars stay bg-glow-primary at full alpha; non-past bars
-                // bg-white/50 (clearly visible on bg-secondary/30 dark card).
+                // Per color spec: played = teal token, rest = gray token.
+                // Hex literals match --waveform-played/--waveform-rest in
+                // app/globals.css (Tailwind cannot parse arbitrary CSS-var
+                // tokens combined with `/` opacity modifiers reliably).
                 return (
                   <div
                     key={i}
                     className={`flex-1 min-w-[1px] min-h-[2px] rounded-sm transition-colors duration-100 ${
                       isPast
                         ? 'bg-glow-primary'
-                        : 'bg-white/50 hover:bg-white/70'
+                        : 'bg-[#5A6171] hover:bg-[#7A8190]'
                     }`}
                     style={{ height: `${height * 100}%` }}
                   />
@@ -631,11 +635,11 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                       handleSeekToTime(comment.trackTimestamp)
                     }}
                   >
-                    {/* Marker dot */}
+                    {/* Marker dot — agent (AI) = purple per AI-label rule, human = blue */}
                     <div 
                       className={`w-2.5 h-2.5 rounded-full cursor-pointer transition-all duration-300 ${
                         isAgent 
-                          ? "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]" 
+                          ? "bg-glow-secondary shadow-[0_0_8px_rgba(123,97,255,0.6)]" 
                           : "bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.6)]"
                       } ${isActive ? "scale-150 animate-pulse" : "hover:scale-125"}`}
                     />
@@ -649,7 +653,7 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                               {comment.timeLabel}
                             </span>
                             <span className={`text-[9px] font-medium px-1 py-0.5 rounded ${
-                              isAgent ? "bg-red-500/20 text-red-400" : "bg-blue-500/20 text-blue-400"
+                              isAgent ? "bg-glow-secondary/20 text-glow-secondary" : "bg-blue-500/20 text-blue-400"
                             }`}>
                               {isAgent ? "Agent" : "Human"}
                             </span>

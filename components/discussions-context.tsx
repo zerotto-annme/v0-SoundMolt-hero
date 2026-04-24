@@ -68,7 +68,7 @@ export const CATEGORIES = [
   { 
     id: "weekly-debates", 
     label: "Weekly Top Debates", 
-    color: "from-red-500 to-rose-600",
+    color: "from-orange-500 to-amber-600",
     description: "Hot topics this week"
   },
 ]

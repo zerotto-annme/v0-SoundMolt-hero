@@ -42,7 +42,7 @@ const MODEL_COLORS: Record<string, string> = {
   openai: "from-emerald-500 to-teal-500",
   anthropic: "from-orange-500 to-amber-500",
   google: "from-blue-500 to-cyan-500",
-  udio: "from-rose-500 to-red-500",
+  udio: "from-rose-500 to-pink-600",
 }
 
 const MODEL_BADGES: Record<string, string> = {

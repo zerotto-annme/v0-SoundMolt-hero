@@ -4,45 +4,60 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Dark futuristic theme - Sound Molt */
+  /* Dark futuristic theme - Sound Molt
+   * Color hierarchy:
+   *   - Primary accent  : teal   #00FFC6 — play, progress, active states, main actions
+   *   - Secondary accent: purple #7B61FF — AI labels, badges
+   *   - Destructive/red : ONLY for errors and danger
+   *   - Ranking colors  : gold/silver/bronze for #1/#2/#3
+   */
   --background: oklch(0.08 0.01 260);
   --foreground: oklch(0.95 0 0);
   --card: oklch(0.12 0.015 260);
   --card-foreground: oklch(0.95 0 0);
   --popover: oklch(0.12 0.015 260);
   --popover-foreground: oklch(0.95 0 0);
-  --primary: oklch(0.75 0.15 180);
-  --primary-foreground: oklch(0.08 0.01 260);
+  --primary: #00FFC6;
+  --primary-foreground: #0A0E1A;
   --secondary: oklch(0.18 0.02 260);
   --secondary-foreground: oklch(0.95 0 0);
   --muted: oklch(0.18 0.02 260);
   --muted-foreground: oklch(0.65 0 0);
-  --accent: oklch(0.75 0.15 180);
-  --accent-foreground: oklch(0.08 0.01 260);
+  --accent: #00FFC6;
+  --accent-foreground: #0A0E1A;
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.95 0 0);
   --border: oklch(0.22 0.02 260);
   --input: oklch(0.18 0.02 260);
-  --ring: oklch(0.75 0.15 180);
-  --chart-1: oklch(0.75 0.15 180);
-  --chart-2: oklch(0.6 0.118 184.704);
+  --ring: #00FFC6;
+  --chart-1: #00FFC6;
+  --chart-2: #7B61FF;
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
   --radius: 0.75rem;
   --sidebar: oklch(0.1 0.015 260);
   --sidebar-foreground: oklch(0.95 0 0);
-  --sidebar-primary: oklch(0.75 0.15 180);
-  --sidebar-primary-foreground: oklch(0.08 0.01 260);
+  --sidebar-primary: #00FFC6;
+  --sidebar-primary-foreground: #0A0E1A;
   --sidebar-accent: oklch(0.18 0.02 260);
   --sidebar-accent-foreground: oklch(0.95 0 0);
   --sidebar-border: oklch(0.22 0.02 260);
-  --sidebar-ring: oklch(0.75 0.15 180);
-  
-  /* Custom glow colors - aligned with red crab brand */
-  --glow-primary: oklch(0.65 0.25 25);
-  --glow-secondary: oklch(0.75 0.15 180);
-  --brand-red: oklch(0.6 0.24 25);
+  --sidebar-ring: #00FFC6;
+
+  /* Brand accents */
+  --glow-primary: #00FFC6;     /* teal — main accent */
+  --glow-secondary: #7B61FF;   /* purple — AI / badges */
+  --brand-red: #ef4444;        /* reserved for errors / destructive only */
+
+  /* Ranking podium */
+  --rank-gold:   #F5B700;
+  --rank-silver: #A0A0A0;
+  --rank-bronze: #CD7F32;
+
+  /* Waveform */
+  --waveform-played: #00FFC6;
+  --waveform-rest:   #5A6171;
 }
 
 @theme inline {
@@ -158,13 +173,13 @@
 
 /* Agent Auth v3 Micro-interactions */
 
-/* Input typing glow */
+/* Input typing glow — uses teal (primary accent) */
 @keyframes inputGlow {
   0%, 100% {
-    box-shadow: 0 0 15px rgba(239, 68, 68, 0.1);
+    box-shadow: 0 0 15px rgba(0, 255, 198, 0.1);
   }
   50% {
-    box-shadow: 0 0 25px rgba(239, 68, 68, 0.2);
+    box-shadow: 0 0 25px rgba(0, 255, 198, 0.2);
   }
 }
 
@@ -172,13 +187,13 @@
   animation: inputGlow 1.5s ease-in-out infinite;
 }
 
-/* Challenge panel pulse */
+/* Challenge panel pulse — uses teal (primary accent) */
 @keyframes challengePulse {
   0%, 100% {
-    box-shadow: 0 0 0 rgba(239, 68, 68, 0);
+    box-shadow: 0 0 0 rgba(0, 255, 198, 0);
   }
   50% {
-    box-shadow: 0 0 30px rgba(239, 68, 68, 0.08);
+    box-shadow: 0 0 30px rgba(0, 255, 198, 0.08);
   }
 }
 
@@ -290,4 +305,24 @@
   width: 0;
   height: 0;
 }
+
+/* ──────────────────────────────────────────────────────────────────
+ * Color-system utilities — modern, consistent palette
+ * ────────────────────────────────────────────────────────────────── */
+
+/* Ranking podium — only #1/#2/#3 get colored, others fall back to default */
+.rank-1 { background-color: var(--rank-gold);   color: #0A0E1A; }
+.rank-2 { background-color: var(--rank-silver); color: #0A0E1A; }
+.rank-3 { background-color: var(--rank-bronze); color: #FFFFFF; }
+
+/* Waveform bars — played portion teal, rest gray */
+.waveform-played { background-color: var(--waveform-played); }
+.waveform-rest   { background-color: var(--waveform-rest); }
+
+/* Brand "Post / Create" gradient — teal → purple */
+.btn-post-gradient {
+  background-image: linear-gradient(90deg, var(--glow-primary) 0%, var(--glow-secondary) 100%);
+  color: #0A0E1A;
+}
+.btn-post-gradient:hover { opacity: 0.9; }
 

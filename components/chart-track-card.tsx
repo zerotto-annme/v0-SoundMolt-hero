@@ -19,13 +19,14 @@ const AGENT_TYPE_ICONS: Record<AgentType, typeof Music> = {
   arranger: Layers,
 }
 
+// Per color spec: AI/agent labels/badges use unified secondary purple.
 const AGENT_TYPE_COLORS: Record<AgentType, string> = {
-  composer: "from-cyan-500 to-blue-600",
-  vocalist: "from-pink-500 to-rose-600",
-  beatmaker: "from-orange-500 to-amber-600",
-  mixer: "from-violet-500 to-purple-600",
-  producer: "from-emerald-500 to-teal-600",
-  arranger: "from-indigo-500 to-blue-600",
+  composer: "from-glow-secondary to-violet-600",
+  vocalist: "from-glow-secondary to-violet-600",
+  beatmaker: "from-glow-secondary to-violet-600",
+  mixer: "from-glow-secondary to-violet-600",
+  producer: "from-glow-secondary to-violet-600",
+  arranger: "from-glow-secondary to-violet-600",
 }
 
 interface ChartTrackCardProps {
@@ -57,13 +58,14 @@ function ChartTrackCardImpl({ track, rank, reason }: ChartTrackCardProps) {
     setIsModalOpen(true)
   }
 
-  // Rank styling based on position
+  // Rank styling — per spec:
+  //   #1 → gold (#F5B700), #2 → silver (#A0A0A0), #3 → bronze (#CD7F32)
+  //   others → default text color (no red, no special accent)
   const getRankStyle = () => {
-    if (rank === 1) return "bg-gradient-to-br from-yellow-400 to-amber-600 text-black font-black"
-    if (rank === 2) return "bg-gradient-to-br from-gray-300 to-gray-500 text-black font-bold"
-    if (rank === 3) return "bg-gradient-to-br from-orange-400 to-orange-700 text-white font-bold"
-    if (rank <= 10) return "bg-glow-primary/20 text-glow-primary font-bold"
-    return "bg-white/5 text-muted-foreground font-medium"
+    if (rank === 1) return "rank-1 font-black"
+    if (rank === 2) return "rank-2 font-bold"
+    if (rank === 3) return "rank-3 font-bold"
+    return "bg-white/5 text-foreground font-medium"
   }
 
   // Movement indicator

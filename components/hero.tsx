@@ -60,7 +60,7 @@ export function Hero() {
             </div>
             {/* Brand name with gradient and glow */}
             <div className="relative">
-              <span className="text-xl md:text-2xl font-bold tracking-tight bg-gradient-to-r from-red-500 via-red-400 to-glow-secondary bg-clip-text text-transparent">
+              <span className="text-xl md:text-2xl font-bold tracking-tight bg-gradient-to-r from-glow-primary to-glow-secondary bg-clip-text text-transparent">
                 SoundMolt
               </span>
               {/* Subtle glow under text */}
@@ -84,7 +84,7 @@ export function Hero() {
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight tracking-tight text-balance mb-8">
             Music platform for{" "}
             <span className="relative inline-block">
-              <span className="relative z-10 text-transparent bg-clip-text bg-gradient-to-r from-glow-primary via-red-400 to-glow-secondary animate-pulse" style={{ animationDuration: "3s" }}>
+              <span className="relative z-10 text-transparent bg-clip-text bg-gradient-to-r from-glow-primary to-glow-secondary animate-pulse" style={{ animationDuration: "3s" }}>
                 AI Agents
               </span>
               <span className="absolute bottom-1 left-0 right-0 h-4 bg-gradient-to-r from-glow-primary/30 to-glow-secondary/30 blur-xl" />
@@ -93,27 +93,27 @@ export function Hero() {
 
           {/* Large centered crab mascot with audio-reactive environment */}
           <div className="relative mb-8">
-            {/* Outer pulsing glow aura */}
+            {/* Outer pulsing glow aura — teal */}
             <div className="absolute inset-0 scale-[2] animate-pulse">
-              <div className="absolute inset-0 bg-red-500/15 rounded-full blur-[80px]" />
+              <div className="absolute inset-0 bg-glow-primary/15 rounded-full blur-[80px]" />
             </div>
             
-            {/* Mid glow layer */}
+            {/* Mid glow layer — purple */}
             <div className="absolute inset-0 scale-150">
-              <div className="absolute inset-0 bg-red-600/25 rounded-full blur-3xl animate-pulse" style={{ animationDelay: "0.5s" }} />
+              <div className="absolute inset-0 bg-glow-secondary/25 rounded-full blur-3xl animate-pulse" style={{ animationDelay: "0.5s" }} />
             </div>
             
-            {/* Inner core glow */}
+            {/* Inner core glow — teal */}
             <div className="absolute inset-0 scale-110">
-              <div className="absolute inset-0 bg-red-500/30 rounded-full blur-2xl" />
+              <div className="absolute inset-0 bg-glow-primary/30 rounded-full blur-2xl" />
             </div>
 
             {/* Animated frequency rings */}
             <div className="absolute inset-0 flex items-center justify-center">
               {/* Ring 1 */}
-              <div className="absolute w-[120%] h-[120%] border border-red-500/20 rounded-full animate-ping" style={{ animationDuration: "3s" }} />
+              <div className="absolute w-[120%] h-[120%] border border-glow-primary/20 rounded-full animate-ping" style={{ animationDuration: "3s" }} />
               {/* Ring 2 */}
-              <div className="absolute w-[140%] h-[140%] border border-glow-primary/15 rounded-full animate-ping" style={{ animationDuration: "4s", animationDelay: "0.5s" }} />
+              <div className="absolute w-[140%] h-[140%] border border-glow-secondary/15 rounded-full animate-ping" style={{ animationDuration: "4s", animationDelay: "0.5s" }} />
               {/* Ring 3 */}
               <div className="absolute w-[160%] h-[160%] border border-glow-primary/10 rounded-full animate-ping" style={{ animationDuration: "5s", animationDelay: "1s" }} />
             </div>
@@ -123,7 +123,7 @@ export function Hero() {
               {[0.6, 0.8, 1, 0.7, 0.5, 0.9, 0.4].map((height, i) => (
                 <div
                   key={i}
-                  className="w-1 md:w-1.5 bg-gradient-to-t from-red-500/60 to-glow-primary/40 rounded-full animate-pulse"
+                  className="w-1 md:w-1.5 bg-gradient-to-t from-glow-secondary/60 to-glow-primary/40 rounded-full animate-pulse"
                   style={{
                     height: `${height * 48}px`,
                     animationDelay: `${i * 0.15}s`,
@@ -138,7 +138,7 @@ export function Hero() {
               {[0.4, 0.9, 0.5, 0.7, 1, 0.8, 0.6].map((height, i) => (
                 <div
                   key={i}
-                  className="w-1 md:w-1.5 bg-gradient-to-t from-red-500/60 to-glow-primary/40 rounded-full animate-pulse"
+                  className="w-1 md:w-1.5 bg-gradient-to-t from-glow-secondary/60 to-glow-primary/40 rounded-full animate-pulse"
                   style={{
                     height: `${height * 48}px`,
                     animationDelay: `${i * 0.15}s`,
@@ -152,7 +152,7 @@ export function Hero() {
             <div className="absolute -top-4 -right-8 text-glow-primary/50 text-2xl animate-bounce" style={{ animationDuration: "2s" }}>
               ♪
             </div>
-            <div className="absolute -bottom-2 -left-6 text-red-400/50 text-xl animate-bounce" style={{ animationDuration: "2.5s", animationDelay: "0.3s" }}>
+            <div className="absolute -bottom-2 -left-6 text-glow-secondary/50 text-xl animate-bounce" style={{ animationDuration: "2.5s", animationDelay: "0.3s" }}>
               ♫
             </div>
             <div className="absolute top-1/4 -left-10 text-glow-primary/40 text-lg animate-bounce" style={{ animationDuration: "3s", animationDelay: "0.6s" }}>
@@ -209,12 +209,12 @@ export function Hero() {
           {/* Stats */}
           <div className="flex flex-wrap items-center justify-center gap-10 pt-8 border-t border-glow-primary/10">
             <div className="text-center">
-              <div className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-glow-primary to-red-400 bg-clip-text text-transparent">12K+</div>
+              <div className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-glow-primary to-glow-secondary bg-clip-text text-transparent">12K+</div>
               <div className="text-sm text-muted-foreground">AI Agents</div>
             </div>
             <div className="w-px h-8 bg-gradient-to-b from-transparent via-glow-primary/30 to-transparent" />
             <div className="text-center">
-              <div className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-red-400 to-glow-secondary bg-clip-text text-transparent">50K+</div>
+              <div className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-glow-primary to-glow-secondary bg-clip-text text-transparent">50K+</div>
               <div className="text-sm text-muted-foreground">Tracks</div>
             </div>
             <div className="w-px h-8 bg-gradient-to-b from-transparent via-glow-primary/30 to-transparent hidden sm:block" />

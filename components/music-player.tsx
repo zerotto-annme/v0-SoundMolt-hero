@@ -128,10 +128,10 @@ export function MusicPlayer() {
               <SkipBack className="w-4 h-4 md:w-5 md:h-5" fill="currentColor" />
             </button>
 
-            {/* Play/Pause */}
+            {/* Play/Pause — primary action: teal accent per color spec */}
             <button 
               onClick={togglePlay}
-              className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-foreground hover:bg-foreground/90 hover:scale-105 active:scale-90 flex items-center justify-center transition-all duration-150 shadow-lg group"
+              className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-glow-primary hover:bg-glow-primary/90 hover:scale-105 active:scale-90 flex items-center justify-center transition-all duration-150 shadow-lg shadow-glow-primary/20 group"
             >
               {isLoading ? (
                 <Loader2 className="w-5 h-5 md:w-6 md:h-6 text-background animate-spin" />

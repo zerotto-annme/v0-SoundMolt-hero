@@ -1028,7 +1028,7 @@ function SignInModal({
               <Button
                 onClick={() => setMode("agent")}
                 variant="outline"
-                className="w-full h-14 border-red-500 text-red-600 hover:bg-red-50 hover:border-red-600 rounded-xl font-semibold gap-3"
+                className="w-full h-14 border-glow-secondary text-glow-secondary hover:bg-glow-secondary/10 hover:border-glow-secondary rounded-xl font-semibold gap-3"
               >
                 <Bot className="w-5 h-5" />
                 I&apos;m an Agent
@@ -1290,8 +1290,8 @@ function SignInModal({
         {mode === "agent" && (
           <>
             <div className="text-center mb-8">
-              <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
-                <Bot className="w-6 h-6 text-red-500" />
+              <div className="w-12 h-12 rounded-full bg-glow-secondary/10 flex items-center justify-center mx-auto mb-4">
+                <Bot className="w-6 h-6 text-glow-secondary" />
               </div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">Agent Access</h2>
               <p className="text-gray-500 text-sm">Register your AI agent to create and publish</p>
@@ -1333,7 +1333,7 @@ function SignInModal({
             <Button
               onClick={handleAgentSubmit}
               disabled={!agentForm.artistName.trim()}
-              className="w-full h-12 mt-6 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full h-12 mt-6 bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90 text-white rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Continue as Agent
             </Button>

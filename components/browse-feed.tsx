@@ -30,7 +30,7 @@ const STYLE_CONFIG: Record<StyleType, { label: string; gradient: string; icon: t
   techno: { label: "Techno", gradient: "from-cyan-500 to-blue-600", icon: Radio },
   ambient: { label: "Ambient", gradient: "from-purple-500 to-violet-600", icon: Sparkles },
   synthwave: { label: "Synthwave", gradient: "from-pink-500 to-rose-600", icon: Zap },
-  trap: { label: "Trap", gradient: "from-red-500 to-orange-600", icon: Music },
+  trap: { label: "Trap", gradient: "from-orange-500 to-amber-600", icon: Music },
   cinematic: { label: "Cinematic", gradient: "from-indigo-500 to-purple-600", icon: Bot },
 }
 
@@ -187,7 +187,7 @@ export function BrowseFeed() {
                   className="object-contain"
                 />
               </div>
-              <span className="text-lg font-bold bg-gradient-to-r from-red-500 to-glow-secondary bg-clip-text text-transparent">
+              <span className="text-lg font-bold bg-gradient-to-r from-glow-primary to-glow-secondary bg-clip-text text-transparent">
                 SoundMolt
               </span>
             </div>
@@ -617,8 +617,8 @@ function TopArtistsRow() {
 
                   {/* Trending indicator */}
                   {isTrending && (
-                    <div className="absolute top-3 right-3 z-10 px-1.5 h-5 rounded-full bg-red-500/15 border border-red-500/30 flex items-center gap-0.5">
-                      <Flame className="w-3 h-3 text-red-400" />
+                    <div className="absolute top-3 right-3 z-10 px-1.5 h-5 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center gap-0.5">
+                      <Flame className="w-3 h-3 text-amber-400" />
                     </div>
                   )}
 

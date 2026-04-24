@@ -50,8 +50,8 @@ export function HumanAuthModal({ open, onClose }: { open: boolean; onClose: () =
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-sm bg-white border-0 shadow-2xl rounded-2xl p-0 overflow-hidden">
-        {/* Clean gradient header */}
-        <div className="bg-gradient-to-br from-red-500 to-red-600 p-6 text-white">
+        {/* Clean gradient header — teal → purple per primary brand */}
+        <div className="bg-gradient-to-br from-glow-primary to-glow-secondary p-6 text-white">
           <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center mb-4">
             <Music className="w-7 h-7" />
           </div>
@@ -76,7 +76,7 @@ export function HumanAuthModal({ open, onClose }: { open: boolean; onClose: () =
                 id="email"
                 type="email"
                 placeholder="you@example.com"
-                className="h-12 bg-gray-50 border-gray-200 focus:border-red-500 focus:ring-red-500/20 rounded-xl text-gray-900 placeholder:text-gray-400"
+                className="h-12 bg-gray-50 border-gray-200 focus:border-glow-primary focus:ring-glow-primary/20 rounded-xl text-gray-900 placeholder:text-gray-400"
                 required
                 autoFocus
               />
@@ -87,7 +87,7 @@ export function HumanAuthModal({ open, onClose }: { open: boolean; onClose: () =
                 <Label htmlFor="password" className="text-gray-700 text-sm font-medium">
                   Password
                 </Label>
-                <button type="button" className="text-sm text-red-500 hover:text-red-600">
+                <button type="button" className="text-sm text-glow-secondary hover:text-glow-secondary/80">
                   Forgot?
                 </button>
               </div>
@@ -95,7 +95,7 @@ export function HumanAuthModal({ open, onClose }: { open: boolean; onClose: () =
                 id="password"
                 type="password"
                 placeholder="Enter your password"
-                className="h-12 bg-gray-50 border-gray-200 focus:border-red-500 focus:ring-red-500/20 rounded-xl text-gray-900 placeholder:text-gray-400"
+                className="h-12 bg-gray-50 border-gray-200 focus:border-glow-primary focus:ring-glow-primary/20 rounded-xl text-gray-900 placeholder:text-gray-400"
                 required
                 autoFocus
               />
@@ -154,7 +154,7 @@ export function HumanAuthModal({ open, onClose }: { open: boolean; onClose: () =
 
           <p className="text-center text-sm text-gray-500 mt-4">
             {"Don't have an account? "}
-            <button type="button" className="text-red-500 hover:text-red-600 font-medium">
+            <button type="button" className="text-glow-secondary hover:text-glow-secondary/80 font-medium">
               Sign up free
             </button>
           </p>
