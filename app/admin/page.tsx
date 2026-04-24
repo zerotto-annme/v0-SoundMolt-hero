@@ -12,6 +12,8 @@ import {
   Eye,
   Power,
   PowerOff,
+  ExternalLink,
+  Sparkles,
 } from "lucide-react"
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -55,9 +57,25 @@ interface AdminAgent {
   created_at: string
 }
 interface HealthData {
-  missing_audio_url: Array<{ id: string; title: string; created_at: string }>
-  missing_analysis: Array<{ id: string; title: string; created_at: string }>
-  failed_analysis: Array<{ id: string; track_id: string; provider: string; created_at: string }>
+  missing_audio_url: Array<{
+    id: string
+    title: string
+    created_at: string
+    published_at: string | null
+  }>
+  missing_analysis: Array<{
+    id: string
+    title: string
+    created_at: string
+    published_at: string | null
+  }>
+  failed_analysis: Array<{
+    id: string
+    track_id: string
+    provider: string
+    created_at: string
+    published_at: string | null
+  }>
 }
 
 type Section = "overview" | "tracks" | "users" | "agents" | "health"
@@ -245,6 +263,15 @@ function AdminDashboard() {
     section === "health",
   )
 
+  // Track-level mutations (publish/hide/delete/re-analyze) affect BOTH the
+  // Tracks listing and the System health lists, so we expose a single
+  // "refresh everything that touches tracks" callback both sections share.
+  const tracksReload = tracks.reload
+  const healthReload = health.reload
+  const reloadTrackData = useCallback(async () => {
+    await Promise.all([tracksReload(), healthReload()])
+  }, [tracksReload, healthReload])
+
   const sections: Array<{ id: Section; label: string }> = [
     { id: "overview", label: "Overview" },
     { id: "tracks", label: "Tracks" },
@@ -281,10 +308,14 @@ function AdminDashboard() {
 
       <main className="max-w-7xl mx-auto px-4 md:px-8 py-8">
         {section === "overview" && <OverviewSection res={overview} />}
-        {section === "tracks" && <TracksSection res={tracks} />}
+        {section === "tracks" && (
+          <TracksSection res={tracks} onTrackChanged={reloadTrackData} />
+        )}
         {section === "users" && <UsersSection res={users} />}
         {section === "agents" && <AgentsSection res={agents} />}
-        {section === "health" && <HealthSection res={health} />}
+        {section === "health" && (
+          <HealthSection res={health} onTrackChanged={reloadTrackData} />
+        )}
       </main>
     </div>
   )
@@ -326,7 +357,13 @@ function OverviewSection({ res }: { res: AdminResource<Overview> }) {
 }
 
 // ── Tracks ──────────────────────────────────────────────────────────
-function TracksSection({ res }: { res: AdminResource<{ tracks: AdminTrack[] }> }) {
+function TracksSection({
+  res,
+  onTrackChanged,
+}: {
+  res: AdminResource<{ tracks: AdminTrack[] }>
+  onTrackChanged: () => Promise<void> | void
+}) {
   const { data, loading, error, reload } = res
   const tracks = data?.tracks ?? []
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -339,7 +376,7 @@ function TracksSection({ res }: { res: AdminResource<{ tracks: AdminTrack[] }> }
         method: "PATCH",
         body: JSON.stringify({ action }),
       })
-      await reload()
+      await onTrackChanged()
     } catch (e) {
       alert(`Failed: ${(e as Error).message}`)
     } finally {
@@ -352,9 +389,24 @@ function TracksSection({ res }: { res: AdminResource<{ tracks: AdminTrack[] }> }
     setBusyId(t.id)
     try {
       await adminFetch(`/api/admin/tracks/${t.id}`, { method: "DELETE" })
-      await reload()
+      await onTrackChanged()
     } catch (e) {
       alert(`Failed: ${(e as Error).message}`)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function reanalyze(t: AdminTrack) {
+    setBusyId(t.id)
+    try {
+      // POSTs to the public /api/tracks/:id/analyze endpoint with the
+      // admin's own Supabase JWT — the route accepts admin tokens as
+      // a third auth path alongside owner JWT and agent bearer key.
+      await adminFetch(`/api/tracks/${t.id}/analyze`, { method: "POST" })
+      await onTrackChanged()
+    } catch (e) {
+      alert(`Re-analyze failed: ${(e as Error).message}`)
     } finally {
       setBusyId(null)
     }
@@ -388,28 +440,101 @@ function TracksSection({ res }: { res: AdminResource<{ tracks: AdminTrack[] }> }
           <span key="p" className="text-xs text-muted-foreground">
             {t.published_at ? formatDate(t.published_at) : <Pill tone="warn">hidden</Pill>}
           </span>,
-          <div key="act" className="flex items-center gap-1.5">
-            <ActionButton
-              title={t.published_at ? "Hide / unpublish" : "Publish"}
-              onClick={() => togglePublish(t)}
-              disabled={busyId === t.id}
-              variant="default"
-            >
-              {t.published_at ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              <span className="text-xs">{t.published_at ? "Hide" : "Publish"}</span>
-            </ActionButton>
-            <ActionButton
-              title="Delete"
-              onClick={() => deleteTrack(t)}
-              disabled={busyId === t.id}
-              variant="danger"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </ActionButton>
-          </div>,
+          <TrackActions
+            key="act"
+            trackId={t.id}
+            title={t.title}
+            published={!!t.published_at}
+            audioPresent={t.audio_url_exists}
+            busy={busyId === t.id}
+            onReanalyze={() => reanalyze(t)}
+            onTogglePublish={() => togglePublish(t)}
+            onDelete={() => deleteTrack(t)}
+          />,
         ])}
       />
     </SectionShell>
+  )
+}
+
+/**
+ * Compact action cluster shared by the Tracks listing and the
+ * System health blocks. Renders Open / Re-analyze / Hide-or-Publish /
+ * Delete buttons with consistent affordances:
+ *
+ *   • Open:        external link to /tracks/{id} in a new tab.
+ *   • Re-analyze:  disabled when the track has no audio (the analyze
+ *                  endpoint would 400 anyway).
+ *   • Hide:        only rendered when the track is currently published.
+ *                  Health blocks may also opt out of publish-when-hidden
+ *                  (passing onTogglePublish=null) since "publish a broken
+ *                  track" is rarely the right move from a health list.
+ *   • Delete:      always available, gated by a confirm() prompt.
+ */
+function TrackActions({
+  trackId,
+  title,
+  published,
+  audioPresent,
+  busy,
+  onReanalyze,
+  onTogglePublish,
+  onDelete,
+}: {
+  trackId: string
+  title: string
+  published: boolean
+  audioPresent: boolean
+  busy: boolean
+  onReanalyze: () => void
+  onTogglePublish: (() => void) | null
+  onDelete: () => void
+}) {
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <a
+        href={`/tracks/${trackId}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={`Open "${title}" in a new tab`}
+        className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-white/15 text-foreground hover:border-glow-primary/40 hover:text-glow-primary transition-colors"
+      >
+        <ExternalLink className="w-3.5 h-3.5" />
+        <span className="text-xs">Open</span>
+      </a>
+      <ActionButton
+        title={
+          audioPresent
+            ? "Re-run Essentia analysis on this track"
+            : "Cannot analyse: track has no audio_url"
+        }
+        onClick={onReanalyze}
+        disabled={busy || !audioPresent}
+        variant="default"
+      >
+        <Sparkles className="w-3.5 h-3.5" />
+        <span className="text-xs">Re-analyze</span>
+      </ActionButton>
+      {onTogglePublish && (
+        <ActionButton
+          title={published ? "Hide / unpublish" : "Publish"}
+          onClick={onTogglePublish}
+          disabled={busy}
+          variant="default"
+        >
+          {published ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+          <span className="text-xs">{published ? "Hide" : "Publish"}</span>
+        </ActionButton>
+      )}
+      <ActionButton
+        title="Delete permanently"
+        onClick={onDelete}
+        disabled={busy}
+        variant="danger"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+      </ActionButton>
+    </div>
   )
 }
 
@@ -502,8 +627,55 @@ function AgentsSection({ res }: { res: AdminResource<{ agents: AdminAgent[] }> }
 }
 
 // ── System health ───────────────────────────────────────────────────
-function HealthSection({ res }: { res: AdminResource<HealthData> }) {
+function HealthSection({
+  res,
+  onTrackChanged,
+}: {
+  res: AdminResource<HealthData>
+  onTrackChanged: () => Promise<void> | void
+}) {
   const { data, loading, error, reload } = res
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  async function reanalyze(trackId: string) {
+    setBusyId(trackId)
+    try {
+      await adminFetch(`/api/tracks/${trackId}/analyze`, { method: "POST" })
+      await onTrackChanged()
+    } catch (e) {
+      alert(`Re-analyze failed: ${(e as Error).message}`)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function unpublish(trackId: string) {
+    setBusyId(trackId)
+    try {
+      await adminFetch(`/api/admin/tracks/${trackId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ action: "unpublish" }),
+      })
+      await onTrackChanged()
+    } catch (e) {
+      alert(`Hide failed: ${(e as Error).message}`)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function deleteTrack(trackId: string, title: string) {
+    if (!confirm(`Delete "${title}" permanently? This cannot be undone.`)) return
+    setBusyId(trackId)
+    try {
+      await adminFetch(`/api/admin/tracks/${trackId}`, { method: "DELETE" })
+      await onTrackChanged()
+    } catch (e) {
+      alert(`Delete failed: ${(e as Error).message}`)
+    } finally {
+      setBusyId(null)
+    }
+  }
 
   return (
     <SectionShell
@@ -518,28 +690,61 @@ function HealthSection({ res }: { res: AdminResource<HealthData> }) {
             title={`Tracks missing audio_url (${data.missing_audio_url.length})`}
             empty="All tracks have an audio URL."
             rows={data.missing_audio_url.map((t) => ({
-              id: t.id,
+              key: t.id,
+              trackId: t.id,
+              title: t.title,
               left: t.title,
               right: formatDate(t.created_at),
+              published: !!t.published_at,
+              // These rows by definition have no audio — re-analyze will
+              // 400, so disable the button up-front rather than surface
+              // a confusing alert after the fact.
+              audioPresent: false,
             }))}
+            busyId={busyId}
+            onReanalyze={reanalyze}
+            onHide={unpublish}
+            onDelete={deleteTrack}
           />
           <HealthBlock
             title={`Tracks missing analysis (${data.missing_analysis.length})`}
             empty="Every track has at least one analysis row."
             rows={data.missing_analysis.map((t) => ({
-              id: t.id,
+              key: t.id,
+              trackId: t.id,
+              title: t.title,
               left: t.title,
               right: formatDate(t.created_at),
+              published: !!t.published_at,
+              // The /admin/health endpoint doesn't include audio_url for
+              // this list — assume audio is present. If it isn't, the
+              // analyze route surfaces a 400 the user sees in the alert.
+              audioPresent: true,
             }))}
+            busyId={busyId}
+            onReanalyze={reanalyze}
+            onHide={unpublish}
+            onDelete={deleteTrack}
           />
           <HealthBlock
             title={`Failed / empty analyses (${data.failed_analysis.length})`}
             empty="No failed or empty analyses detected in the recent batch."
             rows={data.failed_analysis.map((r) => ({
-              id: r.id,
+              key: r.id,
+              trackId: r.track_id,
+              title: `track ${shortId(r.track_id)}`,
               left: `${r.provider} → track ${shortId(r.track_id)}`,
               right: formatDate(r.created_at),
+              published: !!r.published_at,
+              // A failed analysis row implies the track had audio at the
+              // time the run was attempted — re-analyze is the whole
+              // point of this list.
+              audioPresent: true,
             }))}
+            busyId={busyId}
+            onReanalyze={reanalyze}
+            onHide={unpublish}
+            onDelete={deleteTrack}
           />
         </div>
       )}
@@ -684,14 +889,39 @@ function ActionButton({
   )
 }
 
+interface HealthRow {
+  /** Unique React key for this row (analysis-row id or track id). */
+  key: string
+  /** The track that the per-row actions operate on. */
+  trackId: string
+  /** Human-readable title used in confirm() prompts and tooltips. */
+  title: string
+  /** Primary label shown on the left of the row. */
+  left: string
+  /** Secondary label shown on the right (typically a timestamp). */
+  right: string
+  /** Whether the track is currently published — controls "Hide" visibility. */
+  published: boolean
+  /** Whether the track has an audio_url — controls "Re-analyze" availability. */
+  audioPresent: boolean
+}
+
 function HealthBlock({
   title,
   empty,
   rows,
+  busyId,
+  onReanalyze,
+  onHide,
+  onDelete,
 }: {
   title: string
   empty: string
-  rows: Array<{ id: string; left: string; right: string }>
+  rows: HealthRow[]
+  busyId: string | null
+  onReanalyze: (trackId: string) => void
+  onHide: (trackId: string) => void
+  onDelete: (trackId: string, title: string) => void
 }) {
   return (
     <div>
@@ -703,11 +933,31 @@ function HealthBlock({
       ) : (
         <div className="rounded-lg border border-white/10 bg-card/40 divide-y divide-white/5">
           {rows.map((r) => (
-            <div key={r.id} className="flex items-center justify-between px-4 py-2 text-sm">
-              <span className="text-foreground truncate" title={r.left}>{r.left}</span>
-              <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap ml-3">
-                {r.right}
-              </span>
+            <div
+              key={r.key}
+              className="flex items-center justify-between gap-3 px-4 py-2 text-sm"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="text-foreground truncate" title={r.left}>
+                  {r.left}
+                </div>
+                <div className="text-[10px] text-muted-foreground tabular-nums">
+                  {r.right}
+                </div>
+              </div>
+              <TrackActions
+                trackId={r.trackId}
+                title={r.title}
+                published={r.published}
+                audioPresent={r.audioPresent}
+                busy={busyId === r.trackId}
+                onReanalyze={() => onReanalyze(r.trackId)}
+                // From a health list it's rare to want to PUBLISH a still-
+                // broken track, so we only expose the toggle when it's
+                // currently published (i.e. as a Hide button).
+                onTogglePublish={r.published ? () => onHide(r.trackId) : null}
+                onDelete={() => onDelete(r.trackId, r.title)}
+              />
             </div>
           ))}
         </div>

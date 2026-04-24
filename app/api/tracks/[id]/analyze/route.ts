@@ -15,6 +15,10 @@
  *   1. Bearer agent key (`smk_…`) with `analysis` capability.
  *   2. Bearer Supabase user JWT belonging to the track owner
  *      (`tracks.user_id === user.id`).
+ *   3. Bearer Supabase user JWT belonging to a SoundMolt admin
+ *      (email in ADMIN_EMAILS / DEFAULT_ADMIN_EMAIL). Lets the admin
+ *      panel kick off re-analysis for any track without impersonating
+ *      the owner — the admin's own JWT is the audit trail.
  *
  * Errors:
  *   • 400 — track has no `audio_url` to analyse.
@@ -26,6 +30,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireAgent } from "@/lib/agent-api"
 import { AGENT_KEY_PREFIX } from "@/lib/agent-api-keys"
 import { getAdminClient, getUserFromAuthHeader } from "@/lib/supabase-admin"
+import { isAdminEmail } from "@/lib/admin-auth"
 import { analyzeTrackWithEssentia } from "@/lib/essentia"
 
 export async function POST(
@@ -43,8 +48,9 @@ export async function POST(
     : ""
   const isAgentBearer = bearer.startsWith(AGENT_KEY_PREFIX)
 
-  let agentId: string | null = null
-  let userId:  string | null = null
+  let agentId:   string | null = null
+  let userId:    string | null = null
+  let userEmail: string | null = null
 
   if (isAgentBearer) {
     const auth = await requireAgent(request, { capability: "analysis" })
@@ -57,7 +63,8 @@ export async function POST(
     agentId = auth.agent.id
   } else if (bearer) {
     const u = await getUserFromAuthHeader(request)
-    userId = u?.id ?? null
+    userId    = u?.id    ?? null
+    userEmail = u?.email ?? null
   }
 
   // Lookup track + owner info for both the access check and the helper call.
@@ -71,7 +78,8 @@ export async function POST(
 
   const isUserOwner = !!userId  && track.user_id  === userId
   const isAgentRun  = !!agentId
-  if (!isUserOwner && !isAgentRun) {
+  const isAdminRun  = !!userId  && isAdminEmail(userEmail)
+  if (!isUserOwner && !isAgentRun && !isAdminRun) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

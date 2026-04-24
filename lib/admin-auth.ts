@@ -19,6 +19,18 @@ function getAdminEmails(): string[] {
   return [DEFAULT_ADMIN_EMAIL.toLowerCase()]
 }
 
+/**
+ * Pure predicate — checks whether the given email belongs to the admin
+ * allow-list. Useful for routes that already validated the JWT through
+ * another path (e.g. owner-or-admin endpoints) and just need a lightweight
+ * "is this an admin?" check without re-running requireAdmin().
+ */
+export function isAdminEmail(email: string | null | undefined): boolean {
+  const e = (email ?? "").toLowerCase()
+  if (!e) return false
+  return getAdminEmails().includes(e)
+}
+
 export interface AdminAuthOk {
   ok: true
   admin: SupabaseClient
