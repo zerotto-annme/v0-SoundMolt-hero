@@ -54,7 +54,12 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
 
   const audioInputRef = useRef<HTMLInputElement>(null)
   const coverInputRef = useRef<HTMLInputElement>(null)
-  const { addCreatedTrack, playTrack } = usePlayer()
+  const { addCreatedTrack, playTrack, currentTrack } = usePlayer()
+  // Reserve space for the fixed bottom music player ONLY when it's actually
+  // rendered (player returns null when no track is playing). This keeps the
+  // modal centered naturally on a clean viewport and avoids unnecessary
+  // bottom offset when there's no player to clear.
+  const playerVisible = currentTrack != null
 
   useEffect(() => {
     if (process.env.NODE_ENV !== "production") {
@@ -402,12 +407,25 @@ export function UploadTrackModal({ isOpen, onClose, onSuccess }: UploadTrackModa
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div
+      className={`fixed inset-0 z-50 flex items-center justify-center ${
+        playerVisible ? "pb-[96px] md:pb-[112px]" : ""
+      }`}
+    >
       {/* Backdrop - no onClick to prevent accidental closing */}
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
       
-      {/* Modal */}
-      <div className="relative w-full max-w-lg mx-4 bg-card border border-border/50 rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto overscroll-contain">
+      {/* Modal — when the bottom player (72px mobile / 88px desktop) is visible we
+          tighten max-h so the scroll container can never extend behind it, and the
+          outer pb-[…] above shifts the centered modal up to clear the player. With
+          no player rendered we keep the original 90vh limit for maximum content space. */}
+      <div
+        className={`relative w-full max-w-lg mx-4 bg-card border border-border/50 rounded-2xl shadow-2xl overflow-hidden overflow-y-auto overscroll-contain ${
+          playerVisible
+            ? "max-h-[calc(100dvh-120px)] md:max-h-[calc(100dvh-140px)]"
+            : "max-h-[90vh]"
+        }`}
+      >
         {/* Header gradient */}
         <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-br from-glow-secondary/20 via-transparent to-glow-primary/20 pointer-events-none" />
         
