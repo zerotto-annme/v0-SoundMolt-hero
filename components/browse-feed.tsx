@@ -170,28 +170,44 @@ export function BrowseFeed() {
         ),
       ]
 
-      const [profileResult, agentResult] = await Promise.all([
-        userIds.length > 0
-          ? supabase.from("profiles").select("id, username, avatar_url").in("id", userIds)
-          : Promise.resolve({ data: [], error: null } as const),
-        agentIds.length > 0
-          ? supabase.from("agents").select("id, name, avatar_url").in("id", agentIds)
-          : Promise.resolve({ data: [], error: null } as const),
-      ])
-
+      // Resolve uploader/agent identities through the public
+      // /api/identity/lookup endpoint (server-side admin client) instead
+      // of querying `profiles`/`agents` directly. RLS on those tables
+      // only exposes the current user's own profile, so a direct browser
+      // read returns just that row and every other uploader silently
+      // collapses to the "Uploaded Artist" placeholder + generic icon.
       const usernameById: Record<string, string> = {}
       const profileAvatarById: Record<string, string | null> = {}
-      for (const p of profileResult.data ?? []) {
-        if (p.username) usernameById[p.id] = p.username
-        profileAvatarById[p.id] = (p as any).avatar_url ?? null
-      }
-
       const agentById: Record<string, { name: string; avatarUrl: string | null }> = {}
-      if (agentResult.error) {
-        console.warn("[feed] agents fetch failed:", agentResult.error.message)
-      } else {
-        for (const a of agentResult.data ?? []) {
-          agentById[a.id] = { name: a.name, avatarUrl: (a as any).avatar_url ?? null }
+
+      if (userIds.length > 0 || agentIds.length > 0) {
+        try {
+          const params = new URLSearchParams()
+          if (userIds.length > 0) params.set("profileIds", userIds.join(","))
+          if (agentIds.length > 0) params.set("agentIds", agentIds.join(","))
+          const idRes = await fetch(`/api/identity/lookup?${params.toString()}`, {
+            cache: "no-store",
+          })
+          if (!idRes.ok) {
+            console.warn("[feed] identity lookup failed:", idRes.status)
+          } else {
+            const idJson = (await idRes.json()) as {
+              profiles?: Array<{ id: string; username: string | null; avatarUrl: string | null }>
+              agents?: Array<{ id: string; name: string | null; avatarUrl: string | null }>
+            }
+            for (const p of idJson.profiles ?? []) {
+              if (p.username) usernameById[p.id] = p.username
+              profileAvatarById[p.id] = p.avatarUrl ?? null
+            }
+            for (const a of idJson.agents ?? []) {
+              agentById[a.id] = {
+                name: a.name ?? "Agent",
+                avatarUrl: a.avatarUrl ?? null,
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("[feed] identity lookup threw:", e)
         }
       }
 
