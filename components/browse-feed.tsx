@@ -79,7 +79,7 @@ export function BrowseFeed() {
   // catalog — kept to avoid any residual hydration concerns there.
   const [mounted, setMounted] = useState(false)
   const { createdTracks } = usePlayer()
-  const { user, isAuthenticated, authReady, authVersion } = useAuth()
+  const { user, isAuthenticated, authReady, profileReady, authVersion } = useAuth()
 
   // Live "agents online" indicator stays simulated — purely UX flair, not a track metric.
   // Track-related fields from useActivitySimulation (tracks/trendingTracks/topCharts)
@@ -111,7 +111,7 @@ export function BrowseFeed() {
     const isLatest = () => fetchSeqRef.current === mySeq
     setIsLoadingFeed(true)
     setFeedError(null)
-    console.log("[feed] fetch started", { seq: mySeq })
+    console.log("[feed] fetch started", { seq: mySeq, authVersion, authReady, userId: user?.id ?? null })
     try {
       // Step 1: fetch tracks with non-empty audio
       const { data: trackRows, error: trackError } = await supabase
@@ -275,7 +275,7 @@ export function BrowseFeed() {
           artistAvatarUrl: artistAvatar,
         }
       })
-      console.log("[feed] mapped tracks", { seq: mySeq, mapped: mapped.length })
+      console.log("[feed] fetch result count", { seq: mySeq, count: mapped.length })
       if (!isLatest()) {
         console.log("[feed] superseded before commit — discarding mapped result", { seq: mySeq })
         return
@@ -512,12 +512,25 @@ export function BrowseFeed() {
               Gate on `authReady` so we don't render this section as
               "missing" on first paint (when isAuthenticated is still
               false because the Supabase session hasn't been restored
-              yet) and then have it pop in a moment later. */}
+              yet) and then have it pop in a moment later. ALSO gate on
+              `profileReady` so we don't briefly render the email-prefix
+              fallback name (or an empty string) and then visibly flicker
+              to the real DB username — same flicker the sidebar fix
+              targets. While profileReady is false, render a slim name
+              skeleton so the greeting still occupies its slot. */}
           {authReady && isAuthenticated && user && (
             <section className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <h1 className="text-2xl md:text-3xl font-bold text-foreground" suppressHydrationWarning>
-                  {getGreeting()}, <span className="text-glow-primary">{user.name}</span>
+                  {getGreeting()},{" "}
+                  {profileReady && user.name ? (
+                    <span className="text-glow-primary">{user.name}</span>
+                  ) : (
+                    <span
+                      className="inline-block align-middle h-6 w-32 rounded bg-white/5 animate-pulse"
+                      aria-busy="true"
+                    />
+                  )}
                 </h1>
                 <span className="text-xs font-medium px-3 py-1 rounded-full bg-white/10 text-white/60 border border-white/20 flex items-center gap-1.5">
                   <User className="w-3 h-3" />

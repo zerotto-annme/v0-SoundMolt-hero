@@ -61,7 +61,7 @@ function TrackActionsMenu({ track, onEdit, onDelete, onPublish, isOpen, onClose 
 }
 
 export default function MyTracksPage() {
-  const { user, isAuthenticated, authReady, authVersion } = useAuth()
+  const { user, isAuthenticated, authReady, profileReady, authVersion } = useAuth()
   const router = useRouter()
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
@@ -150,13 +150,25 @@ export default function MyTracksPage() {
   useEffect(() => {
     if (!authReady) return
     if (isAuthenticated && user?.id) {
+      // Also wait for `profileReady` before firing the fetch. Otherwise
+      // the very first post-login fetch tags every uploaded track with
+      // the email-prefix fallback inside `ownerName`, then a second
+      // fetch (triggered by user.username/name landing in deps) re-tags
+      // them with the real DB username — exactly the same flicker we
+      // killed in the sidebar/greeting. Holding the spinner until
+      // profile lands costs nothing visible (skeleton already shown)
+      // and produces a single correctly-named render.
+      if (!profileReady) {
+        setTracksLoading(true)
+        return
+      }
       // Reset hasLoadedOnce on every auth-version bump so the loading
       // skeleton (not the "0 tracks" empty state) is what the user sees
       // while the post-login refetch is in flight.
       setHasLoadedOnce(false)
       setTracksLoading(true)
       if (process.env.NODE_ENV !== "production") {
-        console.log("[my-tracks] auth changed — refetching", { userId: user.id, authVersion })
+        console.log("[my-tracks] auth changed — refetching", { userId: user.id, authVersion, profileReady })
       }
       fetchTracks()
     } else {
@@ -164,7 +176,7 @@ export default function MyTracksPage() {
       // redirect effect below can take over.
       setTracksLoading(false)
     }
-  }, [authReady, authVersion, isAuthenticated, user?.id, fetchTracks])
+  }, [authReady, profileReady, authVersion, isAuthenticated, user?.id, fetchTracks])
 
   // Redirect to landing if not authenticated — but only AFTER auth has
   // actually finished restoring. Doing this before authReady is what caused

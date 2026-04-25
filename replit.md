@@ -28,6 +28,47 @@ SoundMolt is a Next.js 16 app migrated from Vercel/v0 to Replit.
 - The `SignInModal` Human section has Sign In / Sign Up sub-modes toggled by inline link.
 - `public.profiles` table must exist in Supabase with columns: `id uuid`, `username text`, `role text`.
 
+## Auth Readiness Gates
+
+To eliminate the post-login flicker (e.g. real username → email-prefix → real
+username), `useAuth()` exposes two distinct readiness flags. Consumers must
+gate UI on both:
+
+- **`authReady`** — set to `true` after `restoreSession()` finishes (or its
+  guard timer fires). Tells you whether `isAuthenticated` is trustworthy.
+- **`profileReady`** — set to `true` only after the `public.profiles` row has
+  been fetched (or fetch failed). While `false`, `user.name` may still be the
+  empty placeholder set during the bare hydration step. Treat the user object
+  as "identity known, display fields not yet known".
+
+Render rules:
+
+- `ProfileDropdown` renders a skeleton when `!authReady || (isAuthenticated && !profileReady)`.
+- `BrowseFeed` greeting renders a name skeleton in place of `user.name` until `profileReady`.
+- The feed itself fires on mount (and on `authVersion` change) — it does NOT
+  wait for `profileReady`. Logged-out and logged-in users see tracks at the
+  same time.
+- `app/my-tracks/page.tsx` gates its fetch on `authReady && isAuthenticated && user?.id`
+  (with `authVersion` as an effect dep) so tracks appear immediately after a
+  fresh login without a manual refresh.
+
+`onAuthStateChange` rules that keep this stable:
+- `TOKEN_REFRESHED` / `INITIAL_SESSION` for the same user with `profileReady===true`
+  is a no-op — does not flip `profileReady` back to `false` (this was the main
+  source of the visible flicker).
+- A new `user.id` clears the user, sets a bare `{id, email, ...}` with
+  `profileReady=false`, then fetches once and applies via `buildHumanProfile()`.
+- `SIGNED_IN` for the same user re-fetches the profile but keeps the existing
+  bare user visible until the fetch resolves.
+
+Display-name precedence is centralized in `buildHumanProfile()`:
+`merged.username || email.split("@")[0] || "User"`. The email-prefix fallback
+is **only** applied AFTER the profile fetch completes — never speculatively.
+
+Structured logs emitted at every step (filter by these prefixes when debugging):
+`AUTH_EVENT`, `[auth] profile fetch started`, `[auth] profile fetch result`,
+`[sidebar] displayName chosen`, `[feed] fetch started`, `[feed] fetch result count`.
+
 # Database Migrations
 
 SQL migrations live in the `migrations/` directory at the project root.

@@ -46,6 +46,26 @@ interface AuthContextType {
   // into the real state once the session is restored, requiring a manual
   // refresh to see correct data.
   authReady: boolean
+  // True once the public.profiles row for the current user has been fetched
+  // (or definitively determined to be absent). Components that render the
+  // user's display name / avatar (e.g. ProfileDropdown in the sidebar) MUST
+  // gate visual output on this flag — otherwise they would render the
+  // email-prefix fallback as a "fast path" name and then visibly flicker
+  // to the real DB username once the profile fetch resolves. While
+  // profileReady=false, render a skeleton instead.
+  //
+  // Lifecycle:
+  //   • starts false
+  //   • restoreSession sets bare auth fields (id/email) immediately so
+  //     isAuthenticated flips true and authReady can flip true; profileReady
+  //     stays false until fetchProfileData resolves.
+  //   • on SIGNED_IN for a NEW user.id we clear the profile and reset
+  //     profileReady=false, then re-enable it once the profile has loaded.
+  //   • on TOKEN_REFRESHED for the same user with profileReady already
+  //     true, we no-op (no refetch, no flicker).
+  //   • on SIGNED_OUT we set profileReady=true (the unauthenticated UI is
+  //     itself a stable rendered state — no skeleton needed).
+  profileReady: boolean
   // Monotonically-increasing counter that bumps every time Supabase emits a
   // session-affecting auth event (INITIAL_SESSION, SIGNED_IN,
   // TOKEN_REFRESHED, USER_UPDATED). Components that fetch user-dependent
@@ -351,6 +371,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [showAgentOnlyModal, setShowAgentOnlyModal] = useState(false)
   const [showSetUsernameModal, setShowSetUsernameModal] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
+  // See `profileReady` doc on AuthContextType for the contract. Sidebar
+  // (ProfileDropdown) gates display-name rendering on this flag to avoid
+  // the well-known "email prefix → DB username" flicker.
+  const [profileReady, setProfileReady] = useState(false)
   // See `authVersion` doc on AuthContextType for why this exists.
   const [authVersion, setAuthVersion] = useState(0)
   const router = useRouter()
@@ -359,6 +383,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // subscription teardowns on each profile update).
   const userRef = useRef(state.user)
   useEffect(() => { userRef.current = state.user }, [state.user])
+  // Stable ref to profileReady so the once-registered onAuthStateChange
+  // listener can read the LATEST value without re-subscribing on every flip.
+  // Used to no-op TOKEN_REFRESHED for an already-loaded same user (the
+  // primary cause of the post-login flicker we're fixing).
+  const profileReadyRef = useRef(profileReady)
+  useEffect(() => { profileReadyRef.current = profileReady }, [profileReady])
   // Epoch counter incremented on every auth event. Async profile-hydration
   // work captures the epoch at start; if the epoch has changed by the time
   // hydration resolves, the result is discarded. This prevents a slow
@@ -385,12 +415,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // resolved within 5s for any reason — including total network failure
     // or a wedged Supabase client lock — we force `authReady` to true so
     // the UI can at least render the unauthenticated path (Sign in card,
-    // landing page, etc) instead of staying on a permanent spinner.
+    // landing page, etc) instead of staying on a permanent spinner. We
+    // also flip profileReady=true so the sidebar exits the skeleton state
+    // (worst case: it shows the email-prefix fallback, which is far less
+    // alarming than a permanent shimmer).
     const hydrateGuardTimer = setTimeout(() => {
       if (cancelled) return
       console.warn("[auth] AUTH HYDRATION GUARD fired — forcing isHydrated=true after 5s")
       setIsHydrated(true)
+      setProfileReady(true)
     }, 5000)
+
+    // Build the final UserProfile for a successfully hydrated human session.
+    // Spec: "fallback to user.email only AFTER profile fetch completes and
+    // no username exists" — that's exactly the precedence we apply here.
+    const buildHumanProfile = (
+      sbUser: NonNullable<AuthUserLike>,
+      merged: MergedProfile | null,
+    ): { profile: UserProfile; profileUsernameIsNull: boolean; chosenSource: string } => {
+      const profileUsernameIsNull = merged?.profileUsernameIsNull ?? false
+      const username = merged?.username || sbUser.email?.split("@")[0] || "User"
+      const avatar = merged?.avatar_url || generateAvatar(username, "human")
+      return {
+        profile: {
+          id: sbUser.id,
+          role: "human",
+          name: username,
+          username: profileUsernameIsNull ? undefined : username,
+          artistName: merged?.artist_name,
+          email: sbUser.email ?? undefined,
+          avatar,
+          avatarIsCustom: merged?.avatarIsCustom ?? false,
+          createdAt: new Date(sbUser.created_at ?? Date.now()).getTime(),
+        },
+        profileUsernameIsNull,
+        chosenSource: merged?.username
+          ? "profile.username"
+          : (sbUser.email ? "email_prefix_fallback" : "literal_user"),
+      }
+    }
 
     const restoreSession = async () => {
       // Capture epoch at start; if onAuthStateChange fires (e.g. SIGNED_OUT)
@@ -410,7 +473,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const session = sessionResult.data.session
         if (session?.user) {
           const sbUser = session.user
-          // Bound profile hydration so a stuck SELECT can't block authReady.
+          console.log("AUTH_EVENT", {
+            kind: "RESTORE_SESSION",
+            userId: sbUser.id,
+            userEmail: sbUser.email ?? null,
+          })
+          // Spec: do NOT show stale or email-derived placeholder names while
+          // the profile is loading. Set bare auth fields immediately so
+          //   • isAuthenticated flips true (My Tracks etc unblock)
+          //   • user.id is available for downstream fetches
+          //   • profileReady stays false → sidebar renders skeleton
+          if (!cancelled && startEpoch === authEpochRef.current) {
+            setProfileReady(false)
+            setState({
+              user: {
+                id: sbUser.id,
+                role: "human",
+                name: "",
+                email: sbUser.email ?? undefined,
+                avatar: "",
+                createdAt: new Date(sbUser.created_at).getTime(),
+              },
+              isAuthenticated: true,
+            })
+            // Flip authReady early — pages that gate on (authReady && user.id)
+            // can start their own data fetches in parallel with profile load.
+            clearTimeout(hydrateGuardTimer)
+            setIsHydrated(true)
+          }
+
+          console.log("[auth] profile fetch started", {
+            userId: sbUser.id,
+            source: "restoreSession",
+          })
           let merged: Awaited<ReturnType<typeof fetchProfileData>> = null
           try {
             merged = await withTimeout(
@@ -419,28 +514,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               "fetchProfileData (restoreSession)"
             )
           } catch (err) {
-            console.warn("[auth] restoreSession: fetchProfileData failed/timeout — using bare metadata", err)
+            console.warn("[auth] restoreSession: fetchProfileData failed/timeout — falling back to email-prefix", err)
           }
           if (cancelled) return
           if (startEpoch !== authEpochRef.current) {
             console.log("[auth] restoreSession: dropping stale write — auth event fired during hydration", { startEpoch, currentEpoch: authEpochRef.current })
             return
           }
-          const username = merged?.username || sbUser.email?.split("@")[0] || "User"
-          const avatar = merged?.avatar_url || generateAvatar(username, "human")
-          const profileUsernameIsNull = merged?.profileUsernameIsNull ?? false
-          const userProfile: UserProfile = {
-            id: sbUser.id,
-            role: "human",
-            name: username,
-            username: profileUsernameIsNull ? undefined : username,
-            artistName: merged?.artist_name,
-            email: sbUser.email,
-            avatar,
-            avatarIsCustom: merged?.avatarIsCustom ?? false,
-            createdAt: new Date(sbUser.created_at).getTime(),
-          }
-          setState({ user: userProfile, isAuthenticated: true })
+          const { profile, profileUsernameIsNull, chosenSource } = buildHumanProfile(sbUser, merged)
+          console.log("[auth] profile username result", {
+            userId: sbUser.id,
+            username: merged?.username ?? null,
+            fallbackUsedEmail: !merged?.username,
+            source: "restoreSession",
+          })
+          setState({ user: profile, isAuthenticated: true })
+          setProfileReady(true)
+          console.log("[auth] sidebar displayName chosen", {
+            userId: sbUser.id,
+            displayName: profile.name,
+            source: chosenSource,
+          })
           setAuthVersion((v) => {
             const next = v + 1
             console.log("[auth] authVersion bumped (restoreSession)", { event: "RESTORE_SESSION", authVersion: next, userId: sbUser.id })
@@ -448,6 +542,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           })
           if (profileUsernameIsNull) setShowSetUsernameModal(true)
         } else {
+          console.log("AUTH_EVENT", { kind: "RESTORE_SESSION", userId: null, userEmail: null })
           // Fall back to localStorage for agent sessions
           const stored = localStorage.getItem(STORAGE_KEY)
           if (stored) {
@@ -456,6 +551,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               setState({ user, isAuthenticated: true })
             }
           }
+          // No human session and no agent: render unauthenticated UI without
+          // a sidebar skeleton. profileReady=true means "no profile to load".
+          setProfileReady(true)
         }
       } catch (err) {
         console.warn("[auth] restoreSession failed — falling back to localStorage", err)
@@ -470,6 +568,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch {
           localStorage.removeItem(STORAGE_KEY)
         }
+        // Don't keep the sidebar in a skeleton state forever on error.
+        setProfileReady(true)
       } finally {
         // CRITICAL: this MUST always run. authReady=false freezes the app.
         if (!cancelled) {
@@ -486,7 +586,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Bump the epoch FIRST so any in-flight async work from the previous
       // event is invalidated before we kick off new async work below.
       const myEpoch = ++authEpochRef.current
-      console.log("AUTH STATE CHANGE", { event, hasSession: !!session, userId: session?.user?.id ?? null, epoch: myEpoch })
+      console.log("AUTH_EVENT", {
+        event,
+        hasSession: !!session,
+        userId: session?.user?.id ?? null,
+        userEmail: session?.user?.email ?? null,
+        epoch: myEpoch,
+      })
 
       // Safety net: any auth event also flips authReady=true. If
       // restoreSession somehow stalled before reaching its finally, this
@@ -496,14 +602,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (event === "SIGNED_OUT") {
         // Spec: "SIGNED_OUT must clear user/profile but not freeze app".
-        // We unconditionally clear the human session here. Agent sessions
-        // live in localStorage and aren't governed by Supabase auth, so
-        // we leave them in place; if you want full sign-out for agents,
-        // call logout() from the menu which clears both paths.
         setState(prev => {
           if (prev.user?.role === "agent") return prev
           return { user: null, isAuthenticated: false }
         })
+        // Unauthenticated UI is itself a stable rendered state — flip
+        // profileReady=true so the sidebar shows the Login button instead
+        // of staying on a permanent skeleton.
+        setProfileReady(true)
         setShowSetUsernameModal(false)
         setAuthVersion((v) => {
           const next = v + 1
@@ -521,31 +627,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           event === "USER_UPDATED")
       ) {
         const sbUser = session.user
+        const prevUser = userRef.current
 
-        // Spec: "SIGNED_IN must set user immediately". Set a minimal user
-        // profile from auth metadata RIGHT AWAY so isAuthenticated flips
-        // even if profile hydration is slow or fails. The full profile
-        // is then merged in below as soon as fetchProfileData resolves.
-        if (event === "SIGNED_IN" || event === "INITIAL_SESSION") {
-          const fastUsername = sbUser.user_metadata?.username || sbUser.email?.split("@")[0] || "User"
-          setState(prev => {
-            if (prev.user?.id === sbUser.id) return prev
-            return {
-              user: {
-                id: sbUser.id,
-                role: "human",
-                name: fastUsername,
-                username: fastUsername,
-                email: sbUser.email,
-                avatar: sbUser.user_metadata?.avatar_url || generateAvatar(fastUsername, "human"),
-                avatarIsCustom: false,
-                createdAt: new Date(sbUser.created_at).getTime(),
-              },
-              isAuthenticated: true,
-            }
+        // FLICKER GUARD: TOKEN_REFRESHED / INITIAL_SESSION on a user whose
+        // profile is already loaded must NOT refetch — that's the path
+        // that previously overwrote the real DB username with the
+        // email-prefix fallback whenever the profiles SELECT had a
+        // transient slow response. Bail early.
+        if (
+          (event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") &&
+          prevUser?.id === sbUser.id &&
+          profileReadyRef.current
+        ) {
+          console.log("[auth] no-op auth event for known ready user", {
+            event,
+            userId: sbUser.id,
           })
+          return
         }
 
+        // Spec: "On SIGNED_IN — clear old profile, set user, fetch fresh
+        // profile once". For a NEW user (or first SIGNED_IN), wipe any
+        // previous profile fields and reset profileReady=false so the
+        // sidebar renders a skeleton instead of any stale or
+        // email-derived placeholder. We KEEP isAuthenticated=true and
+        // we KEEP user.id populated so My Tracks / Liked / etc can fetch
+        // in parallel with the profile load.
+        if (prevUser?.id !== sbUser.id) {
+          setProfileReady(false)
+          setState({
+            user: {
+              id: sbUser.id,
+              role: "human",
+              name: "",
+              email: sbUser.email ?? undefined,
+              avatar: "",
+              createdAt: new Date(sbUser.created_at).getTime(),
+            },
+            isAuthenticated: true,
+          })
+        } else if (event === "SIGNED_IN") {
+          // Same user, fresh sign-in (e.g. silent re-issue) — re-fetch
+          // the profile from scratch to pick up any server-side changes.
+          setProfileReady(false)
+        }
+
+        console.log("[auth] profile fetch started", {
+          userId: sbUser.id,
+          source: event,
+        })
         // Bound profile hydration so a stuck SELECT can't wedge the
         // onAuthStateChange listener (which would silently drop future
         // auth events).
@@ -557,7 +687,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             "fetchProfileData (onAuthStateChange)"
           )
         } catch (err) {
-          console.warn("[auth] onAuthStateChange: fetchProfileData failed/timeout — keeping fast profile", err)
+          console.warn("[auth] onAuthStateChange: fetchProfileData failed/timeout — falling back to email-prefix", err)
         }
 
         // Stale-event guard: if another auth event (e.g. SIGNED_OUT)
@@ -568,21 +698,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return
         }
 
-        const username = merged?.username || sbUser.email?.split("@")[0] || "User"
-        const avatar = merged?.avatar_url || generateAvatar(username, "human")
-        const profileUsernameIsNull = merged?.profileUsernameIsNull ?? false
-        const userProfile: UserProfile = {
-          id: sbUser.id,
-          role: "human",
-          name: username,
-          username: profileUsernameIsNull ? undefined : username,
-          artistName: merged?.artist_name,
-          email: sbUser.email,
-          avatar,
-          avatarIsCustom: merged?.avatarIsCustom ?? false,
-          createdAt: new Date(sbUser.created_at).getTime(),
-        }
-        setState({ user: userProfile, isAuthenticated: true })
+        const { profile, profileUsernameIsNull, chosenSource } = buildHumanProfile(sbUser, merged)
+        console.log("[auth] profile username result", {
+          userId: sbUser.id,
+          username: merged?.username ?? null,
+          fallbackUsedEmail: !merged?.username,
+          source: event,
+        })
+        setState({ user: profile, isAuthenticated: true })
+        setProfileReady(true)
+        console.log("[auth] sidebar displayName chosen", {
+          userId: sbUser.id,
+          displayName: profile.name,
+          source: chosenSource,
+        })
         setAuthVersion((v) => {
           const next = v + 1
           console.log("[auth] authVersion bumped", { event, authVersion: next, userId: sbUser.id })
@@ -612,16 +741,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [state.user, isHydrated])
 
   const login = useCallback((role: "human" | "agent", profile?: Partial<UserProfile>) => {
-    const name = profile?.name || (role === "agent" ? profile?.artistName : profile?.username) || "User"
+    // FLICKER FIX: for the human path do NOT fabricate a display name from
+    // email when the caller didn't provide one. The auth listener will
+    // shortly fire SIGNED_IN, fetch the real public.profiles row, and
+    // overwrite this state. Until then the sidebar (ProfileDropdown) gates
+    // on profileReady=false and renders a skeleton — not the email prefix.
+    //
+    // The signup path DOES pass a real `username` (the one the user
+    // chose), so it lands here as `profile.username` and we honour it.
+    const explicitName =
+      profile?.name ||
+      (role === "agent" ? profile?.artistName : profile?.username)
 
     const user: UserProfile = {
       id: profile?.id || `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
       role,
-      name,
+      // For human with no real username yet → empty string + skeleton via
+      // profileReady=false. For agent we still need a name immediately
+      // (no profile fetch follows) so we keep the legacy fallback there.
+      name: explicitName || (role === "agent" ? "User" : ""),
       username: profile?.username,
       artistName: profile?.artistName,
       email: profile?.email,
-      avatar: profile?.avatar || generateAvatar(name, role),
+      avatar:
+        profile?.avatar ||
+        (explicitName ? generateAvatar(explicitName, role) : ""),
       agentIdentifier: profile?.agentIdentifier,
       modelProvider: profile?.modelProvider,
       agentEndpoint: profile?.agentEndpoint,
@@ -632,6 +776,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setState({ user, isAuthenticated: true })
+
+    if (role === "agent") {
+      // Agents have no DB profile fetch — their state IS the final state.
+      setProfileReady(true)
+    } else {
+      // Human: only consider profile "ready" right now if the caller
+      // already supplied a real username (signup path). Otherwise wait
+      // for SIGNED_IN → fetchProfileData to flip it true.
+      setProfileReady(!!profile?.username)
+    }
+
+    console.log("AUTH_EVENT", {
+      kind: "MANUAL_LOGIN",
+      role,
+      userId: user.id,
+      userEmail: user.email ?? null,
+      hasUsername: !!profile?.username,
+    })
+
     // Bump for the agent login path too — Supabase's onAuthStateChange
     // doesn't fire for non-Supabase agent sessions, so dependent hooks
     // would otherwise miss the transition.
@@ -842,6 +1005,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role,
         isAuthenticated: state.isAuthenticated,
         authReady: isHydrated,
+        profileReady,
         authVersion,
         login,
         logout,
@@ -1175,21 +1339,17 @@ function SignInModal({
           // a 10s profile hydration on top of that would push the visible
           // loading well past the budget.
           //
-          // Instead: close the modal immediately with the bare auth-user
-          // metadata. The onAuthStateChange listener (registered in
-          // AuthProvider) will fire SIGNED_IN within milliseconds, run
-          // its OWN bounded fetchProfileData, and merge the richer
-          // profile into context state. Avatar/My Tracks/etc. update
-          // automatically via the authVersion ticker.
-          const fastUsername = data.user.user_metadata?.username || data.user.email?.split("@")[0] || "User"
-          const fastAvatar = data.user.user_metadata?.avatar_url || generateAvatar(fastUsername, "human")
+          // Instead: close the modal immediately with ONLY the bare auth
+          // identity (id + email). We deliberately do NOT pass any
+          // username/avatar guess derived from the email — the auth
+          // listener fires SIGNED_IN within ~ms, runs its OWN bounded
+          // fetchProfileData, and merges the real public.profiles row.
+          // Until that resolves the sidebar shows a skeleton (gated by
+          // profileReady=false), which is what eliminates the
+          // "email-prefix → DB username → email-prefix" flicker.
           onLogin("human", {
             id: data.user.id,
-            username: fastUsername,
-            name: fastUsername,
             email: data.user.email,
-            avatar: fastAvatar,
-            avatarIsCustom: false,
             createdAt: new Date(data.user.created_at).getTime(),
           })
         }
@@ -1902,15 +2062,22 @@ export function RoleBadge({ showLogout = true }: { showLogout?: boolean }) {
 
 // Profile Dropdown Component
 export function ProfileDropdown() {
-  const { user, isAuthenticated, authReady, logout, openSignInModal } = useAuth()
+  const { user, isAuthenticated, authReady, profileReady, logout, openSignInModal } = useAuth()
   const [isOpen, setIsOpen] = useState(false)
 
-  // Don't flash a "Login" button while the Supabase session is still being
-  // restored — the user is signed in, we just don't know it yet. Show a
-  // neutral skeleton until auth has actually resolved.
-  if (!authReady) {
+  // Two distinct skeleton conditions, both rendering the same placeholder:
+  //   1) authReady === false — Supabase session restore in flight; we don't
+  //      yet know whether the user is signed in. Showing a "Login" button
+  //      here would flash for signed-in users.
+  //   2) authenticated && profileReady === false — we know who the user
+  //      is, but the public.profiles row hasn't loaded yet. Rendering
+  //      `user.name` at this point would show the email-prefix fallback
+  //      and then visibly flicker to the real DB username (the bug we're
+  //      fixing). Skeleton instead.
+  const showSkeleton = !authReady || (isAuthenticated && !profileReady)
+  if (showSkeleton) {
     return (
-      <div className="flex items-center gap-3 px-3 py-2">
+      <div className="flex items-center gap-3 px-3 py-2" aria-busy="true">
         <div className="w-8 h-8 rounded-full bg-white/5 animate-pulse" />
         <div className="hidden md:block w-20 h-4 rounded bg-white/5 animate-pulse" />
       </div>
