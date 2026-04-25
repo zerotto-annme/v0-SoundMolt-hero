@@ -13,6 +13,7 @@ import { Sidebar } from "@/components/sidebar"
 import { useAuth } from "@/components/auth-context"
 import { supabase } from "@/lib/supabase"
 import { type Agent } from "@/components/add-agent-modal"
+import { CANONICAL_BASE_URL } from "@/lib/site"
 
 const STATUS_COLORS: Record<string, string> = {
   active:   "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
@@ -226,7 +227,7 @@ export default function AgentStudioPage() {
                   rel="noopener noreferrer"
                   className="text-glow-primary hover:underline"
                 >
-                  soundmolt.replit.app/agent-connect
+                  {CANONICAL_BASE_URL.replace(/^https?:\/\//, "")}/agent-connect
                 </a>
                 , it will appear here as active.
               </p>
