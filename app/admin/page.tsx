@@ -63,7 +63,33 @@ interface AdminUser {
   id: string
   email: string | null
   created_at: string
+  username: string | null
+  role: string | null
+  status: "active" | "suspended" | "deleted" | string
+  suspended_at: string | null
+  deleted_at: string | null
   track_count: number
+  agent_count: number
+}
+
+interface UserDetail {
+  user: { id: string; email: string | null; created_at: string; banned_until: string | null }
+  profile: {
+    id?: string
+    username?: string | null
+    role?: string | null
+    avatar_url?: string | null
+    avatar_is_custom?: boolean | null
+    status?: string | null
+    suspended_at?: string | null
+    deleted_at?: string | null
+    updated_at?: string | null
+  } | null
+  tracks: Array<{ id: string; title: string; published_at: string | null; created_at: string }>
+  agents: Array<{ id: string; name: string; status: string; last_active_at: string | null; created_at: string }>
+  recent_activity: Array<{ id: string; track_id: string; event_type: string | null; created_at: string }>
+  warnings: string[]
+  counts: { tracks: number; agents: number; active_agents: number; recent_activity: number }
 }
 interface AdminAgent {
   id: string
@@ -770,7 +796,7 @@ function AdminDashboard() {
         {section === "tracks" && (
           <TracksSection res={tracks} onTrackChanged={reloadTrackData} notify={notify} />
         )}
-        {section === "users" && <UsersSection res={users} />}
+        {section === "users" && <UsersSection res={users} notify={notify} />}
         {section === "agents" && <AgentsSection res={agents} notify={notify} />}
         {section === "health" && (
           <HealthSection res={health} onTrackChanged={reloadTrackData} notify={notify} />
@@ -1109,9 +1135,64 @@ function TrackActions({
 }
 
 // ── Users ───────────────────────────────────────────────────────────
-function UsersSection({ res }: { res: AdminResource<{ users: AdminUser[] }> }) {
+function UsersSection({
+  res,
+  notify,
+}: {
+  res: AdminResource<{ users: AdminUser[] }>
+  notify: Notify
+}) {
   const { data, loading, error, reload } = res
   const users = data?.users ?? []
+  // Per-row in-flight key — disables that row's actions while a mutation
+  // is running. Only one user mutation at a time.
+  const [busyId, setBusyId] = useState<string | null>(null)
+  // The user currently shown in the right-side detail drawer, or null.
+  const [openUserId, setOpenUserId] = useState<string | null>(null)
+  // The user the admin is in the process of deleting — drives the
+  // confirmation modal. Type-DELETE-to-confirm gating lives inside the
+  // modal; this section just tracks which user is being targeted.
+  const [pendingDelete, setPendingDelete] = useState<AdminUser | null>(null)
+
+  async function setStatus(u: AdminUser, status: "active" | "suspended") {
+    setBusyId(u.id)
+    try {
+      await adminFetch(`/api/admin/users/${u.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      })
+      notify(
+        status === "suspended"
+          ? `Suspended ${u.email ?? shortId(u.id)} — login is blocked and agents deactivated.`
+          : `Reactivated ${u.email ?? shortId(u.id)}.`,
+        "success",
+      )
+      await reload()
+    } catch (e) {
+      notify(`Failed to update user: ${(e as Error).message}`, "error")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function confirmDelete(u: AdminUser) {
+    setBusyId(u.id)
+    try {
+      await adminFetch(`/api/admin/users/${u.id}`, {
+        method: "DELETE",
+        headers: { "X-Confirm-Delete": "DELETE" },
+      })
+      notify(`Permanently deleted ${u.email ?? shortId(u.id)}.`, "success")
+      setPendingDelete(null)
+      // If the detail drawer was open for this user, close it.
+      if (openUserId === u.id) setOpenUserId(null)
+      await reload()
+    } catch (e) {
+      notify(`Delete failed: ${(e as Error).message}`, "error")
+    } finally {
+      setBusyId(null)
+    }
+  }
 
   return (
     <SectionShell
@@ -1121,15 +1202,530 @@ function UsersSection({ res }: { res: AdminResource<{ users: AdminUser[] }> }) {
       onRefresh={reload}
     >
       <DataTable
-        head={["Email", "User ID", "Created", "Tracks"]}
+        head={[
+          "Email",
+          "User ID",
+          "Username",
+          "Role",
+          "Status",
+          "Tracks",
+          "Agents",
+          "Created",
+          "Actions",
+        ]}
         rows={users.map((u) => [
-          <span key="e" className="text-white">{u.email ?? "—"}</span>,
+          <span key="e" className="text-white truncate max-w-[18ch] inline-block align-bottom">
+            {u.email ?? "—"}
+          </span>,
           <span key="i" className="text-xs font-mono text-muted-foreground">{shortId(u.id)}</span>,
-          <span key="c" className="text-xs text-muted-foreground">{formatDate(u.created_at)}</span>,
+          <span key="u" className="text-sm text-foreground">{u.username ?? <span className="text-muted-foreground/60">—</span>}</span>,
+          <span key="r" className="text-xs uppercase tracking-wider text-muted-foreground">
+            {u.role ?? "—"}
+          </span>,
+          <UserStatusPill key="s" status={u.status} />,
           <span key="t" className="tabular-nums">{u.track_count}</span>,
+          <span key="ag" className="tabular-nums">{u.agent_count}</span>,
+          <span key="c" className="text-xs text-muted-foreground">{formatDate(u.created_at)}</span>,
+          <UserActions
+            key="act"
+            user={u}
+            busy={busyId === u.id}
+            onOpen={() => setOpenUserId(u.id)}
+            onSuspend={() => setStatus(u, "suspended")}
+            onActivate={() => setStatus(u, "active")}
+            onDelete={() => setPendingDelete(u)}
+          />,
         ])}
       />
+
+      {openUserId && (
+        <UserDetailDrawer
+          userId={openUserId}
+          onClose={() => setOpenUserId(null)}
+          onMutated={reload}
+          notify={notify}
+        />
+      )}
+
+      {pendingDelete && (
+        <DeleteUserModal
+          user={pendingDelete}
+          busy={busyId === pendingDelete.id}
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => confirmDelete(pendingDelete)}
+        />
+      )}
     </SectionShell>
+  )
+}
+
+function UserStatusPill({ status }: { status: string }) {
+  if (status === "deleted")
+    return <Pill tone="bad">deleted</Pill>
+  if (status === "suspended")
+    return <Pill tone="warn">suspended</Pill>
+  return <Pill tone="ok">active</Pill>
+}
+
+function UserActions({
+  user,
+  busy,
+  onOpen,
+  onSuspend,
+  onActivate,
+  onDelete,
+}: {
+  user: AdminUser
+  busy: boolean
+  onOpen: () => void
+  onSuspend: () => void
+  onActivate: () => void
+  onDelete: () => void
+}) {
+  const isSuspended = user.status === "suspended"
+  const isDeleted = user.status === "deleted"
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <ActionButton title="Open user details" onClick={onOpen} disabled={busy} variant="default">
+        <Eye className="w-3.5 h-3.5" />
+        <span className="text-xs">Open</span>
+      </ActionButton>
+      {isSuspended ? (
+        <ActionButton
+          title="Reactivate user — lifts the auth ban"
+          onClick={onActivate}
+          disabled={busy || isDeleted}
+          variant="default"
+        >
+          <Power className="w-3.5 h-3.5" />
+          <span className="text-xs">Reactivate</span>
+        </ActionButton>
+      ) : (
+        <ActionButton
+          title="Suspend user — blocks login & deactivates agents"
+          onClick={onSuspend}
+          disabled={busy || isDeleted}
+          variant="default"
+        >
+          <PowerOff className="w-3.5 h-3.5" />
+          <span className="text-xs">Suspend</span>
+        </ActionButton>
+      )}
+      <ActionButton
+        title="Delete user permanently"
+        onClick={onDelete}
+        disabled={busy}
+        variant="danger"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+        <span className="text-xs">Delete</span>
+      </ActionButton>
+    </div>
+  )
+}
+
+// ── Delete-user confirmation modal ──────────────────────────────────
+//
+// Forces the admin to type DELETE before the destructive endpoint can
+// be invoked. Lists everything that will be removed so the consequences
+// are explicit. Closing the modal (X / Cancel / backdrop click) safely
+// aborts the operation — nothing is sent to the server until the admin
+// presses the red Delete button.
+function DeleteUserModal({
+  user,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  user: AdminUser
+  busy: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  const [typed, setTyped] = useState("")
+  const canConfirm = typed.trim() === "DELETE" && !busy
+
+  // Keyboard accessibility: Escape always closes (unless mid-delete, to
+  // avoid the user thinking the operation aborted when it's still
+  // running on the server).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !busy) onCancel()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onCancel, busy])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-user-title"
+      onClick={() => {
+        // Don't let a stray backdrop click dismiss the modal while a
+        // delete is in flight — Cancel and Escape are already disabled
+        // in that state for the same reason.
+        if (!busy) onCancel()
+      }}
+    >
+      <div
+        className="glass-modal max-w-lg w-full rounded-xl p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3 mb-4">
+          <div className="rounded-full bg-rose-500/20 text-rose-300 p-2 shrink-0">
+            <ShieldAlert className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 id="delete-user-title" className="text-lg font-semibold text-white">
+              Delete user permanently?
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1 break-all">
+              {user.email ?? "(no email)"} · <span className="font-mono">{user.id}</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-100 text-sm p-3 mb-4">
+          <div className="font-medium mb-1">This action cannot be undone.</div>
+          <div className="text-rose-200/90 leading-relaxed">
+            All of the following will be removed from the database and from
+            Supabase Auth:
+          </div>
+          <ul className="list-disc pl-5 mt-2 space-y-0.5 text-rose-200/90">
+            <li>profile row (username, avatar, role)</li>
+            <li>{user.track_count} track{user.track_count === 1 ? "" : "s"} (and their comments &amp; play history)</li>
+            <li>{user.agent_count} agent{user.agent_count === 1 ? "" : "s"} (and all API keys)</li>
+            <li>posts, discussions, and replies authored by this user</li>
+            <li>the auth.users record (login is permanently revoked)</li>
+          </ul>
+        </div>
+
+        <label className="block text-sm text-muted-foreground mb-2">
+          Type <span className="font-mono text-rose-300">DELETE</span> to confirm:
+        </label>
+        <input
+          type="text"
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          autoFocus
+          disabled={busy}
+          placeholder="DELETE"
+          className="w-full rounded-md border border-white/15 bg-black/40 px-3 py-2 text-sm font-mono text-white placeholder:text-white/30 focus:outline-none focus:border-rose-500/60 disabled:opacity-50"
+        />
+
+        <div className="flex justify-end gap-2 mt-5">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="px-4 py-2 rounded-lg border border-white/10 text-white/80 hover:bg-white/5 text-sm font-medium transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={!canConfirm}
+            className="px-4 py-2 rounded-lg bg-rose-500 hover:bg-rose-400 text-white text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-2"
+          >
+            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+            {busy ? "Deleting…" : "Delete user"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── User detail drawer ──────────────────────────────────────────────
+//
+// Right-side slide-over showing the user's profile, tracks, agents,
+// recent activity, and any health warnings flagged by the API. Reloads
+// when opened; the parent's `onMutated` callback is invoked on any
+// status change so the underlying users table refreshes.
+function UserDetailDrawer({
+  userId,
+  onClose,
+  onMutated,
+  notify,
+}: {
+  userId: string
+  onClose: () => void
+  onMutated: () => Promise<void> | void
+  notify: Notify
+}) {
+  const [detail, setDetail] = useState<UserDetail | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const json = await adminFetch<UserDetail>(`/api/admin/users/${userId}`)
+      setDetail(json)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }, [userId])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  // Escape closes the drawer (unless a mutation is running).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !busy) onClose()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onClose, busy])
+
+  async function setStatus(status: "active" | "suspended") {
+    setBusy(true)
+    try {
+      await adminFetch(`/api/admin/users/${userId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      })
+      notify(
+        status === "suspended" ? `User suspended.` : `User reactivated.`,
+        "success",
+      )
+      await Promise.all([load(), Promise.resolve(onMutated())])
+    } catch (e) {
+      notify(`Failed: ${(e as Error).message}`, "error")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const status = (detail?.profile?.status as string | undefined) ?? "active"
+  const isSuspended = status === "suspended"
+  const isDeleted = status === "deleted"
+
+  return (
+    <div
+      className="fixed inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="user-detail-title"
+      onClick={() => {
+        // Match the modal's busy-guard pattern — backdrop dismiss is
+        // suppressed while a suspend/reactivate request is in flight.
+        if (!busy) onClose()
+      }}
+    >
+      <aside
+        className="h-full w-full max-w-xl bg-card border-l border-white/10 overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 bg-card/95 backdrop-blur border-b border-white/10 px-5 py-4 flex items-center justify-between gap-3">
+          <h2 id="user-detail-title" className="text-base font-semibold text-white">
+            User details
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="text-white/60 hover:text-white text-2xl leading-none"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="p-5 space-y-5">
+          {loading && (
+            <div className="py-12 flex justify-center text-muted-foreground">
+              <Loader2 className="w-5 h-5 animate-spin" />
+            </div>
+          )}
+          {error && (
+            <div className="rounded-md border border-rose-500/30 bg-rose-500/10 text-rose-200 text-sm p-3">
+              {error}
+            </div>
+          )}
+
+          {detail && (
+            <>
+              {/* Profile summary */}
+              <section>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
+                  Profile
+                </div>
+                <div className="rounded-lg border border-white/10 bg-black/30 p-4 space-y-1.5 text-sm">
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">Email</span>
+                    <span className="text-white text-right break-all">{detail.user.email ?? "—"}</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">User ID</span>
+                    <span className="font-mono text-xs text-white/80 text-right break-all">{detail.user.id}</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">Username</span>
+                    <span className="text-white">{detail.profile?.username ?? "—"}</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">Role</span>
+                    <span className="text-white uppercase text-xs">{detail.profile?.role ?? "—"}</span>
+                  </div>
+                  <div className="flex justify-between gap-3 items-center">
+                    <span className="text-muted-foreground">Status</span>
+                    <UserStatusPill status={status} />
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">Created</span>
+                    <span className="text-white">{formatDate(detail.user.created_at)}</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">Banned until</span>
+                    <span className="text-white">
+                      {detail.user.banned_until && detail.user.banned_until !== "none"
+                        ? formatDate(detail.user.banned_until)
+                        : "—"}
+                    </span>
+                  </div>
+                </div>
+              </section>
+
+              {/* Health warnings */}
+              {detail.warnings.length > 0 && (
+                <section>
+                  <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
+                    Health warnings
+                  </div>
+                  <ul className="space-y-1.5">
+                    {detail.warnings.map((w, i) => (
+                      <li
+                        key={i}
+                        className="rounded-md border border-amber-500/30 bg-amber-500/10 text-amber-100 text-sm p-2 leading-relaxed"
+                      >
+                        {w}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              {/* Quick action bar */}
+              <section className="flex flex-wrap gap-2">
+                {isSuspended ? (
+                  <button
+                    type="button"
+                    onClick={() => setStatus("active")}
+                    disabled={busy || isDeleted}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-emerald-500/40 text-emerald-200 hover:bg-emerald-500/10 text-sm transition-colors disabled:opacity-40"
+                  >
+                    {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Power className="w-3.5 h-3.5" />}
+                    Reactivate
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setStatus("suspended")}
+                    disabled={busy || isDeleted}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-amber-500/40 text-amber-200 hover:bg-amber-500/10 text-sm transition-colors disabled:opacity-40"
+                  >
+                    {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PowerOff className="w-3.5 h-3.5" />}
+                    Suspend
+                  </button>
+                )}
+              </section>
+
+              {/* Tracks */}
+              <section>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
+                  Tracks ({detail.counts.tracks})
+                </div>
+                {detail.tracks.length === 0 ? (
+                  <div className="text-sm text-muted-foreground italic">No tracks.</div>
+                ) : (
+                  <ul className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                    {detail.tracks.map((t) => (
+                      <li
+                        key={t.id}
+                        className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm flex items-center justify-between gap-3"
+                      >
+                        <a
+                          href={`/tracks/${t.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-white truncate hover:text-glow-primary transition-colors"
+                          title={t.title}
+                        >
+                          {t.title}
+                        </a>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {t.published_at ? "published" : "draft"} · {formatDate(t.created_at)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              {/* Agents */}
+              <section>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
+                  Agents ({detail.counts.agents})
+                </div>
+                {detail.agents.length === 0 ? (
+                  <div className="text-sm text-muted-foreground italic">No agents.</div>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {detail.agents.map((a) => (
+                      <li
+                        key={a.id}
+                        className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm flex items-center justify-between gap-3"
+                      >
+                        <span className="text-white truncate" title={a.name}>{a.name}</span>
+                        <span className="flex items-center gap-2 shrink-0">
+                          <Pill tone={a.status === "active" ? "ok" : "warn"}>{a.status}</Pill>
+                          <span className="text-xs text-muted-foreground">
+                            {a.last_active_at ? formatDate(a.last_active_at) : "no activity"}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              {/* Recent activity */}
+              <section>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
+                  Recent activity ({detail.counts.recent_activity})
+                </div>
+                {detail.recent_activity.length === 0 ? (
+                  <div className="text-sm text-muted-foreground italic">No recent activity recorded.</div>
+                ) : (
+                  <ul className="space-y-1 max-h-60 overflow-y-auto pr-1">
+                    {detail.recent_activity.map((a) => (
+                      <li
+                        key={a.id}
+                        className="text-xs flex items-center justify-between gap-3 px-2 py-1 rounded border border-white/5"
+                      >
+                        <span className="text-white/80">
+                          {a.event_type ?? "play"} · track {shortId(a.track_id)}
+                        </span>
+                        <span className="text-muted-foreground">{formatDate(a.created_at)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </>
+          )}
+        </div>
+      </aside>
+    </div>
   )
 }
 

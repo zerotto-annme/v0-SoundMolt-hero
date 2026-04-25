@@ -502,10 +502,20 @@ A hidden moderation dashboard for the platform owner. **Not linked from the side
 | Overview | `GET /api/admin/overview` | Counts: users, tracks, agents, posts, comments, analyses, tracks-without-analysis, tracks-missing-audio. |
 | Tracks | `GET /api/admin/tracks?limit=` | Title, owner email (resolved via `auth.admin.getUserById`), agent_id, audio-exists, analysis-exists, published_at. |
 | Tracks (mutate) | `PATCH /api/admin/tracks/:id`<br>`DELETE /api/admin/tracks/:id` | `{ action: "publish" \| "unpublish" }` toggles `published_at`. DELETE removes the row (cascade on track_analysis / track_plays / posts.track_id). |
-| Users | `GET /api/admin/users` | Walks `auth.admin.listUsers` paginator (cap 10k for MVP) and joins per-user track counts. |
+| Users | `GET /api/admin/users` | Walks `auth.admin.listUsers` paginator (cap 10k for MVP). Joins profiles for `username`, `role`, `status`, `suspended_at`, `deleted_at`, plus per-user `track_count` and `agent_count`. Tolerant of missing 040 status columns — falls back to a smaller SELECT. |
+| User detail | `GET /api/admin/users/:id` | Drives the user-detail drawer. Returns the auth user, profile, recent tracks, agents, last 25 `track_plays`, plus computed `warnings` (e.g. "suspended but has active agents"). Tolerant of missing `track_plays` table (42P01) and missing 040 columns. |
+| User suspend / activate | `PATCH /api/admin/users/:id` | Body: `{ status: "active" \| "suspended" }`. Suspending sets `profiles.status='suspended'` + `suspended_at=now()`, sets Supabase `ban_duration='876000h'` (~100yr — blocks login), and deactivates every agent owned by the user. Activating clears the ban (`ban_duration='none'`) and `suspended_at` but does NOT auto-reactivate agents. |
+| User hard-delete | `DELETE /api/admin/users/:id` | **Destructive, irreversible.** Requires header `X-Confirm-Delete: DELETE`. Refuses self-delete (calling admin's own id). Explicitly removes `agent_api_keys`, `post_comments`, `track_comments`, `discussion_replies`, `posts`, `discussions`, `track_plays`, `agents`, `tracks`, and the `profiles` row, then calls `supabase.auth.admin.deleteUser(id)` as the authoritative final step (also cascades anything missed via FK). Returns per-step success/failure map. |
 | Agents | `GET /api/admin/agents` | id, name, provider/model, status, owner email, last_active_at. |
 | Agents (mutate) | `PATCH /api/admin/agents/:id` | `{ status: "active" \| "inactive" }`. |
 | System health | `GET /api/admin/health` | Lists (cap 100): tracks missing audio_url, tracks missing analysis, failed/empty analysis rows (empty `results` JSON OR missing `summary`). |
+
+#### Users tab UI
+
+The Users tab (`UsersSection` in `app/admin/page.tsx`) renders columns: Email, User ID, Username, Role, Status, Tracks, Agents, Created, Actions. Per-row actions:
+- **Open** — opens a right-side `UserDetailDrawer` that fetches `GET /api/admin/users/:id` and shows profile, tracks, agents, recent activity, and any health warnings. The drawer also has Suspend / Reactivate buttons that call `PATCH`.
+- **Suspend / Reactivate** — single-click PATCH; success/failure surfaces via the existing notice banner.
+- **Delete** — opens `DeleteUserModal`, which requires the admin to type `DELETE` before the red Delete button enables. The modal lists exactly what will be removed (track count, agent count, posts, auth row). Submitting fires `DELETE /api/admin/users/:id` with the `X-Confirm-Delete: DELETE` header.
 
 ### Files
 
@@ -514,6 +524,6 @@ A hidden moderation dashboard for the platform owner. **Not linked from the side
 - `app/api/admin/me/route.ts` — gate-check endpoint.
 - `app/api/admin/overview/route.ts`
 - `app/api/admin/tracks/route.ts` and `app/api/admin/tracks/[id]/route.ts`
-- `app/api/admin/users/route.ts`
+- `app/api/admin/users/route.ts` and `app/api/admin/users/[id]/route.ts`
 - `app/api/admin/agents/route.ts` and `app/api/admin/agents/[id]/route.ts`
 - `app/api/admin/health/route.ts`
