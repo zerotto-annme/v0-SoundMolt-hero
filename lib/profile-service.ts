@@ -175,61 +175,135 @@ export type ProfileUpdates = {
   artist_name?: string
 }
 
-// UPDATE → if 0 rows: ensureProfile + retry once. On 23505 unique violation:
-// throws UsernameTakenError so callers can show a friendly message.
+// Single-shot UPSERT: fetch existing row (best-effort) so we can preserve
+// `role` and any columns the caller didn't provide, then upsert the merged
+// payload. Works whether the row exists or not — no UPDATE-vs-0-rows dance.
+// Throws UsernameTakenError on 23505 so callers can show a friendly message.
 export async function updateProfile(
   freshUser: EnsureUserInput,
   updates: ProfileUpdates,
 ): Promise<ProfileRow> {
   const userId = freshUser.id
-  console.log("PROFILE update start", { userId, fields: Object.keys(updates) })
+  console.log("PROFILE update start", {
+    userId,
+    email: freshUser.email ?? null,
+    fields: Object.keys(updates),
+  })
 
-  const doUpdate = async (): Promise<{ data: ProfileRow[] | null; error: { code?: string; message?: string } | null }> => {
+  // 1. Best-effort fetch of the existing row — used ONLY for diagnostic
+  //    logging. We do NOT merge it into the upsert payload (that would risk
+  //    a stale-write race where another tab's concurrent edits get rolled
+  //    back). The row is guaranteed to exist because the hook calls
+  //    ensureProfile() before invoking this function.
+  let existing: ProfileRow | null = null
+  try {
+    existing = await selectProfile(userId)
+  } catch (err) {
+    console.warn("PROFILE update existing-fetch failed (continuing)", {
+      userId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+  console.log("PROFILE update existing", {
+    userId,
+    found: !!existing,
+    existingUsername: existing?.username ?? null,
+    existingRole: existing?.role ?? null,
+  })
+
+  // 2. Build the upsert payload using ONLY the fields the caller asked to
+  //    change (plus id). Supabase upsert with onConflict:"id" performs an
+  //    UPDATE on the matched row touching only the columns we send, so other
+  //    columns — including `role` — are left intact. We deliberately never
+  //    include `role`: a normal profile edit must NEVER be able to downgrade
+  //    an admin/agent account.
+  const trimmedUsername =
+    typeof updates.username === "string" ? updates.username.trim() : undefined
+
+  const payload: Record<string, unknown> = { id: userId }
+  if (trimmedUsername !== undefined) {
+    payload.username = trimmedUsername
+    // If the caller didn't separately set artist_name, keep it in sync with
+    // the new username (matches existing app behaviour).
+    if (updates.artist_name === undefined) {
+      payload.artist_name = trimmedUsername
+    }
+  }
+  if (updates.artist_name !== undefined) {
+    payload.artist_name = updates.artist_name
+  }
+  if (updates.avatar_url !== undefined) {
+    payload.avatar_url = updates.avatar_url
+  }
+  if (updates.avatar_is_custom !== undefined) {
+    payload.avatar_is_custom = updates.avatar_is_custom
+  }
+
+  // 3. Upsert. We try with updated_at first; on the strict 42703-missing-
+  //    column signal we drop it and retry once.
+  const doUpsert = async (
+    includeUpdatedAt: boolean,
+  ): Promise<{
+    data: ProfileRow | null
+    error: { code?: string; message?: string; details?: string } | null
+  }> => {
+    const body = includeUpdatedAt
+      ? { ...payload, updated_at: new Date().toISOString() }
+      : payload
+    const cols = includeUpdatedAt ? SELECT_COLS : SELECT_COLS_FALLBACK
     const { data, error } = await supabase
       .from("profiles")
-      .update(updates)
-      .eq("id", userId)
-      .select(SELECT_COLS)
-    if (error && isMissingUpdatedAt(error)) {
-      const r = await supabase
-        .from("profiles")
-        .update(updates)
-        .eq("id", userId)
-        .select(SELECT_COLS_FALLBACK)
-      return { data: (r.data ?? null) as ProfileRow[] | null, error: r.error }
-    }
-    return { data: (data ?? null) as ProfileRow[] | null, error }
+      .upsert(body, { onConflict: "id" })
+      .select(cols)
+      .maybeSingle()
+    return { data: (data ?? null) as ProfileRow | null, error }
   }
 
-  const first = await doUpdate()
-  if (first.error) {
-    if (first.error.code === "23505" && updates.username !== undefined) {
-      console.warn("PROFILE update result", { userId, ok: false, code: "23505" })
-      throw new UsernameTakenError(updates.username)
-    }
-    console.error("PROFILE update result", { userId, ok: false, error: first.error.message })
-    throw new Error(first.error.message || "Profile update failed.")
+  let res = await doUpsert(true)
+  if (res.error && isMissingUpdatedAt(res.error)) {
+    console.warn("PROFILE update upsert: updated_at column missing — retrying without it", {
+      userId,
+    })
+    res = await doUpsert(false)
   }
 
-  if (!first.data || first.data.length === 0) {
-    console.warn("PROFILE update result", { userId, ok: false, rows: 0, action: "ensure+retry" })
-    await ensureProfile(freshUser)
-    const retry = await doUpdate()
-    if (retry.error) {
-      if (retry.error.code === "23505" && updates.username !== undefined) {
-        throw new UsernameTakenError(updates.username)
-      }
-      throw new Error(retry.error.message || "Profile update failed.")
+  if (res.error) {
+    const code = res.error.code
+    const message = res.error.message
+    const details = res.error.details
+    console.error("PROFILE update result", {
+      userId,
+      ok: false,
+      code,
+      message,
+      details,
+    })
+    if (code === "23505" && trimmedUsername !== undefined) {
+      throw new UsernameTakenError(trimmedUsername)
     }
-    if (!retry.data || retry.data.length === 0) {
-      throw new Error("Could not update your profile after creating it. Please try again.")
-    }
-    console.log("PROFILE update result", { userId, ok: true, rows: retry.data.length, retried: true })
-    return retry.data[0]
+    throw new Error(message || "Profile update failed.")
   }
 
-  console.log("PROFILE update result", { userId, ok: true, rows: first.data.length })
-  return first.data[0]
+  if (!res.data) {
+    // Upsert succeeded with no error but returned no row — RLS hid it from
+    // the SELECT. Re-read explicitly.
+    console.warn("PROFILE update upsert returned no row — re-fetching", { userId })
+    const reread = await selectProfile(userId)
+    if (!reread) {
+      throw new Error("Profile saved but could not be read back. Please refresh.")
+    }
+    console.log("PROFILE update result", { userId, ok: true, source: "reread" })
+    return reread
+  }
+
+  console.log("PROFILE update result", {
+    userId,
+    ok: true,
+    username: res.data.username,
+    avatar_url: res.data.avatar_url,
+    updated_at: res.data.updated_at ?? null,
+  })
+  return res.data
 }
 
 // Append a deterministic cache-busting query param so <img src=...> reloads
