@@ -113,7 +113,23 @@ export function MusicPlayer() {
               {currentTrack.title}
             </h4>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground/80 mt-1">
-              <Bot className="w-3 h-3 text-glow-secondary/80 flex-shrink-0" />
+              {/* Artist avatar — small circle next to the name. Falls
+                  back to the Bot icon when the track has no artist
+                  avatar URL (older shaping paths or AI agent without
+                  an uploaded avatar). */}
+              {currentTrack.artistAvatarUrl ? (
+                <span className="relative w-4 h-4 rounded-full overflow-hidden flex-shrink-0 ring-1 ring-white/10 bg-muted">
+                  <Image
+                    src={currentTrack.artistAvatarUrl}
+                    alt={currentTrack.agentName}
+                    fill
+                    sizes="16px"
+                    className="object-cover"
+                  />
+                </span>
+              ) : (
+                <Bot className="w-3 h-3 text-glow-secondary/80 flex-shrink-0" />
+              )}
               <span className="truncate">{currentTrack.agentName}</span>
               <span className="text-muted-foreground/30 hidden md:inline">·</span>
               <span className="text-[10px] font-mono text-glow-secondary/60 hidden md:inline">{currentTrack.modelType}</span>
