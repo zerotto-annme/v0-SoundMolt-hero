@@ -318,26 +318,24 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
       // track when the response lands. Otherwise the user has already
       // navigated to a different track and the rollback would corrupt
       // that track's count.
-      const wasLiked = isLiked
       const opTrackId = track.id
       opTrackIdRef.current = opTrackId
-      // Optimistic nudge for instant feel. The server call below
-      // returns the authoritative organic+boost count and we snap to
-      // it on response — the optimistic value is only what shows for
-      // the ~200ms it takes to round-trip.
-      setDisplayedLikes((n) => Math.max(0, n + (wasLiked ? -1 : 1)))
+      // No optimistic numeric nudge — the heart fill flips instantly
+      // via LikesProvider, but the displayed count waits for the
+      // server's authoritative response so the number is always
+      // exactly what's in the database.
       const result = await toggleLike(opTrackId)
       // Modal may have switched tracks (next/prev) OR a newer like op
       // may have started — `opTrackIdRef.current` is the source of
       // truth for whether this op is still the latest one for this
       // track instance.
       if (opTrackIdRef.current !== opTrackId) return
-      if (result === null) {
-        // API failed — revert. (Provider also reverts its own state.)
-        setDisplayedLikes((n) => Math.max(0, n + (wasLiked ? 1 : -1)))
-      } else {
-        // Trust server. The /api/me/likes route folds boost in for us
-        // so `result` is the full displayed total (organic + boost).
+      // result === null means the server rejected the toggle and the
+      // LikesProvider already rolled its own state back. The displayed
+      // count never moved here, so there's nothing to revert.
+      if (result !== null) {
+        // The /api/me/likes route folds boost in for us, so `result`
+        // is the full displayed total (organic + boost).
         setDisplayedLikes(result)
       }
     })

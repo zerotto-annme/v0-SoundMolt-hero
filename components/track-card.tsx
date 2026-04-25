@@ -140,18 +140,20 @@ export function TrackCard({ track, isActive, onTogglePlay, isPlaying, reason }: 
         setShowLikeAnimation(true)
         setTimeout(() => setShowLikeAnimation(false), 600)
       }
-      // Optimistic nudge for instant feel. We snap to the server's
-      // authoritative junction-table count when the response lands.
-      setLikeCount((prev) => Math.max(0, prev + (wasLiked ? -1 : 1)))
+      // No optimistic numeric nudge — the heart icon's filled/unfilled
+      // state still flips instantly via LikesProvider, but the count
+      // shown next to it waits for the server's authoritative response
+      // so the displayed number is always exactly what's in the DB.
       const result = await toggleLike(opTrackId)
       // Card may have been re-bound to a different track (carousel
       // scroll) OR another like op may have superseded this one — in
       // either case `opTrackIdRef.current` no longer matches the id we
       // captured at op-start, and we must not touch local count state.
       if (opTrackIdRef.current !== opTrackId) return
-      if (result === null) {
-        setLikeCount((prev) => Math.max(0, prev + (wasLiked ? 1 : -1)))
-      } else {
+      // result === null means the request failed; LikesProvider already
+      // rolled its own state back. Leave the displayed count as-is
+      // (still shows the pre-toggle value, which is correct).
+      if (result !== null) {
         setLikeCount(result)
       }
     })
