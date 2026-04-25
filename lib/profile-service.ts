@@ -265,13 +265,20 @@ export async function updateProfile(
     payload.role = "user"
   }
 
-  // 4. Single upsert. The post-upsert SELECT uses the legacy column
-  //    list (no updated_at) so it works on every install of the schema;
-  //    selectProfile() handles the read-tolerance for the cached row
-  //    we hand back to the caller.
-  const { error } = await supabase
-    .from("profiles")
-    .upsert(payload, { onConflict: "id" })
+  // 4. Pick UPDATE vs INSERT explicitly. We previously used `.upsert()`
+  //    with `onConflict: "id"` for both paths, but that route was
+  //    silently taking the INSERT branch for existing rows in some
+  //    environments (likely an RLS/PostgREST conflict-detection
+  //    interaction). Because a normal profile edit deliberately omits
+  //    `role` from the payload to preserve the real role, the INSERT
+  //    branch then violated the `role NOT NULL` constraint with code
+  //    23502. Using a plain UPDATE keyed on the user id removes the
+  //    insert path entirely: any column we don't send is left untouched.
+  const useInsertPath = !preReadFailed && existing === null
+  const writeQuery = useInsertPath
+    ? supabase.from("profiles").insert(payload)
+    : supabase.from("profiles").update(payload).eq("id", userId)
+  const { error } = await writeQuery
     .select(SELECT_COLS_FALLBACK)
     .maybeSingle()
 
