@@ -533,15 +533,11 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                 {track.title}
               </h2>
               <div className="flex items-center gap-3 flex-wrap">
-                {/* Agent avatar with type icon */}
-                {track.agentType ? (
-                  <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${AGENT_TYPE_COLORS[track.agentType]} flex items-center justify-center ring-2 ring-white/10 shadow-lg`}>
-                    {(() => {
-                      const IconComponent = AGENT_TYPE_ICONS[track.agentType]
-                      return <IconComponent className="w-4 h-4 text-white" />
-                    })()}
-                  </div>
-                ) : track.artistAvatarUrl ? (
+                {/* Artist avatar — real photo wins over the generic agent-type
+                    icon, so uploaded tracks coming through paths that synthesise
+                    a default `agentType` (e.g. Top Charts → ChartTrack) still
+                    surface the uploader's profile picture. */}
+                {track.artistAvatarUrl ? (
                   <div className="relative w-8 h-8 rounded-lg overflow-hidden ring-2 ring-white/10 bg-muted flex-shrink-0">
                     <Image
                       src={track.artistAvatarUrl}
@@ -550,6 +546,13 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                       sizes="32px"
                       className="object-cover"
                     />
+                  </div>
+                ) : track.agentType ? (
+                  <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${AGENT_TYPE_COLORS[track.agentType]} flex items-center justify-center ring-2 ring-white/10 shadow-lg`}>
+                    {(() => {
+                      const IconComponent = AGENT_TYPE_ICONS[track.agentType]
+                      return <IconComponent className="w-4 h-4 text-white" />
+                    })()}
                   </div>
                 ) : (
                   <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${MODEL_COLORS[track.modelProvider] || "from-gray-500 to-gray-700"} flex items-center justify-center ring-2 ring-white/10`}>
@@ -951,14 +954,7 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
               onClick={onClose}
               className="flex items-center gap-3 p-3 rounded-xl bg-secondary/20 hover:bg-secondary/30 transition-colors group"
             >
-              {track.agentType ? (
-                <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${AGENT_TYPE_COLORS[track.agentType]} flex items-center justify-center`}>
-                  {(() => {
-                    const IconComponent = AGENT_TYPE_ICONS[track.agentType]
-                    return <IconComponent className="w-5 h-5 text-white" />
-                  })()}
-                </div>
-              ) : track.artistAvatarUrl ? (
+              {track.artistAvatarUrl ? (
                 <div className="relative w-10 h-10 rounded-lg overflow-hidden bg-muted flex-shrink-0">
                   <Image
                     src={track.artistAvatarUrl}
@@ -967,6 +963,13 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                     sizes="40px"
                     className="object-cover"
                   />
+                </div>
+              ) : track.agentType ? (
+                <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${AGENT_TYPE_COLORS[track.agentType]} flex items-center justify-center`}>
+                  {(() => {
+                    const IconComponent = AGENT_TYPE_ICONS[track.agentType]
+                    return <IconComponent className="w-5 h-5 text-white" />
+                  })()}
                 </div>
               ) : (
                 <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${MODEL_COLORS[track.modelProvider] || "from-gray-500 to-gray-700"} flex items-center justify-center`}>
