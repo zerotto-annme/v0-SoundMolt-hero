@@ -581,8 +581,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     restoreSession()
 
-    // Subscribe to Supabase auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    // Subscribe to Supabase auth state changes.
+    //
+    // CRITICAL: this listener is intentionally NOT async. supabase-js holds
+    // its internal auth lock while awaiting the listener, and any
+    // `supabase.from(...)` call made from inside that await blocks for the
+    // full lock window (observed: ~10s). That's exactly what was making
+    // `fetchProfileData` time out on every SIGNED_IN — the timeout fired
+    // milliseconds before the query would have completed, so we threw the
+    // real profile away and fell back to email-prefix + dicebear avatar
+    // (i.e. wrong username AND wrong avatar until a manual refresh).
+    //
+    // Fix: do all synchronous bookkeeping inline, then defer the
+    // profile-fetch async work via `setTimeout(0)` so it runs OUTSIDE the
+    // auth-lock callstack. The query then completes in its normal
+    // ~200-500ms and we apply the real profile (username + avatar) in a
+    // single setState — exactly what the spec calls for.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       // Bump the epoch FIRST so any in-flight async work from the previous
       // event is invalidated before we kick off new async work below.
       const myEpoch = ++authEpochRef.current
@@ -653,6 +668,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // email-derived placeholder. We KEEP isAuthenticated=true and
         // we KEEP user.id populated so My Tracks / Liked / etc can fetch
         // in parallel with the profile load.
+        //
+        // Spec point 4: "do not rely on stale localStorage avatar" — we
+        // explicitly null `avatar` here so any previous avatar (from a
+        // prior session in the same tab) cannot leak into the next user's
+        // first paint.
         if (prevUser?.id !== sbUser.id) {
           setProfileReady(false)
           setState({
@@ -676,49 +696,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           userId: sbUser.id,
           source: event,
         })
-        // Bound profile hydration so a stuck SELECT can't wedge the
-        // onAuthStateChange listener (which would silently drop future
-        // auth events).
-        let merged: Awaited<ReturnType<typeof fetchProfileData>> = null
-        try {
-          merged = await withTimeout(
-            fetchProfileData(sbUser),
-            10000,
-            "fetchProfileData (onAuthStateChange)"
-          )
-        } catch (err) {
-          console.warn("[auth] onAuthStateChange: fetchProfileData failed/timeout — falling back to email-prefix", err)
-        }
 
-        // Stale-event guard: if another auth event (e.g. SIGNED_OUT)
-        // fired while we were awaiting profile data, drop this result so
-        // we don't resurrect a stale user. (Architect feedback.)
-        if (myEpoch !== authEpochRef.current) {
-          console.log("[auth] dropping stale profile result", { event, myEpoch, currentEpoch: authEpochRef.current })
-          return
-        }
+        // Defer the actual profile fetch OUTSIDE the auth lock. See the
+        // big comment at the top of this listener for why.
+        setTimeout(async () => {
+          // Outer try/finally so an unexpected throw anywhere in the
+          // deferred body still flips profileReady=true (within epoch),
+          // preventing a permanent sidebar skeleton on a freak error.
+          try {
+            let merged: Awaited<ReturnType<typeof fetchProfileData>> = null
+            try {
+              merged = await withTimeout(
+                fetchProfileData(sbUser),
+                10000,
+                "fetchProfileData (onAuthStateChange)"
+              )
+            } catch (err) {
+              console.warn("[auth] onAuthStateChange: fetchProfileData failed/timeout — falling back to email-prefix", err)
+            }
 
-        const { profile, profileUsernameIsNull, chosenSource } = buildHumanProfile(sbUser, merged)
-        console.log("[auth] profile username result", {
-          userId: sbUser.id,
-          username: merged?.username ?? null,
-          fallbackUsedEmail: !merged?.username,
-          source: event,
-        })
-        setState({ user: profile, isAuthenticated: true })
-        setProfileReady(true)
-        console.log("[auth] sidebar displayName chosen", {
-          userId: sbUser.id,
-          displayName: profile.name,
-          source: chosenSource,
-        })
-        setAuthVersion((v) => {
-          const next = v + 1
-          console.log("[auth] authVersion bumped", { event, authVersion: next, userId: sbUser.id })
-          return next
-        })
-        if (profileUsernameIsNull) setShowSetUsernameModal(true)
-        else setShowSetUsernameModal(false)
+            // Stale-event guard: if another auth event (e.g. SIGNED_OUT)
+            // fired while we were awaiting profile data, drop this result so
+            // we don't resurrect a stale user. (Architect feedback.)
+            if (myEpoch !== authEpochRef.current) {
+              console.log("[auth] dropping stale profile result", { event, myEpoch, currentEpoch: authEpochRef.current })
+              return
+            }
+
+            const { profile, profileUsernameIsNull, chosenSource } = buildHumanProfile(sbUser, merged)
+            console.log("[auth] profile username result", {
+              userId: sbUser.id,
+              username: merged?.username ?? null,
+              avatarUrl: merged?.avatar_url ?? null,
+              fallbackUsedEmail: !merged?.username,
+              source: event,
+            })
+            // Single setState: username AND avatar land in the same render
+            // tick, so the sidebar (and anywhere else reading user.avatar)
+            // updates them together — spec point 2 + 3.
+            setState({ user: profile, isAuthenticated: true })
+            console.log("[auth] sidebar displayName chosen", {
+              userId: sbUser.id,
+              displayName: profile.name,
+              avatar: profile.avatar,
+              source: chosenSource,
+            })
+            setAuthVersion((v) => {
+              const next = v + 1
+              console.log("[auth] authVersion bumped", { event, authVersion: next, userId: sbUser.id })
+              return next
+            })
+            if (profileUsernameIsNull) setShowSetUsernameModal(true)
+            else setShowSetUsernameModal(false)
+          } catch (err) {
+            console.error("[auth] deferred profile apply failed", err)
+          } finally {
+            // Always release the skeleton — but only if our epoch is still
+            // current, so SIGNED_OUT doesn't get its profileReady=true
+            // overwritten by a stale-event finally.
+            if (myEpoch === authEpochRef.current) {
+              setProfileReady(true)
+            }
+          }
+        }, 0)
       }
     })
 
@@ -2060,6 +2100,51 @@ export function RoleBadge({ showLogout = true }: { showLogout?: boolean }) {
   )
 }
 
+// Self-contained avatar visual for the sidebar dropdown.
+//
+// Behavior (mirrors the spec):
+//   • If `avatar` is a non-empty URL → render <img> with that src.
+//   • If `avatar` is empty/undefined OR the image fails to load → render
+//     the role icon (Bot for agent, User for human) as a graceful fallback.
+//   • The `key={avatar}` forces React to remount the <img> whenever the
+//     URL changes (e.g. login → profile fetch resolves → avatar URL lands).
+//     Without this, switching between two non-empty URLs would mutate the
+//     same DOM node's `src` attribute and some browsers keep the previous
+//     pixels visible until the new bytes arrive — which contributed to the
+//     "avatar doesn't appear until refresh" perception.
+function ProfileDropdownAvatar({
+  avatar,
+  role,
+  alt,
+}: { avatar?: string; role: UserRole; alt: string }) {
+  const [errored, setErrored] = useState(false)
+  // Reset the error flag whenever the URL changes so a new avatar gets a
+  // fresh chance to load.
+  useEffect(() => { setErrored(false) }, [avatar])
+  const showImage = !!avatar && !errored
+  return (
+    <div className="relative w-8 h-8 rounded-full overflow-hidden bg-white/10">
+      {showImage ? (
+        <img
+          key={avatar}
+          src={avatar}
+          alt={alt}
+          className="w-full h-full object-cover"
+          onError={() => setErrored(true)}
+        />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center">
+          {role === "agent" ? (
+            <Bot className="w-4 h-4 text-red-400" />
+          ) : (
+            <User className="w-4 h-4 text-white/60" />
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Profile Dropdown Component
 export function ProfileDropdown() {
   const { user, isAuthenticated, authReady, profileReady, logout, openSignInModal } = useAuth()
@@ -2101,19 +2186,7 @@ export function ProfileDropdown() {
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5 transition-colors"
       >
-        <div className="relative w-8 h-8 rounded-full overflow-hidden bg-white/10">
-          {user.avatar ? (
-            <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              {user.role === "agent" ? (
-                <Bot className="w-4 h-4 text-red-400" />
-              ) : (
-                <User className="w-4 h-4 text-white/60" />
-              )}
-            </div>
-          )}
-        </div>
+        <ProfileDropdownAvatar avatar={user.avatar} role={user.role} alt={user.name} />
         <span className="text-sm font-medium text-white hidden md:block">{user.name}</span>
       </button>
 

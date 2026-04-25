@@ -69,6 +69,57 @@ Structured logs emitted at every step (filter by these prefixes when debugging):
 `AUTH_EVENT`, `[auth] profile fetch started`, `[auth] profile fetch result`,
 `[sidebar] displayName chosen`, `[feed] fetch started`, `[feed] fetch result count`.
 
+## Auth Listener: Supabase Auth Lock & `setTimeout(0)` Deferral
+
+The `supabase.auth.onAuthStateChange` listener in `components/auth-context.tsx`
+is **deliberately synchronous** (not declared `async`). supabase-js holds its
+internal auth lock for the duration of the listener callback, and any
+`supabase.from(...)` query awaited inside that callback blocks until the
+lock releases (~10 s in production). Symptoms when this rule was violated:
+
+- Every `SIGNED_IN` triggered a 10 s timeout in `fetchProfileData`.
+- The fallback applied email-prefix as the username AND a generated
+  dicebear avatar.
+- The real `public.profiles` row (with the correct username and
+  `avatar_url`) returned ~250 ms *after* the timeout fired and was
+  discarded.
+- Net user-visible bug: avatar didn't appear and username was wrong until
+  a manual refresh (where `restoreSession` runs outside the lock).
+
+**Implementation rule:** the listener does its synchronous bookkeeping
+inline (epoch bump, `setIsHydrated`, `SIGNED_OUT`, set bare user with
+`avatar:""`), then wraps the actual `fetchProfileData` + `buildHumanProfile`
++ `setState` work in `setTimeout(() => async work, 0)`. Inside the deferred
+block:
+
+- `myEpoch === authEpochRef.current` guards against stale results from
+  prior auth events.
+- An outer `try/finally` always flips `profileReady=true` (epoch-checked)
+  so an unexpected throw can never leave the sidebar in a permanent
+  skeleton state.
+
+If you ever need to read or write Supabase data from within an auth
+listener callback, use the same `setTimeout(0)` deferral pattern.
+
+## Sidebar Avatar Render
+
+`ProfileDropdownAvatar` (in `components/auth-context.tsx`) is a small
+component that wraps the dropdown's avatar `<img>` with three guarantees:
+
+- `key={avatar}` forces React to remount the `<img>` whenever the URL
+  changes, so a stale DOM node can't keep showing the previous image while
+  the new bytes arrive.
+- `onError` flips an internal `errored` flag that swaps the image for the
+  role icon (`Bot` for agent, `User` for human), so a broken URL never
+  renders a broken-image glyph.
+- A `useEffect([avatar])` resets that error flag whenever the URL changes
+  so the next URL gets a fresh chance to load.
+
+When `avatar` is empty (e.g. the bare user written before the profile
+fetch resolves), the role icon renders as the fallback. Once the deferred
+profile fetch completes, a single `setState` writes both `name` and
+`avatar` together, so they always update in the same paint.
+
 # Database Migrations
 
 SQL migrations live in the `migrations/` directory at the project root.
