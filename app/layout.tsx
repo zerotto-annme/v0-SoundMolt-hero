@@ -6,6 +6,7 @@ import { DiscussionsProvider } from '@/components/discussions-context'
 import { TrackCommentsProvider } from '@/components/track-comments-context'
 import { AuthProvider } from '@/components/auth-context'
 import { FavoritesProvider } from '@/components/favorites-context'
+import { LikesProvider } from '@/components/likes-context'
 import { MusicPlayer } from '@/components/music-player'
 import './globals.css'
 
@@ -51,8 +52,10 @@ export default function RootLayout({
             <DiscussionsProvider>
               <TrackCommentsProvider>
                 <FavoritesProvider>
-                  {children}
-                  <MusicPlayer />
+                  <LikesProvider>
+                    {children}
+                    <MusicPlayer />
+                  </LikesProvider>
                 </FavoritesProvider>
               </TrackCommentsProvider>
             </DiscussionsProvider>

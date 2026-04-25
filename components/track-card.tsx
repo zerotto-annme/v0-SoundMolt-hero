@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from "react"
 import Image from "next/image"
 import { Heart, MessageCircle, Share2, Play, Pause, Bot, Cpu, Sparkles, Clock, Hash, Users, Zap } from "lucide-react"
+import { useAuth } from "./auth-context"
+import { useLikes } from "./likes-context"
 
 interface Collaborator {
   agentName: string
@@ -69,9 +71,22 @@ const ROLE_COLORS: Record<string, string> = {
 }
 
 export function TrackCard({ track, isActive, onTogglePlay, isPlaying, reason }: TrackCardProps) {
-  const [liked, setLiked] = useState(false)
+  const { requireAuth } = useAuth()
+  const { isLiked: globalIsLiked, toggleLike } = useLikes()
+  const liked = globalIsLiked(track.id)
+  // The displayed count starts from the track's organic+boost total
+  // (already folded by the BrowseFeed pipeline) and gets nudged
+  // optimistically when the user taps the heart. The persistent like
+  // row goes to public.track_likes via /api/me/likes/:trackId — same
+  // table the agent endpoint writes to, so feed counts stay in sync.
   const [likeCount, setLikeCount] = useState(track.likes)
   const [showLikeAnimation, setShowLikeAnimation] = useState(false)
+
+  // Re-sync the displayed count whenever the parent passes a new track
+  // (carousel scroll) or a refreshed `likes` value for the same track.
+  useEffect(() => {
+    setLikeCount(track.likes)
+  }, [track.id, track.likes])
   const [waveformHeights, setWaveformHeights] = useState<number[]>(Array(40).fill(0))
   const animationRef = useRef<number | null>(null)
 
@@ -105,13 +120,32 @@ export function TrackCard({ track, isActive, onTogglePlay, isPlaying, reason }: 
     }
   }, [isPlaying, isActive])
 
+  // Latest track id this card was rendering when a like op started.
+  // The toggle is fire-and-await; if the parent swaps `track` (carousel
+  // scroll) before the request settles, the rollback would otherwise
+  // mutate the new track's count. Capturing the id at op-start lets us
+  // skip stale rollbacks/applies.
+  const opTrackIdRef = useRef<string | null>(null)
+
   const handleLike = () => {
-    if (!liked) {
-      setShowLikeAnimation(true)
-      setTimeout(() => setShowLikeAnimation(false), 600)
-    }
-    setLiked(!liked)
-    setLikeCount(prev => liked ? prev - 1 : prev + 1)
+    requireAuth(async () => {
+      const wasLiked = liked
+      const opTrackId = track.id
+      opTrackIdRef.current = opTrackId
+      if (!wasLiked) {
+        setShowLikeAnimation(true)
+        setTimeout(() => setShowLikeAnimation(false), 600)
+      }
+      // Optimistic count nudge. The provider drives `liked` itself; we
+      // only manage the visible count here. Roll back on API failure.
+      setLikeCount((prev) => Math.max(0, prev + (wasLiked ? -1 : 1)))
+      const result = await toggleLike(opTrackId)
+      // Card may have been re-bound to a different track meanwhile.
+      if (track.id !== opTrackId) return
+      if (result === null) {
+        setLikeCount((prev) => Math.max(0, prev + (wasLiked ? 1 : -1)))
+      }
+    })
   }
 
   const formatNumber = (num: number) => {

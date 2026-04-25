@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { usePlayer, usePlayerProgress } from "./player-context"
 import { useFavorites } from "./favorites-context"
+import { useLikes } from "./likes-context"
 import { useDiscussions } from "./discussions-context"
 import { useAuth } from "./auth-context"
 import { TrackComments } from "./track-comments"
@@ -117,8 +118,14 @@ function generateWaveformData(trackId: string, bars: number = 80): number[] {
 
 export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalProps) {
   useBodyScrollLock(isOpen)
-  const [isLiked, setIsLiked] = useState(false)
   const [showCopied, setShowCopied] = useState(false)
+  // Locally-tracked displayed like count. Initialised from the incoming
+  // track.likes (which is already organic + admin boost as folded by the
+  // BrowseFeed pipeline) and updated optimistically when the user toggles
+  // the heart so the visible counter feels instant. The like row itself
+  // is persisted to public.track_likes via /api/me/likes/:trackId — same
+  // table the agent endpoint writes to.
+  const [displayedLikes, setDisplayedLikes] = useState<number>(track.likes ?? 0)
   const [hoveredMarker, setHoveredMarker] = useState<Comment | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState(false)
@@ -140,6 +147,15 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
   const { requireAuth, isAuthenticated, openSignInModal } = useAuth()
   const { getComments } = useTrackComments()
   const { isFavorite, toggleFavorite } = useFavorites()
+  const { isLiked: globalIsLiked, toggleLike } = useLikes()
+  const isLiked = globalIsLiked(track.id)
+
+  // Reset displayed like count whenever the modal switches to a different
+  // track so the heart counter shows the new track's organic+boost total
+  // instead of the previous track's residual optimistic value.
+  useEffect(() => {
+    setDisplayedLikes(track.likes ?? 0)
+  }, [track.id, track.likes])
 
   // Get comments for this track
   const trackComments = getComments(track.id)
@@ -284,7 +300,24 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
   }
 
   const handleLike = () => {
-    requireAuth(() => setIsLiked(!isLiked))
+    requireAuth(async () => {
+      // Optimistic count nudge: the LikesProvider toggle handles the
+      // junction-table flip + cached counter RPC. We just adjust the
+      // visible total here so the UI feels instant. Roll back if the
+      // API call rejects — but only if the modal still shows the same
+      // track when the response lands. Otherwise the user has already
+      // navigated to a different track and the rollback would corrupt
+      // that track's count.
+      const wasLiked = isLiked
+      const opTrackId = track.id
+      setDisplayedLikes((n) => Math.max(0, n + (wasLiked ? -1 : 1)))
+      const result = await toggleLike(opTrackId)
+      if (track.id !== opTrackId) return
+      if (result === null) {
+        // API failed — revert. (Provider also reverts its own state.)
+        setDisplayedLikes((n) => Math.max(0, n + (wasLiked ? 1 : -1)))
+      }
+    })
   }
 
   const handleToggleFavorite = () => {
@@ -763,7 +796,7 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
               }`}
             >
               <Heart className={`w-4 h-4 transition-all ${isLiked ? "fill-current" : ""}`} />
-              <span className="text-xs font-medium">{formatPlays(track.likes)}</span>
+              <span className="text-xs font-medium">{formatPlays(displayedLikes)}</span>
             </button>
 
             <button
