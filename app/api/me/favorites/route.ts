@@ -32,7 +32,14 @@ export async function GET(request: NextRequest) {
     .limit(500)
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error("[me/favorites GET] select failed:", {
+      code: error.code, message: error.message,
+      details: error.details, hint: error.hint, user: user.id,
+    })
+    return NextResponse.json(
+      { error: error.message, code: error.code, details: error.details },
+      { status: 500 }
+    )
   }
 
   return NextResponse.json({

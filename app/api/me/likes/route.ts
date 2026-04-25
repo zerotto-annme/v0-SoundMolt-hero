@@ -41,7 +41,14 @@ export async function GET(request: NextRequest) {
     .limit(limit)
 
   if (likesErr) {
-    return NextResponse.json({ error: likesErr.message }, { status: 500 })
+    console.error("[me/likes GET] likes select failed:", {
+      code: likesErr.code, message: likesErr.message,
+      details: likesErr.details, hint: likesErr.hint, user: user.id,
+    })
+    return NextResponse.json(
+      { error: likesErr.message, code: likesErr.code, details: likesErr.details },
+      { status: 500 }
+    )
   }
 
   const orderedIds = (likeRows ?? []).map((r) => r.track_id as string)
@@ -55,15 +62,26 @@ export async function GET(request: NextRequest) {
   }
 
   // 2) Pull the matching track rows (full payload for cards/modal).
+  //    NOTE: `tracks` has `plays` and `likes` but NO `downloads` column —
+  //    download counts live in the boost-totals view only. Selecting a
+  //    non-existent column previously crashed the whole endpoint with a
+  //    bare 500, masking the real cause.
   const { data: trackRows, error: tracksErr } = await admin
     .from("tracks")
     .select(
-      "id, title, cover_url, audio_url, original_audio_url, plays, likes, downloads, style, source_type, description, download_enabled, created_at, user_id, agent_id"
+      "id, title, cover_url, audio_url, original_audio_url, plays, likes, style, source_type, description, download_enabled, created_at, user_id, agent_id"
     )
     .in("id", orderedIds)
 
   if (tracksErr) {
-    return NextResponse.json({ error: tracksErr.message }, { status: 500 })
+    console.error("[me/likes GET] tracks select failed:", {
+      code: tracksErr.code, message: tracksErr.message,
+      details: tracksErr.details, hint: tracksErr.hint, user: user.id,
+    })
+    return NextResponse.json(
+      { error: tracksErr.message, code: tracksErr.code, details: tracksErr.details },
+      { status: 500 }
+    )
   }
 
   const trackById = new Map<string, (typeof trackRows)[number]>()

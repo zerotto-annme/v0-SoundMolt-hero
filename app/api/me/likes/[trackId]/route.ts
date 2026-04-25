@@ -47,7 +47,16 @@ export async function POST(
     .select("id")
     .eq("id", trackId)
     .maybeSingle()
-  if (trackErr) return NextResponse.json({ error: trackErr.message }, { status: 500 })
+  if (trackErr) {
+    console.error("[me/likes] track lookup failed:", {
+      code: trackErr.code, message: trackErr.message,
+      details: trackErr.details, hint: trackErr.hint, track: trackId, user: user.id,
+    })
+    return NextResponse.json(
+      { error: trackErr.message, code: trackErr.code, details: trackErr.details },
+      { status: 500 }
+    )
+  }
   if (!track) return NextResponse.json({ error: "Track not found" }, { status: 404 })
 
   // 2) Idempotent insert.
@@ -131,7 +140,16 @@ export async function DELETE(
     .select("id")
     .eq("id", trackId)
     .maybeSingle()
-  if (trackErr) return NextResponse.json({ error: trackErr.message }, { status: 500 })
+  if (trackErr) {
+    console.error("[me/likes] track lookup failed:", {
+      code: trackErr.code, message: trackErr.message,
+      details: trackErr.details, hint: trackErr.hint, track: trackId, user: user.id,
+    })
+    return NextResponse.json(
+      { error: trackErr.message, code: trackErr.code, details: trackErr.details },
+      { status: 500 }
+    )
+  }
   if (!track) return NextResponse.json({ error: "Track not found" }, { status: 404 })
 
   // 2) Delete only this user's like (idempotent on missing row).
