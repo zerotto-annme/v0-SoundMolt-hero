@@ -501,9 +501,19 @@ export default function MyTracksPage() {
         isOpen={editingTrack !== null}
         onClose={() => setEditingTrack(null)}
         track={editingTrack}
-        onSaved={({ id, title, description }) => {
+        onSaved={({ id, title, description, style, coverUrl }) => {
           setSupabaseTracks(prev =>
-            prev.map(t => (t.id === id ? { ...t, title, description } : t))
+            prev.map(t =>
+              t.id === id
+                ? {
+                    ...t,
+                    title,
+                    description,
+                    ...(style !== undefined ? { style } : {}),
+                    ...(coverUrl ? { coverUrl, coverArt: coverUrl } : {}),
+                  }
+                : t
+            )
           )
         }}
       />
