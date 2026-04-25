@@ -106,14 +106,17 @@ export async function GET(
   }
 
   if (profileRow) {
+    // Human uploader: show ALL real tracks owned by this user — do not
+    // require agent_id IS NULL (covers tracks the user uploaded with an
+    // agent attached) and do not require published_at (drafts also
+    // appear so the owner / a viewer sees real history). The user_id
+    // ownership filter is the only constraint.
     const { data: trackRows, error: tracksErr } = await admin
       .from("tracks")
       .select(
         "id, title, cover_url, audio_url, original_audio_url, plays, likes, style, source_type, description, download_enabled, created_at, user_id, agent_id, published_at",
       )
       .eq("user_id", id)
-      .is("agent_id", null)
-      .not("published_at", "is", null)
       .order("created_at", { ascending: false })
       .limit(200)
 
@@ -121,14 +124,35 @@ export async function GET(
       console.error("[agents/:id/profile] user-tracks select failed:", tracksErr.message)
     }
 
+    // Display-name fallback chain (per spec): username → auth email
+    // prefix → "Uploaded Artist". The auth lookup only fires when the
+    // profile has no username (rare in live data).
+    const profileUsername = (profileRow as { username?: string | null }).username || null
+    let emailPrefix: string | null = null
+    if (!profileUsername) {
+      try {
+        const { data: authRes } = await admin.auth.admin.getUserById(id)
+        const email = authRes?.user?.email ?? null
+        if (email && email.includes("@")) emailPrefix = email.split("@")[0]
+      } catch (e) {
+        console.error("[agents/:id/profile] auth lookup failed:", (e as Error).message)
+      }
+    }
+    const displayName = profileUsername || emailPrefix || "Uploaded Artist"
+
+    console.log("[artist] profile loaded", {
+      kind: "user",
+      id,
+      name: displayName,
+      hasAvatar: !!(profileRow as { avatar_url?: string | null }).avatar_url,
+    })
+    console.log("[artist] tracks loaded count", (trackRows ?? []).length)
+
     return NextResponse.json({
       entity: {
         id: profileRow.id as string,
         kind: "user" as const,
-        name:
-          (profileRow as { artist_name?: string | null }).artist_name ||
-          (profileRow as { username?: string | null }).username ||
-          "Uploaded Artist",
+        name: displayName,
         avatarUrl: (profileRow as { avatar_url?: string | null }).avatar_url ?? null,
         coverUrl: null,
         description: null,

@@ -93,6 +93,10 @@ export async function shapeTracks(
         .filter((id): id is string => !!id),
     ),
   )
+  // Build display-name map from profiles.username (per spec). Profiles
+  // missing username are looked up in auth.users below for an
+  // email-prefix fallback so we never surface "Uploaded Artist" when a
+  // real identity exists.
   const usernameById: Record<string, string> = {}
   const profileAvatarById: Record<string, string | null> = {}
   if (userIds.length > 0) {
@@ -101,9 +105,21 @@ export async function shapeTracks(
       .select("id, username, avatar_url")
       .in("id", userIds)
     for (const p of profiles ?? []) {
-      usernameById[p.id as string] = (p as { username?: string }).username ?? "Uploaded Artist"
+      const nm = (p as { username?: string | null }).username || null
+      if (nm) usernameById[p.id as string] = nm
       profileAvatarById[p.id as string] =
         (p as { avatar_url?: string | null }).avatar_url ?? null
+    }
+  }
+  const emailPrefixById: Record<string, string> = {}
+  const missingNameUserIds = userIds.filter((u) => !usernameById[u])
+  for (const uid of missingNameUserIds) {
+    try {
+      const { data: authRes } = await admin.auth.admin.getUserById(uid)
+      const email = authRes?.user?.email ?? null
+      if (email && email.includes("@")) emailPrefixById[uid] = email.split("@")[0]
+    } catch {
+      // ignore — falls back to "Uploaded Artist" below
     }
   }
 
@@ -137,7 +153,9 @@ export async function shapeTracks(
     const boost = boostByTrack[id] ?? { plays: 0, likes: 0, downloads: 0 }
     const agentInfo = row.agent_id ? agentById[row.agent_id as string] : undefined
     const fallbackName =
-      (row.user_id && usernameById[row.user_id as string]) || "Uploaded Artist"
+      (row.user_id &&
+        (usernameById[row.user_id as string] || emailPrefixById[row.user_id as string])) ||
+      "Uploaded Artist"
     const artistName = agentInfo?.name || fallbackName
     const artistAvatar =
       agentInfo?.avatarUrl ??

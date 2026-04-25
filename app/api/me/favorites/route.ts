@@ -109,6 +109,10 @@ export async function GET(request: NextRequest) {
     )
   )
 
+  // Display-name map from profiles.username (per spec). For profiles
+  // missing a username we look up auth.users for an email-prefix
+  // fallback so we never surface "Uploaded Artist" when a real
+  // identity exists.
   const usernameById: Record<string, string> = {}
   const profileAvatarById: Record<string, string | null> = {}
   if (userIds.length > 0) {
@@ -117,8 +121,19 @@ export async function GET(request: NextRequest) {
       .select("id, username, avatar_url")
       .in("id", userIds)
     for (const p of profiles ?? []) {
-      usernameById[p.id as string] = (p as { username?: string }).username ?? "Uploaded Artist"
+      const nm = (p as { username?: string | null }).username || null
+      if (nm) usernameById[p.id as string] = nm
       profileAvatarById[p.id as string] = (p as { avatar_url?: string | null }).avatar_url ?? null
+    }
+  }
+  const emailPrefixById: Record<string, string> = {}
+  for (const uid of userIds.filter((u) => !usernameById[u])) {
+    try {
+      const { data: authRes } = await admin.auth.admin.getUserById(uid)
+      const email = authRes?.user?.email ?? null
+      if (email && email.includes("@")) emailPrefixById[uid] = email.split("@")[0]
+    } catch {
+      // ignore — falls back to "Uploaded Artist"
     }
   }
 
@@ -151,7 +166,10 @@ export async function GET(request: NextRequest) {
     .map((row) => {
       const boost = boostByTrack[row.id as string] ?? { plays: 0, likes: 0, downloads: 0 }
       const agentInfo = row.agent_id ? agentById[row.agent_id as string] : undefined
-      const fallbackName = (row.user_id && usernameById[row.user_id as string]) || "Uploaded Artist"
+      const fallbackName =
+        (row.user_id &&
+          (usernameById[row.user_id as string] || emailPrefixById[row.user_id as string])) ||
+        "Uploaded Artist"
       const artistName = agentInfo?.name || fallbackName
       const artistAvatar =
         agentInfo?.avatarUrl ?? (row.user_id ? profileAvatarById[row.user_id as string] ?? null : null)
