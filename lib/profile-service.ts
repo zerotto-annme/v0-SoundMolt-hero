@@ -265,35 +265,57 @@ export async function updateProfile(
     payload.role = "user"
   }
 
-  // 4. Pick UPDATE vs INSERT explicitly. We previously used `.upsert()`
-  //    with `onConflict: "id"` for both paths, but that route was
-  //    silently taking the INSERT branch for existing rows in some
-  //    environments (likely an RLS/PostgREST conflict-detection
-  //    interaction). Because a normal profile edit deliberately omits
-  //    `role` from the payload to preserve the real role, the INSERT
-  //    branch then violated the `role NOT NULL` constraint with code
-  //    23502. Using a plain UPDATE keyed on the user id removes the
-  //    insert path entirely: any column we don't send is left untouched.
-  const useInsertPath = !preReadFailed && existing === null
-  const writeQuery = useInsertPath
-    ? supabase.from("profiles").insert(payload)
-    : supabase.from("profiles").update(payload).eq("id", userId)
-  const { error } = await writeQuery
-    .select(SELECT_COLS_FALLBACK)
-    .maybeSingle()
+  // 4. Hand the write to the server-side admin endpoint. A direct
+  //    client UPDATE here was silently no-op-ing under RLS — the request
+  //    succeeded but no row was changed, so the modal flashed green
+  //    without persisting anything. The endpoint validates the Bearer
+  //    JWT, scopes the WHERE to that user id, and writes through the
+  //    service-role client so the row genuinely changes.
+  const { data: sess } = await supabase.auth.getSession()
+  const accessToken = sess?.session?.access_token
+  if (!accessToken) {
+    throw new Error("Not signed in — please reload and sign in again.")
+  }
 
-  if (error) {
+  const apiPatch: Record<string, unknown> = {}
+  if (typeof payload.username === "string") apiPatch.username = payload.username
+  if (Object.prototype.hasOwnProperty.call(payload, "avatar_url")) {
+    apiPatch.avatar_url = payload.avatar_url ?? null
+  }
+
+  let res: Response
+  try {
+    res = await fetch("/api/profile/update", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(apiPatch),
+    })
+  } catch (err) {
+    console.error("PROFILE update network error", err)
+    throw new Error("Could not reach the server. Please try again.")
+  }
+
+  if (!res.ok) {
+    let parsed: { error?: string; message?: string } | null = null
+    try {
+      parsed = (await res.json()) as { error?: string; message?: string }
+    } catch {
+      // ignore — fall through to generic message below
+    }
     console.error("PROFILE update result", {
       userId,
       ok: false,
-      code: error.code,
-      message: error.message,
-      details: error.details,
+      status: res.status,
+      error: parsed?.error ?? null,
+      message: parsed?.message ?? null,
     })
-    if (error.code === "23505" && trimmedUsername !== undefined) {
+    if (parsed?.error === "username_taken" && trimmedUsername !== undefined) {
       throw new UsernameTakenError(trimmedUsername)
     }
-    throw new Error(error.message || "Profile update failed.")
+    throw new Error(parsed?.message || "Profile update failed.")
   }
 
   // 5. Re-read through the tolerant selectProfile() so the caller
