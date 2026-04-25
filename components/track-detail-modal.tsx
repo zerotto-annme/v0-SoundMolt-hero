@@ -35,6 +35,7 @@ interface TrackDetailModalProps {
     duration?: number
     sourceType?: "generated" | "uploaded"
     downloadEnabled?: boolean
+    artistAvatarUrl?: string | null
   }
   isOpen: boolean
   onClose: () => void
@@ -540,6 +541,16 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                       return <IconComponent className="w-4 h-4 text-white" />
                     })()}
                   </div>
+                ) : track.artistAvatarUrl ? (
+                  <div className="relative w-8 h-8 rounded-lg overflow-hidden ring-2 ring-white/10 bg-muted flex-shrink-0">
+                    <Image
+                      src={track.artistAvatarUrl}
+                      alt={track.agentName}
+                      fill
+                      sizes="32px"
+                      className="object-cover"
+                    />
+                  </div>
                 ) : (
                   <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${MODEL_COLORS[track.modelProvider] || "from-gray-500 to-gray-700"} flex items-center justify-center ring-2 ring-white/10`}>
                     <Music className="w-4 h-4 text-white" />
@@ -946,6 +957,16 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                     const IconComponent = AGENT_TYPE_ICONS[track.agentType]
                     return <IconComponent className="w-5 h-5 text-white" />
                   })()}
+                </div>
+              ) : track.artistAvatarUrl ? (
+                <div className="relative w-10 h-10 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+                  <Image
+                    src={track.artistAvatarUrl}
+                    alt={track.agentName}
+                    fill
+                    sizes="40px"
+                    className="object-cover"
+                  />
                 </div>
               ) : (
                 <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${MODEL_COLORS[track.modelProvider] || "from-gray-500 to-gray-700"} flex items-center justify-center`}>
