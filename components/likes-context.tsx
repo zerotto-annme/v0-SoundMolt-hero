@@ -149,16 +149,22 @@ export function LikesProvider({ children }: { children: ReactNode }) {
         const token = sess?.session?.access_token
         if (!token) throw new Error("No session token")
 
+        console.log("[likes] toggle start", { trackId, wasLiked })
+
         const res = await fetch(`/api/me/likes/${encodeURIComponent(trackId)}`, {
           method: wasLiked ? "DELETE" : "POST",
           headers: { authorization: `Bearer ${token}` },
         })
 
         if (!res.ok) {
-          throw new Error(`Like API ${res.status}`)
+          // Pull the body so the actual PG error (constraint, FK, etc.)
+          // shows up in the browser console instead of an opaque status.
+          const body = await res.text().catch(() => "")
+          throw new Error(`Like API ${res.status}: ${body}`)
         }
 
         const json = (await res.json()) as { total_likes?: number | null }
+        console.log("[likes] toggle ok", { trackId, total_likes: json.total_likes })
         // Only the latest op for this track is allowed to report its
         // total back. A stale completion would otherwise return a count
         // that no longer matches the user's current state.

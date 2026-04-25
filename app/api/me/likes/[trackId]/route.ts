@@ -60,7 +60,20 @@ export async function POST(
     .select("id, created_at")
 
   if (insertErr) {
-    return NextResponse.json({ error: insertErr.message }, { status: 500 })
+    // Surface PG error code + details to the server log so a missing
+    // constraint / FK / RLS issue is obvious instead of a bare 500.
+    console.error("[me/likes POST] insert failed:", {
+      code:    insertErr.code,
+      message: insertErr.message,
+      details: insertErr.details,
+      hint:    insertErr.hint,
+      track:   trackId,
+      user:    user.id,
+    })
+    return NextResponse.json(
+      { error: insertErr.message, code: insertErr.code, details: insertErr.details },
+      { status: 500 }
+    )
   }
 
   const isNew = (inserted?.length ?? 0) > 0

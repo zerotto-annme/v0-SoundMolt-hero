@@ -42,7 +42,18 @@ export async function POST(
     .select("id, created_at")
 
   if (insertErr) {
-    return NextResponse.json({ error: insertErr.message }, { status: 500 })
+    console.error("[me/favorites POST] insert failed:", {
+      code:    insertErr.code,
+      message: insertErr.message,
+      details: insertErr.details,
+      hint:    insertErr.hint,
+      track:   trackId,
+      user:    user.id,
+    })
+    return NextResponse.json(
+      { error: insertErr.message, code: insertErr.code, details: insertErr.details },
+      { status: 500 }
+    )
   }
 
   const isNew = (inserted?.length ?? 0) > 0
