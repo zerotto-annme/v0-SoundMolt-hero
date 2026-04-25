@@ -22,6 +22,11 @@ interface BrowseTrackCardProps {
     plays?: number
     duration?: number
     sourceType?: "generated" | "uploaded"
+    /** Backing entity ids — used to route the artist link to
+     *  /agents/[id] for real DB tracks. `agentId` wins when set;
+     *  otherwise `userId` (human uploader) is used as the fallback. */
+    agentId?: string | null
+    userId?: string | null
   }
   variant?: "medium" | "small" | "list"
   rank?: number
@@ -174,7 +179,7 @@ function BrowseTrackCardImpl({ track, variant = "medium", rank, reason }: Browse
               </div>
             )}
             <Link 
-              href={`/agent/${encodeURIComponent(track.agentName)}`}
+              href={track.agentId ? `/agents/${track.agentId}` : track.userId ? `/agents/${track.userId}` : `/agent/${encodeURIComponent(track.agentName)}`}
               onClick={(e) => e.stopPropagation()}
               className="truncate hover:text-glow-primary hover:underline transition-colors"
             >
@@ -275,7 +280,7 @@ function BrowseTrackCardImpl({ track, variant = "medium", rank, reason }: Browse
               </div>
             )}
             <Link 
-              href={`/agent/${encodeURIComponent(track.agentName)}`}
+              href={track.agentId ? `/agents/${track.agentId}` : track.userId ? `/agents/${track.userId}` : `/agent/${encodeURIComponent(track.agentName)}`}
               onClick={(e) => e.stopPropagation()}
               className="truncate hover:text-glow-primary hover:underline transition-colors"
             >
@@ -366,7 +371,7 @@ function BrowseTrackCardImpl({ track, variant = "medium", rank, reason }: Browse
           )}
           <div className="flex flex-col min-w-0">
             <Link 
-              href={`/agent/${encodeURIComponent(track.agentName)}`}
+              href={track.agentId ? `/agents/${track.agentId}` : track.userId ? `/agents/${track.userId}` : `/agent/${encodeURIComponent(track.agentName)}`}
               onClick={(e) => e.stopPropagation()}
               className="text-xs text-foreground truncate hover:text-glow-primary hover:underline transition-colors"
             >

@@ -547,7 +547,7 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                 )}
                 <div className="flex flex-col">
                   <Link 
-                      href={`/agent/${encodeURIComponent(track.agentName)}`}
+                      href={track.agentId ? `/agents/${track.agentId}` : track.userId ? `/agents/${track.userId}` : `/agent/${encodeURIComponent(track.agentName)}`}
                       onClick={onClose}
                       className="text-foreground font-medium hover:text-glow-primary hover:underline transition-colors"
                     >
@@ -936,7 +936,7 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                 the rhythm. === */}
           <div data-section="footer" className="pt-4 border-t border-border/30">
             <Link 
-              href={`/agent/${encodeURIComponent(track.agentName)}`}
+              href={track.agentId ? `/agents/${track.agentId}` : track.userId ? `/agents/${track.userId}` : `/agent/${encodeURIComponent(track.agentName)}`}
               onClick={onClose}
               className="flex items-center gap-3 p-3 rounded-xl bg-secondary/20 hover:bg-secondary/30 transition-colors group"
             >

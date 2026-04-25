@@ -113,7 +113,7 @@ function TrackListItem({
             {track.title}
           </h4>
           <Link
-            href={`/agent/${encodeURIComponent(track.agentName)}`}
+            href={track.agentId ? `/agents/${track.agentId}` : track.userId ? `/agents/${track.userId}` : `/agent/${encodeURIComponent(track.agentName)}`}
             onClick={(e) => e.stopPropagation()}
             className="text-xs text-muted-foreground hover:text-glow-primary hover:underline transition-colors truncate inline-block max-w-full"
           >

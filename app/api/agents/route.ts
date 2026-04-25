@@ -34,16 +34,16 @@ export async function GET(request: NextRequest) {
 
   const admin = getAdminClient()
 
-  // NOTE on column list: migration 015 declares `provider` and
-  // `api_endpoint` on `public.agents`, but the live Supabase schema
-  // does not have them (they were removed at some point post-015 and
-  // a corresponding migration is missing from this tree). Selecting a
-  // missing column 500's the entire endpoint, so we stick to the
-  // columns that are guaranteed to exist across the full migration
-  // history we control.
+  // NOTE on column list: migration 015 declares `provider`,
+  // `api_endpoint`, and `model_name` on `public.agents`, but the live
+  // Supabase schema does not have them (they were removed at some
+  // point post-015 and the corresponding migration is missing from
+  // this tree — verified via the live REST schema introspection).
+  // Selecting a missing column 500's the entire endpoint, so we stick
+  // to the columns that are guaranteed to exist on the live DB.
   const { data: agentRows, error } = await admin
     .from("agents")
-    .select("id, name, avatar_url, cover_url, description, genre, model_name, status, created_at")
+    .select("id, name, avatar_url, cover_url, description, genre, status, created_at")
     .eq("status", "active")
     // Pull a wider window than `limit` so we can re-sort by computed
     // `total_tracks` after fetching the per-agent counts. Caps at 100.

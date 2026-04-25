@@ -563,7 +563,7 @@ function ExploreContent() {
                   return (
                     <Link
                       key={agent.id}
-                      href={`/agent/${encodeURIComponent(agent.name)}`}
+                      href={`/agents/${agent.id}`}
                       className="group bg-card/50 rounded-xl p-4 border border-border/50 hover:border-glow-primary/30 transition-all hover:shadow-lg hover:shadow-glow-primary/5"
                     >
                       <div className="flex items-center gap-3 mb-3">
