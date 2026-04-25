@@ -1,0 +1,92 @@
+We are working in Replit.
+
+Goal: make profile/auth UX production-grade like SoundCloud.
+
+Current bugs:
+- Google login works, but profile editing can fail with "Could not find your profile to update"
+- avatar/profile sometimes appears only after refresh
+- username/avatar can flicker after login
+- profile may not exist for Google users
+
+Required architecture:
+
+1. Create one single profile service/hook:
+   useCurrentProfile()
+
+It must expose:
+- user
+- profile
+- authReady
+- profileReady
+- loading
+- refreshProfile()
+- updateProfile({ username, avatar_url })
+
+2. On auth state change:
+- SIGNED_IN / INITIAL_SESSION:
+  a) set user
+  b) call ensureProfile(user)
+  c) fetch profile
+  d) set profileReady true
+- SIGNED_OUT:
+  a) clear user
+  b) clear profile
+  c) set profileReady true
+
+3. ensureProfile(user):
+Use upsert into public.profiles:
+- id = user.id
+- username = existing username OR email prefix
+- avatar_url = Google avatar if no avatar exists
+- role = existing role OR 'user'
+
+Never overwrite existing username/avatar unless user saves manually.
+
+4. Edit Profile modal:
+Before saving, always call:
+supabase.auth.getUser()
+
+Use fresh user.id, not cached context id.
+
+Save logic:
+- ensureProfile(freshUser)
+- update profiles where id = freshUser.id
+- select updated row
+- update global profile state immediately
+- close modal
+- show success toast
+
+5. Username availability:
+Do not block saving if availability check fails.
+Show warning only.
+But on save, handle unique constraint error nicely:
+"Username is already taken."
+
+6. Avatar:
+- image upload updates avatar_url immediately
+- add cache busting with updated_at:
+avatar_url + "?v=" + updated_at
+- sidebar/avatar/profile all use same profile.avatar_url source
+
+7. UI:
+- while authReady/profileReady is false, show skeleton
+- never show email as temporary username if profile is still loading
+- no flicker username -> email -> username
+
+8. Add DB-safe fallback:
+If profile update affects 0 rows, create profile then retry update once.
+
+9. Add logs:
+PROFILE ensure start/result
+PROFILE fetch result
+PROFILE update start/result
+AUTH event + user.id
+
+Acceptance:
+- Google login creates/repairs profile automatically
+- username changes without error
+- avatar changes without refresh
+- sidebar avatar updates immediately
+- no username flicker
+- no manual SQL ever needed again
+- profile state is shared everywhere

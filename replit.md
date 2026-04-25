@@ -135,6 +135,43 @@ avatar_url  = user_metadata.avatar_url || user_metadata.picture || null
 types, RLS, UI conditionals). Do NOT change to `"user"` without a coordinated
 schema + code migration.
 
+## Single Profile Service: `useCurrentProfile()`
+
+All Edit Profile / avatar / username flows go through one hook:
+`hooks/use-current-profile.ts`. It exposes:
+
+```
+{ user, profile, authReady, profileReady, loading,
+  refreshProfile(),
+  updateProfile({ username?, avatar_url? }) }
+```
+
+`updateProfile()` is the only sanctioned write path. It:
+1. Calls `supabase.auth.getUser()` to get the FRESH user id (never trusts
+   the cached context id — covers token-refresh races).
+2. Calls `ensureProfile(freshUser)` so we never UPDATE a row that doesn't
+   exist yet.
+3. Issues the UPDATE. If the UPDATE returns 0 rows (RLS hid it, or row
+   was deleted between ensure and update), it calls `ensureProfile`
+   again and retries the UPDATE once.
+4. On Postgres `23505` (unique violation on username) it throws a
+   typed `UsernameTakenError` so the modal can show
+   "That username is already taken." instead of a generic error.
+5. Pushes the updated row into auth-context state immediately (cache-
+   busted avatar via `?v=updated_at` if the column exists, else
+   `Date.now()`), so the sidebar avatar updates without a refresh.
+
+**Username availability check is never blocking.** The debounced
+`/api/username-available` poll surfaces a warning only — the DB unique
+constraint is the source of truth, surfaced via `UsernameTakenError`.
+
+**Migration 039** (`migrations/039_profiles_updated_at.sql`) adds
+`profiles.updated_at` plus a trigger that bumps it on UPDATE. Apply it
+in the Supabase SQL editor for deterministic cache-busting; until it's
+applied, the SELECT/UPDATE paths transparently fall back to the legacy
+column list (errors with code `42703` or matching `/updated_at/` are
+caught and retried) and cache-busting falls back to `Date.now()`.
+
 ## Sidebar Avatar Render
 
 `ProfileDropdownAvatar` (in `components/auth-context.tsx`) is a small
