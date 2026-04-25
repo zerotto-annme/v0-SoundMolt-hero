@@ -150,11 +150,21 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
   const { isLiked: globalIsLiked, toggleLike } = useLikes()
   const isLiked = globalIsLiked(track.id)
 
+  // Latest track id this modal was rendering when a like op started.
+  // Modal often stays mounted while the underlying track changes (e.g.
+  // user navigates to next/prev). Without this, an in-flight like op
+  // could land after the swap and overwrite the now-different track's
+  // count. The handleLike below guards against that by comparing
+  // captured opTrackId against `opTrackIdRef.current` at response time.
+  const opTrackIdRef = useRef<string | null>(null)
+
   // Reset displayed like count whenever the modal switches to a different
   // track so the heart counter shows the new track's organic+boost total
-  // instead of the previous track's residual optimistic value.
+  // instead of the previous track's residual optimistic value. Also
+  // null out the in-flight op id so any pending response is a no-op.
   useEffect(() => {
     setDisplayedLikes(track.likes ?? 0)
+    opTrackIdRef.current = null
   }, [track.id, track.likes])
 
   // Get comments for this track
@@ -310,12 +320,25 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
       // that track's count.
       const wasLiked = isLiked
       const opTrackId = track.id
+      opTrackIdRef.current = opTrackId
+      // Optimistic nudge for instant feel. The server call below
+      // returns the authoritative organic+boost count and we snap to
+      // it on response — the optimistic value is only what shows for
+      // the ~200ms it takes to round-trip.
       setDisplayedLikes((n) => Math.max(0, n + (wasLiked ? -1 : 1)))
       const result = await toggleLike(opTrackId)
-      if (track.id !== opTrackId) return
+      // Modal may have switched tracks (next/prev) OR a newer like op
+      // may have started — `opTrackIdRef.current` is the source of
+      // truth for whether this op is still the latest one for this
+      // track instance.
+      if (opTrackIdRef.current !== opTrackId) return
       if (result === null) {
         // API failed — revert. (Provider also reverts its own state.)
         setDisplayedLikes((n) => Math.max(0, n + (wasLiked ? 1 : -1)))
+      } else {
+        // Trust server. The /api/me/likes route folds boost in for us
+        // so `result` is the full displayed total (organic + boost).
+        setDisplayedLikes(result)
       }
     })
   }

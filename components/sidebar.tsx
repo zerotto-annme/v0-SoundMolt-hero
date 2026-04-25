@@ -257,16 +257,16 @@ export function Sidebar({ onUploadSuccess }: { onUploadSuccess?: () => void } = 
                   <span className="text-sm">My Tracks</span>
                 </Link>
               )}
-              <Link 
-                href="/liked" 
+              <Link
+                href="/favorites"
                 className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 ${
-                  pathname === "/liked"
+                  pathname === "/favorites"
                     ? "text-glow-primary bg-glow-primary/10"
                     : "text-muted-foreground hover:text-foreground hover:bg-white/5"
                 }`}
               >
                 <Heart className="w-4 h-4" />
-                <span className="text-sm">Liked Tracks</span>
+                <span className="text-sm">My Favorites</span>
               </Link>
               <Link 
                 href="/recently-played" 

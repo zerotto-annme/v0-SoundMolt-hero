@@ -16,6 +16,11 @@ import type { Track } from "./player-context"
 
 interface FavoritesContextType {
   favorites: Track[]
+  /** Live snapshot of the user's favorite-track-id set. Exposed so
+   *  pages like /favorites can react to add/remove without resubscribing
+   *  to the full `favorites` array (which only contains items the user
+   *  has touched in-session, not the server-rendered list). */
+  favoriteIds: ReadonlySet<string>
   isFavorite: (trackId: string) => boolean
   addFavorite: (track: Track) => void
   removeFavorite: (trackId: string) => void
@@ -200,8 +205,8 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
   )
 
   const value = useMemo(
-    () => ({ favorites, isFavorite, addFavorite, removeFavorite, toggleFavorite }),
-    [favorites, isFavorite, addFavorite, removeFavorite, toggleFavorite],
+    () => ({ favorites, favoriteIds, isFavorite, addFavorite, removeFavorite, toggleFavorite }),
+    [favorites, favoriteIds, isFavorite, addFavorite, removeFavorite, toggleFavorite],
   )
 
   return <FavoritesContext.Provider value={value}>{children}</FavoritesContext.Provider>

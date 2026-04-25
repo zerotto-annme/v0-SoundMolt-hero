@@ -163,13 +163,25 @@ export function LikesProvider({ children }: { children: ReactNode }) {
           throw new Error(`Like API ${res.status}: ${body}`)
         }
 
-        const json = (await res.json()) as { total_likes?: number | null }
-        console.log("[likes] toggle ok", { trackId, total_likes: json.total_likes })
+        // The route returns both `count` (preferred, organic+boost
+        // total ready for display) and `total_likes` (same value, kept
+        // for back-compat). Prefer `count`; fall back to `total_likes`.
+        const json = (await res.json()) as {
+          count?: number | null
+          total_likes?: number | null
+        }
+        const reported =
+          typeof json.count === "number"
+            ? json.count
+            : typeof json.total_likes === "number"
+              ? json.total_likes
+              : null
+        console.log("[likes] toggle ok", { trackId, reported })
         // Only the latest op for this track is allowed to report its
         // total back. A stale completion would otherwise return a count
         // that no longer matches the user's current state.
         if (opCounterRef.current.get(trackId) !== myOp) return null
-        return typeof json.total_likes === "number" ? json.total_likes : null
+        return reported
       } catch (e) {
         // Rollback on failure — but only if this is still the latest op
         // for the track. Otherwise a newer toggle has already taken over

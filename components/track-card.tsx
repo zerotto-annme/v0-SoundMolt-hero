@@ -84,8 +84,12 @@ export function TrackCard({ track, isActive, onTogglePlay, isPlaying, reason }: 
 
   // Re-sync the displayed count whenever the parent passes a new track
   // (carousel scroll) or a refreshed `likes` value for the same track.
+  // Also invalidate any in-flight like op so its late response can't
+  // mutate the count for the now-different track (see ref + guard
+  // below).
   useEffect(() => {
     setLikeCount(track.likes)
+    opTrackIdRef.current = null
   }, [track.id, track.likes])
   const [waveformHeights, setWaveformHeights] = useState<number[]>(Array(40).fill(0))
   const animationRef = useRef<number | null>(null)
@@ -136,14 +140,19 @@ export function TrackCard({ track, isActive, onTogglePlay, isPlaying, reason }: 
         setShowLikeAnimation(true)
         setTimeout(() => setShowLikeAnimation(false), 600)
       }
-      // Optimistic count nudge. The provider drives `liked` itself; we
-      // only manage the visible count here. Roll back on API failure.
+      // Optimistic nudge for instant feel. We snap to the server's
+      // authoritative junction-table count when the response lands.
       setLikeCount((prev) => Math.max(0, prev + (wasLiked ? -1 : 1)))
       const result = await toggleLike(opTrackId)
-      // Card may have been re-bound to a different track meanwhile.
-      if (track.id !== opTrackId) return
+      // Card may have been re-bound to a different track (carousel
+      // scroll) OR another like op may have superseded this one — in
+      // either case `opTrackIdRef.current` no longer matches the id we
+      // captured at op-start, and we must not touch local count state.
+      if (opTrackIdRef.current !== opTrackId) return
       if (result === null) {
         setLikeCount((prev) => Math.max(0, prev + (wasLiked ? 1 : -1)))
+      } else {
+        setLikeCount(result)
       }
     })
   }
