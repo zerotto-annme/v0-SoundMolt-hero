@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import Image from "next/image"
+import Link from "next/link"
 import { Search, ChevronRight, TrendingUp, Zap, Sparkles, Bot, Music, Headphones, Radio, Activity, Plus, User, Loader2, Crown, Flame, Play, Heart, ListMusic } from "lucide-react"
 import { BrowseTrackCard } from "./browse-track-card"
 import { ChartTrackCard } from "./chart-track-card"
@@ -1101,17 +1102,20 @@ function TopArtistsRow({
             const cardClass =
               "group relative shrink-0 w-[200px] bg-card/40 hover:bg-card/60 border border-border/30 hover:border-glow-primary/40 rounded-2xl p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_8px_30px_-8px_rgba(236,72,153,0.35)]"
 
-            // Cards are intentionally NOT wrapped in <Link> here.  The
-            // /agent/[name] route currently resolves from seed data
-            // (lib/agents.getAgentByName) and uploader profiles have no
-            // public profile route at all — linking either kind would
-            // produce a "not found" page.  We surface the real artist
-            // identity (avatar, name, totals) and leave navigation for
-            // the follow-up that wires up real agent / profile pages.
+            // Wrap the card in a Link to /agents/[id]. `artist.key` is
+            // either an agent_id (AI agent) or a profiles.id (human
+            // uploader); the new public /agents/[id] route resolves
+            // both kinds against real DB rows, so a single href works
+            // for either branch.
             return (
-              <div key={artist.key} data-shelf-item className={cardClass}>
+              <Link
+                key={artist.key}
+                href={`/agents/${artist.key}`}
+                data-shelf-item
+                className={cardClass}
+              >
                 {body}
-              </div>
+              </Link>
             )
           })}
         </HorizontalShelf>
