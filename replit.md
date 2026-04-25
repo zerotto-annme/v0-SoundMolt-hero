@@ -101,6 +101,40 @@ block:
 If you ever need to read or write Supabase data from within an auth
 listener callback, use the same `setTimeout(0)` deferral pattern.
 
+## Profile Auto-Creation (Bulletproof)
+
+A `public.profiles` row is guaranteed to exist for every authenticated user
+through three layered safety nets, in this order:
+
+1. **DB trigger** `on_auth_user_created` (migration 005) inserts a row at
+   `auth.users` INSERT time. Works for fresh sign-ups when the trigger is
+   installed in the Supabase project.
+2. **Client-side `ensureProfileRow(user)`** in `components/auth-context.tsx`.
+   Called by `fetchProfileData` whenever the SELECT returns no row OR
+   errors. Uses `supabase.from("profiles").upsert({...}, { onConflict: "id",
+   ignoreDuplicates: true })` so it's idempotent and race-safe with both
+   the DB trigger and concurrent SIGNED_IN events. Never overwrites a
+   user's chosen username/avatar.
+3. **Server-side `/api/profile/ensure`** (in `app/api/profile/ensure/route.ts`).
+   Called by `ensureProfileRow` as a final fallback if the client upsert
+   fails (RLS / network / schema drift). Validates the user via
+   `Authorization: Bearer <jwt>`, then uses the service-role admin client
+   to upsert — bypasses RLS entirely. As long as `SUPABASE_SERVICE_ROLE_KEY`
+   is configured, the row WILL be created.
+
+Default values written for a brand-new row:
+```
+id          = user.id
+username    = sanitized email-prefix (3–30 chars, [a-zA-Z0-9_])
+artist_name = same as username
+role        = "human"   ← this app's default account-type enum
+avatar_url  = user_metadata.avatar_url || user_metadata.picture || null
+```
+
+**Role enum note:** the app uses `"human" | "agent"` throughout (TypeScript
+types, RLS, UI conditionals). Do NOT change to `"user"` without a coordinated
+schema + code migration.
+
 ## Sidebar Avatar Render
 
 `ProfileDropdownAvatar` (in `components/auth-context.tsx`) is a small

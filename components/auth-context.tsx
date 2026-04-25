@@ -200,6 +200,189 @@ function buildMergedProfile(authUser: NonNullable<AuthUserLike>, row: Record<str
   }
 }
 
+// Pull the avatar URL Supabase stores in user_metadata after a Google sign-in.
+// Google sets `avatar_url` directly; some other OAuth providers set `picture`.
+function readMetaAvatar(user: NonNullable<AuthUserLike>): string | null {
+  const meta = (user.user_metadata || {}) as Record<string, unknown>
+  if (typeof meta.avatar_url === "string" && meta.avatar_url) return meta.avatar_url
+  if (typeof meta.picture === "string" && meta.picture) return meta.picture
+  return null
+}
+
+// Result shape from `ensureProfileRow`: { ok, row?, savedUsername }.
+//   ok=true  → we either created a row or one already existed.
+//   ok=false → every attempt failed (e.g. RLS rejected; DB unreachable).
+//   row      → the synthesized row we wrote (only useful when we did create).
+type EnsureResult = {
+  ok: boolean
+  row: Record<string, unknown> | null
+  savedUsername: string | null
+}
+
+// Idempotently guarantees a `public.profiles` row exists for `user`.
+// Safe to call multiple times — uses `upsert` with `ignoreDuplicates: true`
+// so it's also race-safe against the DB-side `on_auth_user_created` trigger
+// and against concurrent SIGNED_IN events firing the same login flow twice.
+//
+// Spec mapping (per latest user request):
+//   id          ← user.id
+//   username    ← sanitized email-prefix (3–30 chars, [a-zA-Z0-9_])
+//   role        ← "human"  (this app's equivalent of the generic "user" role;
+//                            the role enum here is "human" | "agent")
+//   avatar_url  ← user_metadata.avatar_url || user_metadata.picture || null
+//
+// Username collision is recoverable: we retry with NULL username so the row
+// gets created, then asynchronously claim a suffixed username so the user
+// has SOMETHING displayable. If even that fails we return ok=true with
+// savedUsername=null (the SetUsername modal will surface afterwards).
+// Last-resort server fallback: hits /api/profile/ensure with a Bearer token.
+// That route uses the service-role admin client and bypasses RLS, so the
+// row will be created even when every client-side path has failed.
+// Returns the same EnsureResult shape on success/failure.
+async function ensureProfileViaServer(
+  user: NonNullable<AuthUserLike>,
+  fallbackUsername: string,
+  metaAvatar: string | null
+): Promise<EnsureResult> {
+  try {
+    const { data: sess } = await supabase.auth.getSession()
+    const token = sess?.session?.access_token
+    if (!token) return { ok: false, row: null, savedUsername: null }
+    const res = await fetch("/api/profile/ensure", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ avatarUrl: metaAvatar }),
+    })
+    if (!res.ok) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[auth] ensureProfileViaServer non-OK", { userId: user.id, status: res.status })
+      }
+      return { ok: false, row: null, savedUsername: null }
+    }
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[auth] ensureProfileViaServer ok", { userId: user.id })
+    }
+    return {
+      ok: true,
+      row: {
+        id: user.id,
+        role: "human",
+        username: fallbackUsername,
+        artist_name: fallbackUsername,
+        avatar_url: metaAvatar,
+        avatar_is_custom: false,
+      },
+      savedUsername: fallbackUsername,
+    }
+  } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[auth] ensureProfileViaServer threw", { userId: user.id, err })
+    }
+    return { ok: false, row: null, savedUsername: null }
+  }
+}
+
+async function ensureProfileRow(user: NonNullable<AuthUserLike>): Promise<EnsureResult> {
+  const fallbackUsername = sanitizeUsername(buildMergedProfile(user, null).username)
+  const metaAvatar = readMetaAvatar(user)
+
+  // First attempt: upsert with the sanitized username + role + avatar.
+  // ignoreDuplicates=true means an existing row is a no-op (good — we don't
+  // want to clobber a username the user has already set, or an avatar they
+  // intentionally cleared). The trigger may have already inserted a row
+  // moments ago and that's fine.
+  const { error: firstErr } = await supabase
+    .from("profiles")
+    .upsert(
+      {
+        id: user.id,
+        username: fallbackUsername,
+        artist_name: fallbackUsername,
+        role: "human",
+        avatar_url: metaAvatar,
+      },
+      { onConflict: "id", ignoreDuplicates: true }
+    )
+
+  if (!firstErr) {
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[auth] ensureProfileRow upsert ok", { userId: user.id, fallbackUsername })
+    }
+    return {
+      ok: true,
+      row: {
+        id: user.id,
+        role: "human",
+        username: fallbackUsername,
+        artist_name: fallbackUsername,
+        avatar_url: metaAvatar,
+        avatar_is_custom: false,
+      },
+      savedUsername: fallbackUsername,
+    }
+  }
+
+  // Username collision (someone else already has this username): retry with
+  // NULL username so the row is created, then opportunistically try to
+  // claim a suffixed username.
+  const isUnique =
+    String(firstErr.code || "").includes("23505") ||
+    /duplicate key|unique/i.test(firstErr.message || "")
+  if (isUnique) {
+    const { error: nullErr } = await supabase
+      .from("profiles")
+      .upsert(
+        {
+          id: user.id,
+          username: null,
+          artist_name: fallbackUsername,
+          role: "human",
+          avatar_url: metaAvatar,
+        },
+        { onConflict: "id", ignoreDuplicates: true }
+      )
+    if (!nullErr) {
+      const claimed = await claimUsername(user.id, fallbackUsername)
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[auth] ensureProfileRow upsert ok (NULL username)", { userId: user.id, claimed })
+      }
+      return {
+        ok: true,
+        row: {
+          id: user.id,
+          role: "human",
+          username: claimed,
+          artist_name: fallbackUsername,
+          avatar_url: metaAvatar,
+          avatar_is_custom: false,
+        },
+        savedUsername: claimed,
+      }
+    }
+    // NULL-username retry also failed — fall through to server fallback so
+    // the row still gets created via the service-role admin client.
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[auth] ensureProfileRow NULL-username retry failed — escalating to server", {
+        userId: user.id,
+        nullErr,
+      })
+    }
+    return await ensureProfileViaServer(user, fallbackUsername, metaAvatar)
+  }
+
+  // Anything else (RLS, network, schema): escalate to the server-side
+  // fallback. /api/profile/ensure uses the service-role admin client so
+  // it bypasses RLS entirely — the row WILL be created as long as the
+  // server has the service-role key configured.
+  if (process.env.NODE_ENV !== "production") {
+    console.warn("[auth] ensureProfileRow client upsert failed — escalating to server", {
+      userId: user.id,
+      firstErr,
+    })
+  }
+  return await ensureProfileViaServer(user, fallbackUsername, metaAvatar)
+}
+
 async function fetchProfileData(authUser: AuthUserLike): Promise<MergedProfile | null> {
   // 1. Get current authenticated user first (callers pass it in; fall back to
   //    Supabase if missing so the function is self-sufficient per spec).
@@ -222,27 +405,42 @@ async function fetchProfileData(authUser: AuthUserLike): Promise<MergedProfile |
     console.log("[auth] fetchProfileData auth user:", { id: user.id, email: user.email, user_metadata: user.user_metadata })
   }
 
-  try {
-    // 2. Query profiles by user.id with maybeSingle so a missing row doesn't throw.
-    //    Select an explicit column list — email lives only on the auth user.
-    const { data, error } = await supabase
+  // Internal helper: SELECT the row by user id. Returns:
+  //   { row, error }  — same as Supabase client.
+  const selectRow = async () =>
+    supabase
       .from("profiles")
       .select("id, role, username, artist_name, avatar_url, avatar_is_custom")
-      .eq("id", user.id)
+      .eq("id", user!.id)
       .maybeSingle()
+
+  try {
+    // 2. First read.
+    let { data, error } = await selectRow()
     if (process.env.NODE_ENV !== "production") {
       console.log("[auth] fetchProfileData profile query result:", { data, error })
     }
-    if (error) {
-      if (process.env.NODE_ENV !== "production") {
-        console.warn("[auth] fetchProfileData failed for user", user.id, error)
+
+    // 3. If the row doesn't exist OR the read errored, try to ensure-then-reread.
+    //    This is the "permanently fix profile creation" path: we never trust the
+    //    DB trigger to have run, and we never silently fall through to a
+    //    metadata-only profile without first attempting an upsert.
+    if (!data) {
+      const ensured = await ensureProfileRow(user)
+      if (ensured.ok) {
+        // Re-SELECT to pick up the actual stored row (handles the case where
+        // the trigger had already inserted a row with different values).
+        const reread = await selectRow()
+        if (reread.data) {
+          data = reread.data
+          error = null
+        } else if (ensured.row) {
+          // Re-read returned nothing (RLS quirk) — synthesize from what we wrote.
+          data = ensured.row as unknown as typeof data
+          error = null
+        }
       }
-      // Fall back to a metadata-only merged profile so the app doesn't crash.
-      const merged = buildMergedProfile(user, null)
-      if (process.env.NODE_ENV !== "production") {
-        console.log("[auth] fetchProfileData merged (after error):", merged)
-      }
-      return merged
+      // If ensure failed, fall through with whatever we had.
     }
 
     if (data) {
@@ -261,10 +459,7 @@ async function fetchProfileData(authUser: AuthUserLike): Promise<MergedProfile |
         otherPatch.artist_name = effectiveUsername
       }
       if ((data as Record<string, unknown>).avatar_url == null) {
-        const metaAvatar =
-          (typeof user.user_metadata?.avatar_url === "string" && (user.user_metadata.avatar_url as string)) ||
-          (typeof user.user_metadata?.picture === "string" && (user.user_metadata.picture as string)) ||
-          ""
+        const metaAvatar = readMetaAvatar(user) || ""
         if (metaAvatar) otherPatch.avatar_url = metaAvatar
       }
       if (Object.keys(otherPatch).length > 0) {
@@ -292,66 +487,16 @@ async function fetchProfileData(authUser: AuthUserLike): Promise<MergedProfile |
       return merged
     }
 
-    // 5. No row → create one with sanitized defaults.
-    const fallbackUsername = buildMergedProfile(user, null).username
-    const sanitized = sanitizeUsername(fallbackUsername)
-    const metaAvatar =
-      (typeof user.user_metadata?.avatar_url === "string" && (user.user_metadata.avatar_url as string)) ||
-      (typeof user.user_metadata?.picture === "string" && (user.user_metadata.picture as string)) ||
-      null
-    let savedUsername: string | null = sanitized
-    let { error: insertError } = await supabase.from("profiles").insert({
-      id: user.id,
-      username: sanitized,
-      artist_name: sanitized,
-      role: "human",
-      avatar_url: metaAvatar,
-    })
-    if (
-      insertError &&
-      (String(insertError.code || "").includes("23505") || /duplicate key|unique/i.test(insertError.message || ""))
-    ) {
-      // Username collision: try inserting with NULL username, then claim a suffixed one.
-      const { error: insertNullError } = await supabase.from("profiles").insert({
-        id: user.id,
-        username: null,
-        artist_name: sanitized,
-        role: "human",
-        avatar_url: metaAvatar,
+    // 5. Last resort: still no row after ensure-then-reread. Return a
+    //    metadata-only merged profile so the UI doesn't crash. The next
+    //    sign-in will attempt ensureProfileRow again.
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[auth] fetchProfileData: no row even after ensure — returning metadata-only profile", {
+        userId: user.id,
+        readError: error,
       })
-      if (insertNullError) {
-        insertError = insertNullError
-        savedUsername = null
-      } else {
-        insertError = null
-        savedUsername = await claimUsername(user.id, fallbackUsername)
-      }
     }
-    if (process.env.NODE_ENV !== "production") {
-      console.log("[auth] auto-created profile row", { insertError, savedUsername })
-    }
-    if (insertError) {
-      // Spec: on any DB error, return metadata-only merged profile.
-      const merged = buildMergedProfile(user, null)
-      if (process.env.NODE_ENV !== "production") {
-        console.log("[auth] fetchProfileData merged (insert failed):", merged)
-      }
-      return merged
-    }
-    const synthRow: Record<string, unknown> = {
-      id: user.id,
-      role: "human",
-      username: savedUsername,
-      artist_name: savedUsername || sanitized,
-      avatar_url: metaAvatar,
-      avatar_is_custom: false,
-    }
-    const merged = buildMergedProfile(user, synthRow)
-    merged.profileUsernameIsNull = savedUsername == null
-    if (process.env.NODE_ENV !== "production") {
-      console.log("[auth] fetchProfileData merged (new row):", merged)
-    }
-    return merged
+    return buildMergedProfile(user, null)
   } catch (err) {
     if (process.env.NODE_ENV !== "production") {
       console.warn("[auth] fetchProfileData unexpected error for user", user.id, err)
