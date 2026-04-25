@@ -88,8 +88,11 @@ export default function ProfilePage() {
   const [usernameCheckStatus, setUsernameCheckStatus] = useState<"idle" | "checking" | "available" | "taken" | "rate_limited" | "error">("idle")
   const usernameDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const [playsToday] = useState(() => Math.floor(Math.random() * 500 + 100))
-  const [likesToday] = useState(() => Math.floor(Math.random() * 100 + 20))
+  // Real per-day rollups aren't wired up yet; show 0 instead of fake
+  // Math.random values. When a real API exists, replace these with the
+  // fetched count.
+  const playsToday = 0
+  const likesToday = 0
   const [removePhotoLoading, setRemovePhotoLoading] = useState(false)
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false)
 

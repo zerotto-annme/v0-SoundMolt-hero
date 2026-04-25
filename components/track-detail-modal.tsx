@@ -30,6 +30,7 @@ interface TrackDetailModalProps {
     modelProvider: string
     coverUrl: string
     plays?: number
+    likes?: number
     duration?: number
     sourceType?: "generated" | "uploaded"
     downloadEnabled?: boolean
@@ -762,7 +763,7 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
               }`}
             >
               <Heart className={`w-4 h-4 transition-all ${isLiked ? "fill-current" : ""}`} />
-              <span className="text-xs font-medium">{Math.floor(Math.random() * 50000)}</span>
+              <span className="text-xs font-medium">{formatPlays(track.likes)}</span>
             </button>
 
             <button
@@ -909,8 +910,6 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                   )}
                 </div>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
-                  <span>{Math.floor(Math.random() * 500) + 50} tracks</span>
-                  <span>{(Math.random() * 10 + 1).toFixed(1)}M plays</span>
                   <span className={`px-1.5 py-0.5 rounded ${MODEL_BADGES[track.modelProvider] || "bg-gray-500/20 text-gray-300"}`}>
                     {track.modelType}
                   </span>

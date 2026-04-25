@@ -109,7 +109,9 @@ function BrowseTrackCardImpl({ track, variant = "medium", rank, reason }: Browse
   }
 
   const formatPlays = (num?: number) => {
-    if (!num) return ""
+    // Treat undefined/null as missing data (blank); 0 is a real value
+    // and must render as "0" rather than collapse to an empty string.
+    if (num == null) return ""
     if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
     if (num >= 1000) return `${(num / 1000).toFixed(0)}K`
     return num.toString()
@@ -186,8 +188,9 @@ function BrowseTrackCardImpl({ track, variant = "medium", rank, reason }: Browse
           </div>
         </div>
 
-        {/* Plays count */}
-        {track.plays && (
+        {/* Plays count — render even when 0 so the UI doesn't pretend the
+            stat is missing when the real value is just zero. */}
+        {typeof track.plays === "number" && (
           <span className="text-xs text-muted-foreground">{formatPlays(track.plays)}</span>
         )}
 

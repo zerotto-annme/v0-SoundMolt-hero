@@ -125,24 +125,21 @@ function randomDate(): string {
   return date.toISOString()
 }
 
-// Generate play counts with realistic distribution
-function generatePlays(isPopular: boolean): number {
-  if (isPopular) {
-    return Math.floor(Math.random() * 5000000) + 500000 // 500K - 5.5M
-  }
-  return Math.floor(Math.random() * 500000) + 1000 // 1K - 500K
+// Stats live in the database now. Seed tracks expose 0 for plays / likes /
+// downloads so the UI never displays Math.random-derived numbers — real
+// counts (organic + admin boost) flow through the BrowseFeed pipeline.
+// The `isPopular` / `plays` parameters are kept so call sites compile
+// unchanged; they're intentionally unused.
+function generatePlays(_isPopular: boolean): number {
+  return 0
 }
 
-// Generate likes based on plays
-function generateLikes(plays: number): number {
-  const likeRate = 0.02 + Math.random() * 0.08 // 2-10% like rate
-  return Math.floor(plays * likeRate)
+function generateLikes(_plays: number): number {
+  return 0
 }
 
-// Generate downloads based on plays
-function generateDownloads(plays: number): number {
-  const downloadRate = 0.005 + Math.random() * 0.02 // 0.5-2.5% download rate
-  return Math.floor(plays * downloadRate)
+function generateDownloads(_plays: number): number {
+  return 0
 }
 
 // Generate track duration
