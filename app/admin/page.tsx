@@ -19,6 +19,11 @@ import {
   ExternalLink,
   Sparkles,
   TrendingUp,
+  Coins,
+  Plus,
+  RotateCcw,
+  Check,
+  AlertCircle,
 } from "lucide-react"
 import { BoostStatsModal, type BoostModalTrack } from "@/components/admin/boost-stats-modal"
 
@@ -125,7 +130,38 @@ interface HealthData {
   }>
 }
 
-type Section = "overview" | "tracks" | "users" | "agents" | "health"
+type Section = "overview" | "tracks" | "users" | "agents" | "health" | "ai_producer"
+
+// ── AI Producer types (used by AiProducerSection below) ─────────────
+interface AdminAiReview {
+  id: string
+  user_id: string
+  owner_email: string | null
+  title: string | null
+  status: "processing" | "ready" | "failed"
+  access_type: "free" | "full"
+  credits_used: number
+  source_type: "uploaded_file" | "existing_track"
+  genre: string | null
+  daw: string | null
+  feedback_focus: string | null
+  created_at: string
+}
+
+interface AdminCreditRow {
+  user_id: string
+  owner_email: string | null
+  credits_balance: number
+  updated_at: string
+}
+
+interface AdminCreditsAdjustResult {
+  ok: true
+  user_id: string
+  previous_balance: number
+  credits_balance: number
+  delta: number
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -744,6 +780,17 @@ function AdminDashboard() {
     "/api/admin/health",
     section === "health",
   )
+  // AI Producer reviews + credits — same hoist-state pattern as the other
+  // tabs so cached data survives tab switches and a single Refresh button
+  // per subsection re-fetches just that resource.
+  const aiReviews = useAdminResource<{ reviews: AdminAiReview[] }>(
+    "/api/admin/ai-producer/reviews",
+    section === "ai_producer",
+  )
+  const aiCredits = useAdminResource<{ credits: AdminCreditRow[] }>(
+    "/api/admin/ai-producer/credits",
+    section === "ai_producer",
+  )
 
   // Track-level mutations (publish/hide/delete/re-analyze) affect BOTH the
   // Tracks listing and the System health lists, so we expose a single
@@ -760,6 +807,7 @@ function AdminDashboard() {
     { id: "users", label: "Users" },
     { id: "agents", label: "Agents" },
     { id: "health", label: "System health" },
+    { id: "ai_producer", label: "AI Producer" },
   ]
 
   return (
@@ -800,6 +848,13 @@ function AdminDashboard() {
         {section === "agents" && <AgentsSection res={agents} notify={notify} />}
         {section === "health" && (
           <HealthSection res={health} onTrackChanged={reloadTrackData} notify={notify} />
+        )}
+        {section === "ai_producer" && (
+          <AiProducerSection
+            reviewsRes={aiReviews}
+            creditsRes={aiCredits}
+            notify={notify}
+          />
         )}
       </main>
     </div>
@@ -2072,6 +2127,418 @@ function HealthSection({
         </div>
       )}
     </SectionShell>
+  )
+}
+
+// ── AI Producer ─────────────────────────────────────────────────────
+//
+// Combined Reviews + Credits subsections, rendered inside the main
+// /admin tab strip (NOT a separate route). The standalone
+// /admin/ai-producer page is preserved for backward compatibility, but
+// admins land here by default via the "AI Producer" tab.
+//
+// Both lists are driven by useAdminResource hooks hoisted in the
+// parent so cached data survives tab switches. Credit adjustments hit
+// the same /api/admin/ai-producer/credits POST endpoint (which goes
+// through the SECURITY DEFINER admin_adjust_credits RPC and writes a
+// credit_transactions row with type='admin_gift') — we just optimistic-
+// update the row and refetch on success.
+function AiProducerSection({
+  reviewsRes,
+  creditsRes,
+  notify,
+}: {
+  reviewsRes: AdminResource<{ reviews: AdminAiReview[] }>
+  creditsRes: AdminResource<{ credits: AdminCreditRow[] }>
+  notify: Notify
+}) {
+  const reviews = reviewsRes.data?.reviews ?? []
+  const credits = creditsRes.data?.credits ?? []
+
+  const [pendingUserId, setPendingUserId] = useState<string | null>(null)
+  const [customAmounts, setCustomAmounts] = useState<Record<string, string>>({})
+  const [flashUserId, setFlashUserId] = useState<string | null>(null)
+
+  // Grant-to-arbitrary-user form (same UX as the standalone page).
+  const [grantUserId, setGrantUserId] = useState("")
+  const [grantAmount, setGrantAmount] = useState("1")
+  const [grantError, setGrantError] = useState<string | null>(null)
+  const [grantBusy, setGrantBusy] = useState(false)
+
+  // Refs so we can avoid lint warnings about stale closures while still
+  // exposing a stable adjustCredits identity.
+  const creditsReload = creditsRes.reload
+
+  const adjustCredits = useCallback(
+    async (
+      userId: string,
+      action: "add" | "set" | "reset",
+      amount?: number,
+    ) => {
+      setPendingUserId(userId)
+      try {
+        const body: Record<string, unknown> = { user_id: userId, action }
+        if (action !== "reset") body.amount = amount
+        const result = await adminFetch<AdminCreditsAdjustResult>(
+          "/api/admin/ai-producer/credits",
+          { method: "POST", body: JSON.stringify(body) },
+        )
+        // The credit list is owned by useAdminResource (which encapsulates
+        // its own setData), so we can't mutate it from out here. Trigger
+        // a refetch instead — the local flash icon below gives immediate
+        // visual feedback while the list reloads.
+        void creditsReload()
+        setFlashUserId(userId)
+        setTimeout(
+          () => setFlashUserId((cur) => (cur === userId ? null : cur)),
+          1500,
+        )
+        notify(
+          `Balance for ${shortId(userId)} → ${result.credits_balance}`,
+          "success",
+        )
+        return result
+      } catch (err) {
+        notify(
+          `Credit adjustment failed: ${(err as Error).message}`,
+          "error",
+        )
+        throw err
+      } finally {
+        setPendingUserId(null)
+      }
+    },
+    [creditsRes, notify],
+  )
+
+  const handleGrantNew = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setGrantError(null)
+    const uid = grantUserId.trim()
+    const amt = Number(grantAmount)
+    if (!/^[0-9a-f-]{32,36}$/i.test(uid)) {
+      setGrantError("user_id must be a UUID.")
+      return
+    }
+    if (!Number.isFinite(amt) || amt < 0) {
+      setGrantError("Amount must be a non-negative number.")
+      return
+    }
+    setGrantBusy(true)
+    try {
+      // adjustCredits already triggers a creditsReload() internally on
+      // success — no need for a second refetch here. The email column
+      // for the new row will populate when that reload lands.
+      await adjustCredits(uid, "add", Math.trunc(amt))
+      setGrantUserId("")
+      setGrantAmount("1")
+    } catch (err) {
+      setGrantError((err as Error).message || "Grant failed.")
+    } finally {
+      setGrantBusy(false)
+    }
+  }
+
+  const reviewsLoading = reviewsRes.loading
+  const reviewsError = reviewsRes.error
+  const creditsLoading = creditsRes.loading
+  const creditsError = creditsRes.error
+
+  return (
+    <div className="space-y-10">
+      {/* ── 1. Reviews ─────────────────────────────────────────── */}
+      <SectionShell
+        title="Reviews"
+        loading={reviewsLoading && reviews.length === 0}
+        error={reviewsError}
+        onRefresh={reviewsRes.reload}
+      >
+        {reviews.length === 0 ? (
+          <div className="py-8 text-center text-sm text-muted-foreground border border-dashed border-white/10 rounded-lg">
+            No reviews yet.
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-white/10">
+            <table className="min-w-full text-sm">
+              <thead className="text-xs uppercase tracking-wider text-muted-foreground bg-white/5">
+                <tr>
+                  <th className="text-left font-medium px-4 py-2">User</th>
+                  <th className="text-left font-medium px-4 py-2">Title</th>
+                  <th className="text-left font-medium px-4 py-2">Status</th>
+                  <th className="text-left font-medium px-4 py-2">Access</th>
+                  <th className="text-left font-medium px-4 py-2">Credits</th>
+                  <th className="text-left font-medium px-4 py-2">Created</th>
+                  <th className="text-right font-medium px-4 py-2">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {reviews.map((r) => (
+                  <tr key={r.id} className="hover:bg-white/5">
+                    <td className="px-4 py-2 font-mono text-xs">
+                      <div className="text-foreground">{r.owner_email ?? "—"}</div>
+                      <div className="text-muted-foreground" title={r.user_id}>
+                        {shortId(r.user_id)}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2">
+                      {r.title || (
+                        <span className="text-muted-foreground">Untitled</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2">
+                      <span
+                        className={`text-[10px] uppercase tracking-wider font-mono px-2 py-0.5 rounded-full border ${
+                          r.status === "ready"
+                            ? "bg-emerald-500/10 border-emerald-400/30 text-emerald-300"
+                            : r.status === "processing"
+                              ? "bg-amber-500/10 border-amber-400/30 text-amber-300"
+                              : "bg-red-500/10 border-red-400/30 text-red-300"
+                        }`}
+                      >
+                        {r.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2">
+                      <span
+                        className={`text-[10px] uppercase tracking-wider font-mono px-2 py-0.5 rounded-full border ${
+                          r.access_type === "full"
+                            ? "bg-emerald-500/10 border-emerald-400/30 text-emerald-300"
+                            : "bg-purple-500/10 border-purple-400/30 text-purple-300"
+                        }`}
+                      >
+                        {r.access_type}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 font-mono text-xs">
+                      {r.credits_used}
+                    </td>
+                    <td className="px-4 py-2 text-xs text-muted-foreground whitespace-nowrap">
+                      {formatDate(r.created_at)}
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <Link
+                        href={`/ai-producer/reviews/${r.id}`}
+                        target="_blank"
+                        className="inline-flex items-center gap-1 text-xs text-purple-300 hover:text-purple-200"
+                      >
+                        Open Review <ExternalLink className="w-3 h-3" />
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SectionShell>
+
+      {/* ── 2. Credits ─────────────────────────────────────────── */}
+      <SectionShell
+        title="Credits"
+        loading={creditsLoading && credits.length === 0}
+        error={creditsError}
+        onRefresh={creditsRes.reload}
+      >
+        {/* Grant-to-arbitrary-user form */}
+        <div className="mb-4 rounded-lg border border-purple-400/20 bg-purple-500/5 p-4">
+          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground font-mono mb-2">
+            <Coins className="w-3.5 h-3.5 text-purple-300" />
+            Grant credits to a user
+          </div>
+          <form
+            onSubmit={handleGrantNew}
+            className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-end"
+          >
+            <div className="flex-1">
+              <label className="text-[11px] text-muted-foreground">
+                User ID (UUID)
+              </label>
+              <input
+                type="text"
+                value={grantUserId}
+                onChange={(e) => setGrantUserId(e.target.value)}
+                placeholder="00000000-0000-0000-0000-000000000000"
+                className="mt-1 w-full px-3 py-2 rounded-lg bg-background/60 border border-white/10 focus:border-purple-400/60 focus:outline-none text-sm font-mono"
+              />
+            </div>
+            <div className="w-full sm:w-32">
+              <label className="text-[11px] text-muted-foreground">Amount</label>
+              <input
+                type="number"
+                min={0}
+                value={grantAmount}
+                onChange={(e) => setGrantAmount(e.target.value)}
+                className="mt-1 w-full px-3 py-2 rounded-lg bg-background/60 border border-white/10 focus:border-purple-400/60 focus:outline-none text-sm"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={grantBusy}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:opacity-90 text-white text-sm font-medium disabled:opacity-60"
+            >
+              {grantBusy ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Plus className="w-4 h-4" />
+              )}
+              Grant
+            </button>
+          </form>
+          {grantError && (
+            <div className="mt-2 text-xs text-red-300 flex items-center gap-1">
+              <AlertCircle className="w-3.5 h-3.5" /> {grantError}
+            </div>
+          )}
+        </div>
+
+        {credits.length === 0 ? (
+          <div className="py-8 text-center text-sm text-muted-foreground border border-dashed border-white/10 rounded-lg">
+            No credit balances yet. Use the form above to grant credits.
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-white/10">
+            <table className="min-w-full text-sm">
+              <thead className="text-xs uppercase tracking-wider text-muted-foreground bg-white/5">
+                <tr>
+                  <th className="text-left font-medium px-4 py-2">User</th>
+                  <th className="text-left font-medium px-4 py-2">Balance</th>
+                  <th className="text-left font-medium px-4 py-2">Updated</th>
+                  <th className="text-right font-medium px-4 py-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {credits.map((c) => {
+                  const busy = pendingUserId === c.user_id
+                  const flash = flashUserId === c.user_id
+                  const customRaw = customAmounts[c.user_id] ?? ""
+                  const customNum = Number(customRaw)
+                  const customValid =
+                    customRaw !== "" &&
+                    Number.isFinite(customNum) &&
+                    customNum >= 0
+                  return (
+                    <tr
+                      key={c.user_id}
+                      className={`align-top ${flash ? "bg-emerald-500/5" : "hover:bg-white/5"}`}
+                    >
+                      <td className="px-4 py-2 font-mono text-xs">
+                        <div className="text-foreground">
+                          {c.owner_email ?? "—"}
+                        </div>
+                        <div className="text-muted-foreground" title={c.user_id}>
+                          {shortId(c.user_id)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2">
+                        <div className="inline-flex items-center gap-1 text-base font-semibold tabular-nums">
+                          {c.credits_balance}
+                          {flash && (
+                            <Check className="w-4 h-4 text-emerald-300" />
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 text-xs text-muted-foreground whitespace-nowrap">
+                        {formatDate(c.updated_at)}
+                      </td>
+                      <td className="px-4 py-2">
+                        <div className="flex flex-wrap items-center gap-1.5 justify-end">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              void adjustCredits(c.user_id, "add", 1).catch(() => {})
+                            }}
+                            className="px-2.5 py-1 rounded-md border border-white/10 text-xs hover:border-glow-primary/40 hover:text-glow-primary disabled:opacity-50"
+                          >
+                            +1
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              void adjustCredits(c.user_id, "add", 5).catch(() => {})
+                            }}
+                            className="px-2.5 py-1 rounded-md border border-white/10 text-xs hover:border-glow-primary/40 hover:text-glow-primary disabled:opacity-50"
+                          >
+                            +5
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              void adjustCredits(c.user_id, "add", 10).catch(() => {})
+                            }}
+                            className="px-2.5 py-1 rounded-md border border-white/10 text-xs hover:border-glow-primary/40 hover:text-glow-primary disabled:opacity-50"
+                          >
+                            +10
+                          </button>
+                          <input
+                            type="number"
+                            min={0}
+                            placeholder="Set…"
+                            value={customRaw}
+                            onChange={(e) =>
+                              setCustomAmounts((prev) => ({
+                                ...prev,
+                                [c.user_id]: e.target.value,
+                              }))
+                            }
+                            className="w-20 px-2 py-1 rounded-md bg-background/60 border border-white/10 text-xs"
+                          />
+                          <button
+                            type="button"
+                            disabled={busy || !customValid}
+                            onClick={() => {
+                              if (!customValid) return
+                              void adjustCredits(
+                                c.user_id,
+                                "set",
+                                Math.trunc(customNum),
+                              )
+                                .then(() => {
+                                  setCustomAmounts((prev) => ({
+                                    ...prev,
+                                    [c.user_id]: "",
+                                  }))
+                                })
+                                .catch(() => {})
+                            }}
+                            className="px-2.5 py-1 rounded-md border border-white/10 text-xs hover:border-glow-primary/40 hover:text-glow-primary disabled:opacity-50"
+                          >
+                            Set
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              if (
+                                confirm(
+                                  `Reset balance for ${c.owner_email ?? c.user_id} to 0?`,
+                                )
+                              ) {
+                                void adjustCredits(c.user_id, "reset").catch(
+                                  () => {},
+                                )
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-red-400/30 text-xs text-red-300 hover:bg-red-500/10 disabled:opacity-50"
+                          >
+                            <RotateCcw className="w-3 h-3" /> Reset
+                          </button>
+                          {busy && (
+                            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SectionShell>
+    </div>
   )
 }
 
