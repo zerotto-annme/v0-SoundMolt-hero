@@ -141,13 +141,7 @@ export async function POST(request: Request) {
     )
   }
 
-  const audioUrl = clampText(body?.audio_url, 2000)
-  if (!audioUrl) {
-    return NextResponse.json(
-      { error: "missing_audio_url", message: "audio_url is required." },
-      { status: 400 },
-    )
-  }
+  let audioUrl = clampText(body?.audio_url, 2000)
 
   const trackId = readUuid(body?.track_id)
   const originalTrackId = readUuid(body?.original_track_id)
@@ -162,6 +156,18 @@ export async function POST(request: Request) {
     )
   }
 
+  // For uploaded_file, audio_url MUST be supplied by the caller (the
+  // upload component generates it via Supabase storage). For
+  // existing_track we resolve it server-side from public.tracks below
+  // so callers can safely send only { source_type, original_track_id }
+  // without exposing or having to know the storage URL.
+  if (sourceType === "uploaded_file" && !audioUrl) {
+    return NextResponse.json(
+      { error: "missing_audio_url", message: "audio_url is required." },
+      { status: 400 },
+    )
+  }
+
   const title = clampText(body?.title, 200)
   const genre = clampText(body?.genre, 100)
   const daw = clampText(body?.daw, 100)
@@ -169,6 +175,55 @@ export async function POST(request: Request) {
   const comment = clampText(body?.comment, MAX_TEXT_LEN)
 
   const admin = getAdminClient()
+
+  // ─── Authorize and resolve audio_url for existing_track ────────────
+  // Owner-only. Always look up the track row server-side to:
+  //   (a) verify the caller actually owns this track (broken access
+  //       control otherwise — a logged-in user could post any other
+  //       user's track id and burn their own credit on it),
+  //   (b) fetch the canonical audio_url so we cannot be tricked into
+  //       analysing a spoofed external file.
+  // We deliberately IGNORE any client-supplied audio_url for
+  // existing_track requests; the public.tracks row is the source of
+  // truth. Backward-compat for the existing /ai-producer page is
+  // preserved because that page also points at a real track row owned
+  // by the same user — the server-resolved url will match.
+  if (sourceType === "existing_track") {
+    const { data: trackRow, error: trackErr } = await admin
+      .from("tracks")
+      .select("user_id, audio_url")
+      .eq("id", originalTrackId as string)
+      .maybeSingle()
+    if (trackErr) {
+      console.error("[api/ai-producer/review] track lookup failed:", trackErr)
+      return NextResponse.json(
+        { error: "track_lookup_failed", message: trackErr.message },
+        { status: 500 },
+      )
+    }
+    if (!trackRow) {
+      return NextResponse.json(
+        { error: "track_not_found", message: "Could not resolve the requested track." },
+        { status: 404 },
+      )
+    }
+    if (trackRow.user_id !== authed.id) {
+      // Same shape as the spec for owner-only buttons: report not-
+      // found rather than leaking ownership info.
+      return NextResponse.json(
+        { error: "forbidden", message: "You can only run AI Producer reviews on your own tracks." },
+        { status: 403 },
+      )
+    }
+    const resolved = clampText(trackRow.audio_url, 2000)
+    if (!resolved) {
+      return NextResponse.json(
+        { error: "track_no_audio", message: "Track has no playable audio file." },
+        { status: 500 },
+      )
+    }
+    audioUrl = resolved
+  }
 
   // ─── 1. Read current credit balance (or treat missing row as 0) ─────
   let currentBalance = 0

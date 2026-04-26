@@ -17,6 +17,7 @@ import { TrackAnalysisBlock } from "./track-analysis-block"
 import { TrackFeedbackBlock } from "./track-feedback-block"
 import { useBodyScrollLock } from "@/hooks/use-body-scroll-lock"
 import { trackShareUrl } from "@/lib/site"
+import { supabase } from "@/lib/supabase"
 
 type AgentType = "composer" | "vocalist" | "beatmaker" | "mixer" | "producer" | "arranger"
 
@@ -36,6 +37,9 @@ interface TrackDetailModalProps {
     sourceType?: "generated" | "uploaded"
     downloadEnabled?: boolean
     artistAvatarUrl?: string | null
+    /** Owner of this track. Used to gate the AI Producer Review
+     *  button to the track owner only. */
+    userId?: string | null
   }
   isOpen: boolean
   onClose: () => void
@@ -145,7 +149,57 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
   const { currentTrack, isPlaying, playTrack, togglePlay, prevTrack, nextTrack, preloadTrack } = usePlayer()
   const { progress, currentTime, duration, seekTo } = usePlayerProgress()
   const { getTopicByTrackId, createTrackTopic } = useDiscussions()
-  const { requireAuth, isAuthenticated, openSignInModal } = useAuth()
+  const { requireAuth, isAuthenticated, openSignInModal, user } = useAuth()
+  // Owner-only gate for the AI Producer Review button. Both halves
+  // must exist (logged-in user AND track has a known owner) before
+  // we even consider showing the button.
+  const isTrackOwner = !!(user && track.userId && user.id === track.userId)
+  const [showAiReviewConfirm, setShowAiReviewConfirm] = useState(false)
+  const [aiReviewSubmitting, setAiReviewSubmitting] = useState(false)
+  const [aiReviewError, setAiReviewError] = useState<string | null>(null)
+
+  const startAiReview = async () => {
+    if (aiReviewSubmitting) return
+    setAiReviewError(null)
+    setAiReviewSubmitting(true)
+    try {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const token = sessionData?.session?.access_token
+      if (!token) {
+        setAiReviewError("Please sign in to run an AI Producer review.")
+        setAiReviewSubmitting(false)
+        return
+      }
+      const res = await fetch("/api/ai-producer/review", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          source_type: "existing_track",
+          original_track_id: track.id,
+          title: track.title,
+        }),
+      })
+      const json = await res.json().catch(() => ({} as any))
+      if (!res.ok || !json?.review?.id) {
+        setAiReviewError(json?.message || json?.error || "Could not start review.")
+        setAiReviewSubmitting(false)
+        return
+      }
+      // Success: close both modals and navigate. Reset state on the
+      // way out so re-opening this track doesn't show a stale error.
+      setShowAiReviewConfirm(false)
+      setAiReviewSubmitting(false)
+      onClose()
+      router.push(`/ai-producer/reviews/${json.review.id}`)
+    } catch (err: any) {
+      console.error("[track-detail-modal] AI review submit failed", err)
+      setAiReviewError(err?.message || "Network error. Please try again.")
+      setAiReviewSubmitting(false)
+    }
+  }
   const { getComments } = useTrackComments()
   const { isFavorite, toggleFavorite } = useFavorites()
   const { isLiked: globalIsLiked, toggleLike } = useLikes()
@@ -911,6 +965,23 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
               )}
             </div>
 
+            {/* AI Producer Review — owner-only.
+                Visible only when the signed-in user owns this track.
+                Hidden for guests and for any other user. */}
+            {isTrackOwner && (
+              <button
+                onClick={() => {
+                  setAiReviewError(null)
+                  setShowAiReviewConfirm(true)
+                }}
+                className="h-10 px-3 rounded-full bg-gradient-to-r from-glow-secondary to-violet-600 text-white flex items-center gap-1.5 hover:opacity-90 transition-opacity shadow-[0_0_12px_rgba(168,85,247,0.35)]"
+                title="Run AI Producer Review on this track"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span className="text-xs font-medium">AI Producer Review</span>
+              </button>
+            )}
+
             <div className="flex items-center gap-3 ml-auto text-xs text-muted-foreground">
               <span className="flex items-center gap-1">
                 <Zap className="w-3 h-3 text-glow-primary" />
@@ -999,6 +1070,84 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
 
           </div>
       </div>
+
+      {/* AI Producer Review confirmation modal — sibling overlay so
+          its z-index sits cleanly above the main modal without being
+          clipped by it. Owner-only by construction (the trigger
+          button is gated). */}
+      {showAiReviewConfirm && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => {
+            if (!aiReviewSubmitting) setShowAiReviewConfirm(false)
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-border bg-card shadow-2xl p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-glow-secondary to-violet-600 flex items-center justify-center shadow-[0_0_18px_rgba(168,85,247,0.45)]">
+                <Sparkles className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-lg font-semibold text-foreground leading-tight">
+                  Create AI Producer Review
+                </h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Run AI analysis for this track.
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Cost: 1 credit (or free preview if 0 credits).
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  if (!aiReviewSubmitting) setShowAiReviewConfirm(false)
+                }}
+                disabled={aiReviewSubmitting}
+                className="text-muted-foreground hover:text-foreground disabled:opacity-40"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {aiReviewError && (
+              <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                {aiReviewError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setShowAiReviewConfirm(false)}
+                disabled={aiReviewSubmitting}
+                className="h-9 px-4 rounded-full border border-border text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={startAiReview}
+                disabled={aiReviewSubmitting}
+                className="h-9 px-4 rounded-full bg-gradient-to-r from-glow-secondary to-violet-600 text-white text-sm font-medium flex items-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed shadow-[0_0_14px_rgba(168,85,247,0.45)]"
+              >
+                {aiReviewSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Starting…</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    <span>Run Review</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
