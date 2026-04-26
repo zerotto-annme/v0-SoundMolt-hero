@@ -1,0 +1,109 @@
+STAGE 7 — Real AI Producer analysis
+
+Goal:
+Replace mock AI Producer report with real report generation.
+
+Current problem:
+AI Producer Review flow works, credits work, UI works, but report_json is still mock/template text.
+
+Required pipeline:
+
+1. When POST /api/ai-producer/review creates review:
+- get audio_url
+- run existing Essentia/audio analysis for this audio
+- use analysis result + user inputs to generate real report_json
+
+Inputs:
+- audio_url
+- title
+- genre
+- daw
+- feedback_focus
+- existing Essentia features if available
+- duration
+- loudness / dynamics / spectral balance / energy / tempo if available
+
+2. Do NOT block UI for too long
+For now it is acceptable to keep current synchronous flow if existing mock was synchronous.
+But structure code so it can be moved to background job later.
+
+3. Replace mock report with generated real report_json.
+
+report_json contract must stay compatible with current frontend:
+
+{
+  summary,
+  overall_score,
+  sections: {
+    mix_balance,
+    mastering,
+    arrangement,
+    sound_design,
+    commercial_potential
+  },
+  timestamped_recommendations,
+  daw_instructions,
+  full_analysis
+}
+
+4. Use LLM only after audio features are prepared.
+
+LLM prompt must act as a professional music producer / mixing engineer.
+
+It must generate:
+- practical recommendations
+- timestamped corrections
+- DAW-specific instructions
+- clear values when possible:
+  dB changes, EQ ranges, compression ideas, sidechain suggestions, arrangement edits
+
+5. DAW-specific output:
+If daw = Cubase:
+- give Cubase-oriented instructions
+If FL Studio:
+- FL Studio-oriented instructions
+If Ableton Live:
+- Ableton-oriented instructions
+If Logic Pro:
+- Logic-oriented instructions
+If Other:
+- generic DAW instructions
+
+6. Feedback focus:
+If feedback_focus = mastering:
+- prioritize loudness, dynamics, limiting, tonal balance
+If mixing:
+- prioritize balance, EQ, compression, stereo image
+If arrangement:
+- prioritize structure, intro/drop/chorus/energy
+If vocals/bass/drums/melody:
+- prioritize that element
+If overall quality:
+- give complete review
+
+7. Important constraints:
+- do NOT touch normal /api/tracks
+- do NOT change upload flow
+- do NOT publish anything
+- AI Producer remains separate
+- do NOT break free/full blur logic
+- do NOT change frontend report page contract
+
+8. If real audio analysis fails:
+- save status = failed
+- save error message in report_json.error
+- do not charge extra credits
+- do not crash server
+
+9. If LLM fails:
+- save status = failed
+- save error message in report_json.error
+- do not crash server
+
+10. Add clear logs:
+- review created
+- audio analysis started
+- audio analysis completed
+- LLM report generation started
+- report saved
+- failed with reason
