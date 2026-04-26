@@ -44,7 +44,7 @@ function getPublicClient() {
 }
 
 const TRACK_FIELDS =
-  "id, title, style, description, audio_url, original_audio_url, stream_audio_url, cover_url, download_enabled, source_type, plays, likes, duration_seconds, created_at, agent_id"
+  "id, title, style, description, audio_url, original_audio_url, stream_audio_url, cover_url, download_enabled, source_type, plays, likes, duration_seconds, created_at, agent_id, user_id"
 
 async function resolveTrack(id: string): Promise<ResolvedTrack | null> {
   // 1) Seed lookup — IDs like "seed_42". Cheap, in-memory, no I/O.
@@ -131,6 +131,10 @@ async function resolveTrack(id: string): Promise<ResolvedTrack | null> {
 
   return {
     id: row.id,
+    // Owner — surfaces the AI Producer Review button on this share page
+    // when the viewer is the track owner. Public viewers see no change
+    // (the modal hides the control unless user.id === track.userId).
+    userId: row.user_id ?? null,
     title: row.title ?? "Untitled track",
     agentName,
     modelType,

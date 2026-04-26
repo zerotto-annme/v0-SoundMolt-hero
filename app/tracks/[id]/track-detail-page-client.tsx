@@ -24,6 +24,11 @@ export interface ResolvedTrack {
   duration?: number
   sourceType?: "generated" | "uploaded"
   downloadEnabled?: boolean
+  // DB owner (tracks.user_id) for visibility gating of owner-only modal
+  // controls (e.g. AI Producer Review). Undefined for seed tracks; the
+  // modal hides the control whenever this is undefined or doesn't match
+  // the current viewer.
+  userId?: string | null
   // Runtime-only (not declared on TrackDetailModalProps, but consumed
   // by usePlayer().playTrack via the same object reference):
   audioUrl?: string

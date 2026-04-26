@@ -119,6 +119,12 @@ export default function MyTracksPage() {
     const ownerName = user?.username || user?.name || user?.email?.split("@")[0] || "You"
     const mapped: Track[] = data.map((row) => ({
       id: row.id,
+      // Carry the DB owner so the AI Producer Review button (gated by
+      // user.id === track.userId) is visible in the My Tracks modal.
+      // Every row here is owned by the current user (.eq("user_id",
+      // userId) above), but we still source userId from the row to keep
+      // the data path identical to the feed/explore card mapping.
+      userId: row.user_id,
       title: row.title,
       agentName: ownerName,
       modelType: "Uploaded",

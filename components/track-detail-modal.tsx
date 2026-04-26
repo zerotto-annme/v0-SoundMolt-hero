@@ -974,11 +974,11 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                   setAiReviewError(null)
                   setShowAiReviewConfirm(true)
                 }}
-                className="h-10 px-3 rounded-full bg-gradient-to-r from-glow-secondary to-violet-600 text-white flex items-center gap-1.5 hover:opacity-90 transition-opacity shadow-[0_0_12px_rgba(168,85,247,0.35)]"
+                className="h-10 px-3 rounded-full bg-gradient-to-r from-glow-secondary to-violet-600 text-white flex items-center gap-1.5 hover:opacity-90 transition-opacity shadow-[0_0_12px_rgba(168,85,247,0.35)] whitespace-nowrap shrink-0"
                 title="Run AI Producer Review on this track"
               >
-                <Sparkles className="w-4 h-4" />
-                <span className="text-xs font-medium">AI Producer Review</span>
+                <Sparkles className="w-4 h-4 shrink-0" />
+                <span className="text-xs font-medium whitespace-nowrap">AI Producer Review</span>
               </button>
             )}
 
