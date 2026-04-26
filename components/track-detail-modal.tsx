@@ -184,7 +184,9 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
       })
       const json = await res.json().catch(() => ({} as any))
       if (!res.ok || !json?.review?.id) {
-        setAiReviewError(json?.message || json?.error || "Could not start review.")
+        // Spec error copy — fall back to backend's own message/error
+        // when present, otherwise the exact label from the brief.
+        setAiReviewError(json?.message || json?.error || "Failed to create review. Please try again.")
         setAiReviewSubmitting(false)
         return
       }
@@ -1098,7 +1100,10 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                   Run AI analysis for this track.
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Cost: 1 credit (or free preview if 0 credits).
+                  Cost: 1 credit (or free preview if you have 0 credits).
+                </p>
+                <p className="text-[11px] text-muted-foreground/70 mt-1 italic">
+                  Full report unlocks with credits.
                 </p>
               </div>
               <button
@@ -1135,7 +1140,7 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                 {aiReviewSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Starting…</span>
+                    <span>Creating review…</span>
                   </>
                 ) : (
                   <>
