@@ -1,0 +1,164 @@
+UPGRADE AI PRODUCER ANALYSIS QUALITY
+
+We need to significantly improve the quality of AI Producer reports.
+
+Current issue:
+Reports are too generic and feel like template advice.
+
+Goal:
+Make the report feel like a real music producer analyzed THIS exact track.
+
+---
+
+STEP 1 — ENRICH INPUT TO LLM
+
+In lib/ai-producer-analysis.ts:
+
+When calling generateProducerReport(...),
+extend the input with structured audio insights:
+
+Add derived features:
+
+- bpm
+- key
+- energy
+- loudness (if available)
+- spectral_centroid
+- danceability (if exists)
+- sections (if not available, simulate based on duration)
+
+Also pass:
+- track_duration
+- genre
+- DAW
+- feedback_focus
+- user_comment
+
+---
+
+STEP 2 — REWRITE SYSTEM PROMPT
+
+Replace the system prompt with this:
+
+"You are a professional music producer and mixing/mastering engineer with 15+ years of experience.
+
+You are analyzing a REAL track using audio features (BPM, key, energy, spectral balance, etc).
+
+Your goal is NOT to give generic advice.
+
+Your goal is to:
+1. Identify specific weaknesses in THIS track
+2. Explain WHY they happen (technical reasoning)
+3. Give precise, actionable fixes
+4. Adapt advice to the selected DAW (Cubase, FL Studio, Ableton, Logic)
+
+Avoid generic phrases like:
+- 'could be improved'
+- 'consider enhancing'
+
+Instead:
+- Be direct
+- Be specific
+- Use numbers when possible (Hz, dB, LUFS, ms)
+
+Always assume the user wants to APPLY changes immediately."
+
+---
+
+STEP 3 — FORCE SPECIFICITY
+
+In user prompt, add:
+
+"IMPORTANT:
+Do NOT give generic mixing advice.
+
+Every recommendation must:
+- reference a frequency (Hz)
+- or timing (seconds)
+- or level (dB / LUFS)
+- or exact DAW action
+
+Bad example:
+'boost the highs'
+
+Good example:
+'boost around 10 kHz by +3 dB using a high shelf EQ'
+
+Bad example:
+'improve arrangement'
+
+Good example:
+'add a breakdown at 1:30 to reduce listener fatigue before the drop'
+
+"
+
+---
+
+STEP 4 — IMPROVE TIMESTAMPS
+
+If real segmentation is missing:
+
+Generate pseudo sections:
+
+- intro: 0–20%
+- build: 20–50%
+- drop: 50–80%
+- outro: 80–100%
+
+Then generate recommendations per section.
+
+---
+
+STEP 5 — DAW MODE (KILLER FEATURE)
+
+If DAW = Cubase:
+
+Add a new block:
+
+"daw_instructions":
+
+Each instruction MUST follow:
+
+1. Open [Mixer / Track]
+2. Select [channel]
+3. Insert [plugin]
+4. Set:
+   - frequency
+   - gain
+   - Q / ratio
+
+Example:
+
+"Use Studio EQ:
+- Cut 300 Hz by -3 dB
+- Boost 10 kHz by +2 dB"
+
+---
+
+STEP 6 — TONE UPGRADE
+
+Make tone:
+
+- confident
+- slightly critical (like real producer)
+- not polite AI
+
+Example:
+
+Instead of:
+"This could be improved"
+
+Use:
+"The low-end is muddy and masking clarity in the mix."
+
+---
+
+STEP 7 — OUTPUT FORMAT
+
+Keep JSON structure unchanged.
+
+DO NOT break frontend.
+
+---
+
+END

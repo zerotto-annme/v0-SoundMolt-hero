@@ -42,6 +42,8 @@ export type ProducerReportInputs = {
   daw:             string | null
   feedback_focus:  string | null
   comment:         string | null
+  /** Track length in seconds (nullable — uploaded files may be unknown). */
+  track_duration:  number | null
 }
 
 type SectionShape = {
@@ -228,6 +230,194 @@ function normaliseSection(raw: unknown, fallbackText: string): SectionShape {
   }
 }
 
+// ─── Derived audio insights (Stage 8 quality upgrade) ─────────────────
+//
+// Essentia's raw output is deeply nested and field-naming varies a bit
+// across versions ("rhythm.bpm" vs "bpm" etc). We probe the most common
+// shapes and surface a flat, well-typed insight object that the LLM
+// prompt can quote verbatim. Anything we cannot find is omitted (NOT
+// stubbed with "unknown") so the LLM does not hallucinate around it.
+
+export type DerivedAudioInsights = {
+  bpm?:                number
+  key?:                string
+  scale?:              string
+  energy?:             number
+  loudness_lufs?:      number
+  spectral_centroid?:  number
+  danceability?:       number
+  duration_seconds?:   number
+}
+
+function pickNumber(...candidates: unknown[]): number | undefined {
+  for (const c of candidates) {
+    if (typeof c === "number" && Number.isFinite(c)) return c
+    if (typeof c === "string") {
+      const n = Number(c)
+      if (Number.isFinite(n)) return n
+    }
+  }
+  return undefined
+}
+
+function pickString(...candidates: unknown[]): string | undefined {
+  for (const c of candidates) {
+    if (typeof c === "string" && c.trim()) return c.trim()
+  }
+  return undefined
+}
+
+function get(obj: unknown, path: string): unknown {
+  if (!obj || typeof obj !== "object") return undefined
+  const parts = path.split(".")
+  let cur: any = obj
+  for (const p of parts) {
+    if (cur == null || typeof cur !== "object") return undefined
+    cur = cur[p]
+  }
+  return cur
+}
+
+export function deriveAudioInsights(
+  features: EssentiaFeatures,
+  fallbackDuration: number | null,
+): DerivedAudioInsights {
+  const f = features as Record<string, unknown>
+  const insights: DerivedAudioInsights = {}
+
+  const bpm = pickNumber(get(f, "rhythm.bpm"), get(f, "bpm"), get(f, "tempo"))
+  if (bpm) insights.bpm = Math.round(bpm * 10) / 10
+
+  const key   = pickString(get(f, "tonal.key_key"), get(f, "key.key"), get(f, "key"))
+  const scale = pickString(get(f, "tonal.key_scale"), get(f, "key.scale"), get(f, "scale"))
+  if (key)   insights.key   = key
+  if (scale) insights.scale = scale
+
+  const energy = pickNumber(
+    get(f, "lowlevel.average_loudness"),
+    get(f, "energy"),
+    get(f, "lowlevel.dynamic_complexity"),
+  )
+  if (energy !== undefined) insights.energy = Math.round(energy * 1000) / 1000
+
+  const lufs = pickNumber(
+    get(f, "loudness.integrated_loudness"),
+    get(f, "loudness_ebu128.integrated_loudness"),
+    get(f, "loudness_lufs"),
+    get(f, "lufs"),
+  )
+  if (lufs !== undefined) insights.loudness_lufs = Math.round(lufs * 10) / 10
+
+  const sc = pickNumber(
+    get(f, "lowlevel.spectral_centroid.mean"),
+    get(f, "spectral_centroid"),
+    get(f, "lowlevel.spectral_centroid"),
+  )
+  if (sc !== undefined) insights.spectral_centroid = Math.round(sc)
+
+  const dance = pickNumber(
+    get(f, "rhythm.danceability"),
+    get(f, "danceability"),
+    get(f, "highlevel.danceability.value"),
+  )
+  if (dance !== undefined) insights.danceability = Math.round(dance * 1000) / 1000
+
+  const dur = pickNumber(
+    get(f, "metadata.audio_properties.length"),
+    get(f, "duration"),
+    get(f, "length"),
+    fallbackDuration,
+  )
+  if (dur !== undefined) insights.duration_seconds = Math.round(dur)
+
+  return insights
+}
+
+function fmtTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00"
+  const m = Math.floor(seconds / 60)
+  const s = Math.floor(seconds % 60)
+  return `${m}:${s.toString().padStart(2, "0")}`
+}
+
+export type SimulatedSection = {
+  name:  "intro" | "build" | "drop" | "outro"
+  start: string  // mm:ss
+  end:   string  // mm:ss
+}
+
+/**
+ * When Essentia does not return real segmentation, generate plausible
+ * arrangement landmarks from the duration so the LLM has anchor points
+ * for timestamped recommendations (Stage 8 spec, step 4).
+ */
+export function simulateSections(durationSeconds: number | null | undefined): SimulatedSection[] {
+  const d = typeof durationSeconds === "number" && durationSeconds > 0 ? durationSeconds : 0
+  if (d <= 0) return []
+  return [
+    { name: "intro", start: fmtTime(0),         end: fmtTime(d * 0.20) },
+    { name: "build", start: fmtTime(d * 0.20),  end: fmtTime(d * 0.50) },
+    { name: "drop",  start: fmtTime(d * 0.50),  end: fmtTime(d * 0.80) },
+    { name: "outro", start: fmtTime(d * 0.80),  end: fmtTime(d) },
+  ]
+}
+
+export type ReportSection = {
+  name:  string
+  start: string  // mm:ss
+  end:   string  // mm:ss
+  source: "essentia" | "simulated"
+}
+
+/**
+ * Try to extract real arrangement segmentation from Essentia output
+ * (field naming varies by version: `segments`, `sections`,
+ * `structure.segments`, `structure.sections`, …). Returns an empty
+ * array when no real segmentation is present so the caller can fall
+ * back to simulateSections().
+ */
+function extractRealSections(features: EssentiaFeatures): ReportSection[] {
+  const f = features as Record<string, unknown>
+  const candidates: unknown[] = [
+    get(f, "segments"),
+    get(f, "sections"),
+    get(f, "structure.segments"),
+    get(f, "structure.sections"),
+    get(f, "highlevel.segments"),
+    get(f, "rhythm.segments"),
+  ]
+  for (const cand of candidates) {
+    if (!Array.isArray(cand) || cand.length === 0) continue
+    const out: ReportSection[] = []
+    for (const seg of cand) {
+      if (!seg || typeof seg !== "object") continue
+      const s = seg as Record<string, unknown>
+      const start = pickNumber(s.start, s.from, s.begin, s.t0, s.startTime, s.start_time)
+      const end   = pickNumber(s.end,   s.to,   s.finish, s.t1, s.endTime,   s.end_time)
+      if (start === undefined || end === undefined || end <= start) continue
+      const name = pickString(s.label, s.name, s.type, s.kind) ?? `segment ${out.length + 1}`
+      out.push({ name, start: fmtTime(start), end: fmtTime(end), source: "essentia" })
+      if (out.length >= 12) break
+    }
+    if (out.length > 0) return out
+  }
+  return []
+}
+
+/**
+ * Resolve arrangement landmarks for the LLM prompt: prefer real
+ * Essentia segmentation when present, otherwise fall back to
+ * duration-based simulation.
+ */
+export function resolveSections(
+  features: EssentiaFeatures,
+  durationSeconds: number | null | undefined,
+): ReportSection[] {
+  const real = extractRealSections(features)
+  if (real.length > 0) return real
+  return simulateSections(durationSeconds).map(s => ({ ...s, source: "simulated" as const }))
+}
+
 function normaliseRecommendations(
   raw: unknown,
 ): ProducerReport["recommendations"] {
@@ -266,18 +456,70 @@ export async function generateProducerReport(
   const dawId = inputs.daw ? inputs.daw.toLowerCase() : null
   const dawLb = dawLabelFor(dawId)
 
-  const systemPrompt =
-    "You are an experienced professional music producer and mixing/mastering engineer. " +
-    "You give precise, practical, technically grounded feedback on tracks. " +
-    "You ALWAYS quote real numeric values (dB changes, EQ frequency ranges in Hz, " +
-    "compression ratio/attack/release suggestions, sidechain ideas, arrangement edits) " +
-    "whenever the audio features support it. " +
-    "You do NOT use generic placeholder language like 'consider improving' without specifics. " +
-    "You answer ONLY with valid JSON matching the schema the user provides — no prose, no markdown."
+  // Step 1 — derived audio insights + resolved arrangement landmarks
+  // (real Essentia segmentation when available, simulated otherwise).
+  const insights = deriveAudioInsights(features, inputs.track_duration)
+  const sections = resolveSections(features, insights.duration_seconds ?? inputs.track_duration ?? null)
+  const sectionsAreReal = sections.length > 0 && sections[0]!.source === "essentia"
 
-  // The schema we ask for is intentionally aligned 1:1 with the
-  // frontend's ReportJson type (sections.mix etc.) so no transformation
-  // layer is needed downstream.
+  // Step 2 — system prompt (verbatim from Stage 8 spec).
+  // Step 6 (tone) and the JSON-only output rule are appended as a
+  // short trailer because the spec's Step 7 forbids breaking the
+  // existing JSON contract; the trailer cannot be expressed inside
+  // the verbatim block but is required by other steps in the spec.
+  const systemPrompt =
+    "You are a professional music producer and mixing/mastering engineer with 15+ years of experience.\n\n" +
+    "You are analyzing a REAL track using audio features (BPM, key, energy, spectral balance, etc).\n\n" +
+    "Your goal is NOT to give generic advice.\n\n" +
+    "Your goal is to:\n" +
+    "1. Identify specific weaknesses in THIS track\n" +
+    "2. Explain WHY they happen (technical reasoning)\n" +
+    "3. Give precise, actionable fixes\n" +
+    "4. Adapt advice to the selected DAW (Cubase, FL Studio, Ableton, Logic)\n\n" +
+    "Avoid generic phrases like:\n" +
+    "- 'could be improved'\n" +
+    "- 'consider enhancing'\n\n" +
+    "Instead:\n" +
+    "- Be direct\n" +
+    "- Be specific\n" +
+    "- Use numbers when possible (Hz, dB, LUFS, ms)\n\n" +
+    "Always assume the user wants to APPLY changes immediately.\n\n" +
+    "---\n" +
+    "Tone (Stage 8 step 6): confident and slightly critical, like a real producer talking to a peer — NOT a polite assistant. " +
+    "Instead of 'this could be improved' say 'the low-end is muddy and masking clarity in the mix'.\n" +
+    "Output (Stage 8 step 7): respond with VALID JSON ONLY matching the schema the user prompt specifies — no prose, no markdown, no code fences."
+
+  // Compact, human-readable insight block (only fields that were
+  // actually derived — missing values are simply not listed so the
+  // model does not invent them).
+  const insightLines: string[] = []
+  if (insights.bpm !== undefined)               insightLines.push(`- bpm: ${insights.bpm}`)
+  if (insights.key)                             insightLines.push(`- key: ${insights.key}${insights.scale ? " " + insights.scale : ""}`)
+  if (insights.energy !== undefined)            insightLines.push(`- energy: ${insights.energy}`)
+  if (insights.loudness_lufs !== undefined)     insightLines.push(`- loudness_lufs: ${insights.loudness_lufs}`)
+  if (insights.spectral_centroid !== undefined) insightLines.push(`- spectral_centroid: ${insights.spectral_centroid} Hz`)
+  if (insights.danceability !== undefined)      insightLines.push(`- danceability: ${insights.danceability}`)
+  if (insights.duration_seconds !== undefined)  insightLines.push(`- duration_seconds: ${insights.duration_seconds}`)
+  const insightBlock = insightLines.length ? insightLines.join("\n") : "(no derived insights available)"
+
+  const sectionsHeader = sectionsAreReal
+    ? "ARRANGEMENT LANDMARKS (real Essentia segmentation — use these mm:ss anchors when giving timestamped advice):"
+    : "ARRANGEMENT LANDMARKS (simulated from duration — use these mm:ss anchors when giving timestamped advice):"
+  const sectionLines = sections.length
+    ? sections.map(s => `- ${s.name}: ${s.start} – ${s.end}`).join("\n")
+    : "(unknown — duration not available)"
+
+  // Stringify the full feature blob defensively — some essentia
+  // payloads contain BigInt / circular structures we cannot serialise.
+  let rawFeaturesJson = ""
+  try {
+    rawFeaturesJson = JSON.stringify(features).slice(0, 8000)
+  } catch {
+    rawFeaturesJson = "{}"
+  }
+
+  // Steps 3, 4, 5 — force specificity, expose pseudo-sections, demand
+  // DAW-specific concrete instructions.
   const userPrompt =
 `Generate a producer-style review for the user's track in strict JSON.
 
@@ -286,29 +528,70 @@ CONTEXT (user-supplied):
 - genre: ${inputs.genre ?? "unspecified"}
 - daw: ${dawLb}
 - feedback_focus: ${focus}
+- track_duration_seconds: ${insights.duration_seconds ?? inputs.track_duration ?? "unknown"}
 - user_comment: ${inputs.comment ?? "(none)"}
 
-AUDIO FEATURES (from Essentia analysis — use these as ground truth):
-${JSON.stringify(features).slice(0, 12000)}
+DERIVED AUDIO INSIGHTS (ground truth — quote these in your analysis):
+${insightBlock}
 
-REQUIREMENTS:
-1. Weight the analysis according to feedback_focus:
-   - mastering  → loudness, dynamics, limiting, tonal balance
-   - mixing     → balance, EQ, compression, stereo image
-   - arrangement→ structure, intro/drop/chorus/energy
-   - vocals/bass/drums/melody → prioritise that element
-   - overall quality → balanced full review
-2. The "daw_instructions" array MUST contain ${dawLb}-specific steps
-   (named stock plugins, knob values, routing) — not generic advice.
-3. Every section MUST include 3–6 concrete "notes" with numeric values
-   when supported by the features. Avoid vague language.
-4. "recommendations" should include timestamped items where relevant
-   (use {"timestamp":"mm:ss","target":"...", "text":"..."} objects).
-5. "summary" is a tight 2–4 sentence executive overview.
-6. "overall_score" is an integer 0–100 grounded in the features.
-7. "full_analysis" is a longer (300–600 words) deep-dive narrative.
+${sectionsHeader}
+${sectionLines}
 
-Return ONLY this JSON shape — no extra keys, no markdown:
+RAW ESSENTIA FEATURES (for deeper inspection if you need them):
+${rawFeaturesJson}
+
+IMPORTANT:
+Do NOT give generic mixing advice.
+
+Every recommendation must:
+- reference a frequency (Hz)
+- or timing (seconds / mm:ss)
+- or level (dB / LUFS)
+- or exact DAW action
+
+Bad example:
+'boost the highs'
+
+Good example:
+'boost around 10 kHz by +3 dB using a high shelf EQ'
+
+Bad example:
+'improve arrangement'
+
+Good example:
+'add a breakdown at 1:30 to reduce listener fatigue before the drop'
+
+WEIGHTING — adapt depth per feedback_focus="${focus}":
+- mastering   → loudness, dynamics, limiting, tonal balance, LUFS targets
+- mixing      → balance, EQ, compression, stereo image, headroom
+- arrangement → structure, intro/build/drop/outro, energy curve
+- vocals / bass / drums / melody → prioritise that element specifically
+- overall     → balanced full review
+
+DAW INSTRUCTIONS (for ${dawLb}) — every entry in "daw_instructions" MUST follow this structure:
+1. Open [Mixer / Track]
+2. Select [channel]
+3. Insert [plugin — use ${dawLb} stock plugin names where possible]
+4. Set:
+   - frequency (Hz)
+   - gain (dB)
+   - Q / ratio / attack / release where relevant
+Example for Cubase:
+"On the Master bus, insert Studio EQ — Cut 300 Hz by -3 dB (Q=1.0), Boost 10 kHz by +2 dB (high shelf)"
+Generate 4–8 such concrete steps.
+
+Each section in "sections" MUST include 3–6 concrete "notes" with numeric values (Hz / dB / LUFS / ms) wherever the audio features support it.
+
+"recommendations" — include 4–10 items. Prefer the object form
+{"timestamp":"mm:ss","target":"<bus / element>","text":"<concrete fix>"}
+and use the ARRANGEMENT LANDMARKS above for timestamps.
+
+"summary" — 2–4 sentence executive overview, confident tone.
+"overall_score" — integer 0–100 grounded in the derived insights.
+"full_analysis" — 300–600 word narrative. Be specific about THIS track, not the genre.
+"references" — 0–6 short reference tracks/plugins/articles relevant to the suggested fixes.
+
+Return ONLY this JSON shape — no extra keys, no markdown, no code fences:
 {
   "summary": string,
   "overall_score": number,

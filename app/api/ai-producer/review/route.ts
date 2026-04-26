@@ -100,6 +100,14 @@ export async function POST(request: Request) {
   }
 
   let audioUrl = clampText(body?.audio_url, 2000)
+  // Optional: track duration in seconds. Existing tracks resolve it
+  // server-side from public.tracks.duration_seconds; uploaded files
+  // may pass it from the client. We only use it as a fallback hint
+  // for the LLM prompt (Stage 8) — never block on it.
+  let trackDurationSeconds: number | null =
+    typeof body?.track_duration === "number" && Number.isFinite(body.track_duration) && body.track_duration > 0
+      ? Math.round(body.track_duration)
+      : null
 
   const trackId = readUuid(body?.track_id)
   const originalTrackId = readUuid(body?.original_track_id)
@@ -149,7 +157,7 @@ export async function POST(request: Request) {
   if (sourceType === "existing_track") {
     const { data: trackRow, error: trackErr } = await admin
       .from("tracks")
-      .select("user_id, audio_url")
+      .select("user_id, audio_url, duration_seconds")
       .eq("id", originalTrackId as string)
       .maybeSingle()
     if (trackErr) {
@@ -181,6 +189,12 @@ export async function POST(request: Request) {
       )
     }
     audioUrl = resolved
+    if (typeof trackRow.duration_seconds === "number" && trackRow.duration_seconds > 0) {
+      trackDurationSeconds = Math.round(trackRow.duration_seconds)
+    } else if (typeof trackRow.duration_seconds === "string") {
+      const n = Number(trackRow.duration_seconds)
+      if (Number.isFinite(n) && n > 0) trackDurationSeconds = Math.round(n)
+    }
   }
 
   // ─── 1. Read current credit balance (or treat missing row as 0) ─────
@@ -327,6 +341,7 @@ export async function POST(request: Request) {
       daw,
       feedback_focus: feedbackFocus,
       comment,
+      track_duration: trackDurationSeconds,
     })
     if (gen.ok) {
       reportJson = gen.report
