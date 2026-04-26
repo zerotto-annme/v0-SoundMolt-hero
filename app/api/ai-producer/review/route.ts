@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server"
 import { getAdminClient, getUserFromAuthHeader, hasServiceRoleKey } from "@/lib/supabase-admin"
+import {
+  extractEssentiaFeatures,
+  generateProducerReport,
+  loadCachedTrackFeatures,
+} from "@/lib/ai-producer-analysis"
 
 // POST /api/ai-producer/review
 //
@@ -58,62 +63,15 @@ function readUuid(value: unknown): string | null {
   return v
 }
 
-// ─── Mocked AI analysis ────────────────────────────────────────────────
-// Stage 1 only requires a stable, schema-rich response shape so the
-// later UI stages have something to render. Replace this with a real
-// model call in a follow-up stage; the surrounding contract does not
-// need to change.
-type AnalysisInput = {
-  source_type: string
-  title: string | null
-  genre: string | null
-  daw: string | null
-  feedback_focus: string | null
-  comment: string | null
-}
-
-function runMockAnalysis(input: AnalysisInput) {
-  const focus = input.feedback_focus || "general"
-  return {
-    version: 1,
-    generated_at: new Date().toISOString(),
-    summary:
-      `Automated AI Producer review for "${input.title ?? "Untitled"}". ` +
-      `Focus area: ${focus}.`,
-    overall_score: 78,
-    sections: {
-      mix: {
-        score: 76,
-        notes: [
-          "Low end is consistent across the track.",
-          "Vocals could sit slightly forward in the chorus.",
-        ],
-      },
-      arrangement: {
-        score: 82,
-        notes: [
-          "Intro keeps tension well.",
-          "Consider a contrast section before the final drop.",
-        ],
-      },
-      sound_design: {
-        score: 74,
-        notes: [
-          "Lead synth carries the hook nicely.",
-          "Reverb tails on snares add warmth without muddying.",
-        ],
-      },
-    },
-    recommendations: [
-      "Automate a -1.5 dB cut on the lead synth during vocal sections.",
-      "Try parallel compression on the drum bus for added punch.",
-      "A sidechain on the pad against the kick will tighten the groove.",
-    ],
-    references: input.genre
-      ? [`Genre cue: ${input.genre}`]
-      : [],
-  }
-}
+// ─── Real AI analysis (Stage 7) ────────────────────────────────────────
+// The mock that lived here was replaced by a two-step pipeline:
+//   1. Pull (or compute) raw Essentia features for the audio file.
+//   2. Ask OpenAI gpt-4o-mini to turn those features + the user's
+//      submission inputs into a producer-style report_json.
+// See lib/ai-producer-analysis.ts for both helpers. All failure paths
+// are surfaced into report_json.error and status="failed" so the
+// frontend's existing failed-review screen can render them; we never
+// crash the request because the credit was already debited.
 
 export async function POST(request: Request) {
   if (!hasServiceRoleKey()) {
@@ -312,21 +270,79 @@ export async function POST(request: Request) {
     }
   }
 
-  // ─── 4. Run mock analysis and finalise the row ─────────────────────
+  // ─── 4. Real analysis: Essentia features → OpenAI report ──────────
+  // Pipeline (per Stage 7 spec):
+  //   a. Resolve raw audio features. For an existing track we first
+  //      try the cached track_analysis row (avoids re-uploading the
+  //      audio to Essentia for the same file). For an uploaded file
+  //      we always extract fresh.
+  //   b. If features cannot be obtained → status=failed with the
+  //      Essentia error in report_json.error. Credit stays debited
+  //      (we already charged once and never charge "extra").
+  //   c. Hand the features + user inputs to OpenAI gpt-4o-mini.
+  //      LLM failure → status=failed with the OpenAI error in
+  //      report_json.error.
+  //   d. Success → status=ready with the structured report_json.
+  console.log(`[api/ai-producer/review] review ${review.id} created (source=${sourceType}, credits_used=${creditsUsed})`)
+
   let finalStatus: "ready" | "failed" = "ready"
   let reportJson: unknown = null
-  try {
-    reportJson = runMockAnalysis({
-      source_type: sourceType,
+
+  // 4a. Audio features.
+  console.log(`[api/ai-producer/review] ${review.id} audio analysis started`)
+  let features: Record<string, unknown> | null = null
+  let analysisError: string | null = null
+  if (sourceType === "existing_track" && originalTrackId) {
+    const cached = await loadCachedTrackFeatures(admin, originalTrackId)
+    if (cached) {
+      features = cached
+      console.log(`[api/ai-producer/review] ${review.id} audio analysis completed (cached)`)
+    }
+  }
+  if (!features) {
+    const extract = await extractEssentiaFeatures(audioUrl as string)
+    if (extract.ok) {
+      features = extract.features
+      console.log(`[api/ai-producer/review] ${review.id} audio analysis completed (fresh)`)
+    } else {
+      analysisError = `essentia ${extract.stage}: ${extract.error}`
+      console.error(`[api/ai-producer/review] ${review.id} audio analysis failed:`, analysisError)
+    }
+  }
+
+  if (!features || analysisError) {
+    finalStatus = "failed"
+    reportJson = {
+      version: 1,
+      generated_at: new Date().toISOString(),
+      error: analysisError ?? "audio_analysis_failed",
+      stage: "audio_analysis",
+    }
+  } else {
+    // 4b. LLM report.
+    console.log(`[api/ai-producer/review] ${review.id} LLM report generation started`)
+    const gen = await generateProducerReport(features, {
       title,
       genre,
       daw,
       feedback_focus: feedbackFocus,
       comment,
     })
-  } catch (err) {
-    console.error("[api/ai-producer/review] mock analysis threw:", err)
-    finalStatus = "failed"
+    if (gen.ok) {
+      reportJson = gen.report
+      console.log(`[api/ai-producer/review] ${review.id} report saved`)
+    } else {
+      finalStatus = "failed"
+      const errMsg = `openai ${gen.stage}: ${gen.error}`
+      console.error(`[api/ai-producer/review] ${review.id} LLM failed:`, errMsg)
+      reportJson = {
+        version: 1,
+        generated_at: new Date().toISOString(),
+        error: errMsg,
+        stage: "llm",
+        audio_features: features,
+      }
+    }
   }
 
   const { error: finalErr } = await admin
@@ -335,10 +351,12 @@ export async function POST(request: Request) {
     .eq("id", review.id)
 
   if (finalErr) {
-    console.error("[api/ai-producer/review] finalise update failed:", finalErr)
+    console.error(`[api/ai-producer/review] ${review.id} finalise update failed:`, finalErr)
     // The row exists — surface a 200 so the client can poll the
     // get-review endpoint (Stage 2) instead of treating this as a
     // creation failure.
+  } else if (finalStatus === "failed") {
+    console.error(`[api/ai-producer/review] ${review.id} failed`)
   }
 
   return NextResponse.json({

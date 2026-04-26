@@ -65,7 +65,7 @@ function isPrivateOrLoopbackHost(host: string): boolean {
   if (a === 0) return true                         // 0.0.0.0/8
   return false
 }
-function assertSafeAudioUrl(raw: string): { ok: true; url: URL } | { ok: false; reason: string } {
+export function assertSafeAudioUrl(raw: string): { ok: true; url: URL } | { ok: false; reason: string } {
   let u: URL
   try { u = new URL(raw) } catch { return { ok: false, reason: "invalid URL" } }
   if (u.protocol !== "https:") return { ok: false, reason: `scheme ${u.protocol} not allowed (https only)` }
