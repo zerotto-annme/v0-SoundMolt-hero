@@ -133,41 +133,156 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // ─── Atomic adjustment via SECURITY DEFINER RPC ────────────────────
-  // Migration 044 wraps read-balance + upsert + ledger insert into one
-  // transaction with a row-level lock, so concurrent admin clicks
-  // serialize cleanly and the ledger can never get out of sync with
-  // the balance.
-  const { data: rpcRows, error: rpcErr } = await admin.rpc(
-    "admin_adjust_credits",
-    {
-      p_user_id: userId,
-      p_action: action,
-      p_amount: action === "reset" ? null : amount,
-    },
-  )
+  // ─── Direct service-role adjustment (no RPC, no migration) ─────────
+  // The SECURITY DEFINER admin_adjust_credits RPC from migration 044
+  // is intentionally NOT used here — that migration was never applied
+  // to the live Supabase project, and the spec requires this endpoint
+  // to work without it.
+  //
+  // Concurrency strategy: we compare-and-swap on user_credits.updated_at.
+  // The user_credits_updated_at trigger bumps updated_at to now() on
+  // every UPDATE, so it acts as a natural row version token. For "add"
+  // this prevents lost updates (two simultaneous +10 grants land as
+  // +20, not +10). For "set"/"reset" the same loop guarantees that the
+  // ledger's signed delta accurately reflects the actual balance
+  // transition (not a stale read).
+  //
+  // Sequence per attempt:
+  //   1. Read current row (null → balance 0).
+  //   2. Compute new_balance (clamped to ≥ 0 to satisfy the CHECK).
+  //   3a. If row exists → UPDATE … WHERE updated_at = readVersion.
+  //       0 rows updated ⇒ another admin moved it; retry.
+  //   3b. If row missing → INSERT. Unique-violation on user_id ⇒ a
+  //       concurrent insert won; retry (which will hit the UPDATE path).
+  //   4. On success, INSERT credit_transactions with signed delta.
 
-  if (rpcErr) {
-    console.error("[admin/ai-producer/credits] rpc failed:", rpcErr)
+  const MAX_ATTEMPTS = 5
+  let previousBalance = 0
+  let newBalance = 0
+  let committed = false
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    // 1. Read current row.
+    const { data: existing, error: readErr } = await admin
+      .from("user_credits")
+      .select("credits_balance, updated_at")
+      .eq("user_id", userId)
+      .maybeSingle()
+    if (readErr) {
+      console.error("[admin/ai-producer/credits] read balance failed:", readErr)
+      return NextResponse.json(
+        { error: "adjust_failed", message: readErr.message },
+        { status: 500 },
+      )
+    }
+
+    const currentBalance = existing?.credits_balance ?? 0
+    const currentVersion = existing?.updated_at ?? null
+
+    // 2. Compute new_balance.
+    let nextBalance: number
+    if (action === "reset") {
+      nextBalance = 0
+    } else if (action === "set") {
+      nextBalance = Math.max(0, amount as number)
+    } else {
+      // "add"
+      nextBalance = Math.max(0, currentBalance + (amount as number))
+    }
+
+    if (existing) {
+      // 3a. CAS UPDATE — guarded by updated_at matching what we read.
+      // The trigger then writes a new updated_at, so the next CAS by
+      // another admin will see a different version.
+      const { data: updRows, error: updErr } = await admin
+        .from("user_credits")
+        .update({ credits_balance: nextBalance })
+        .eq("user_id", userId)
+        .eq("updated_at", currentVersion as string)
+        .select("user_id")
+      if (updErr) {
+        console.error("[admin/ai-producer/credits] update failed:", updErr)
+        return NextResponse.json(
+          { error: "adjust_failed", message: updErr.message },
+          { status: 500 },
+        )
+      }
+      if (!updRows || updRows.length === 0) {
+        // Lost the race — another admin updated this row first.
+        // Loop and re-read.
+        continue
+      }
+    } else {
+      // 3b. INSERT a fresh row. If another admin concurrently created
+      // one, the user_id PK constraint will reject us — retry to take
+      // the UPDATE path.
+      const { error: insErr } = await admin
+        .from("user_credits")
+        .insert({ user_id: userId, credits_balance: nextBalance })
+      if (insErr) {
+        // 23505 = unique_violation in Postgres. Anything else is fatal.
+        const code = (insErr as { code?: string }).code
+        if (code === "23505") continue
+        console.error("[admin/ai-producer/credits] insert failed:", insErr)
+        return NextResponse.json(
+          { error: "adjust_failed", message: insErr.message },
+          { status: 500 },
+        )
+      }
+    }
+
+    previousBalance = currentBalance
+    newBalance = nextBalance
+    committed = true
+    break
+  }
+
+  // If we exhausted retries, surface a clear error so the admin can
+  // click again rather than getting silent corruption. In practice 5
+  // attempts is plenty for a single-admin panel; this branch only
+  // trips under pathological contention.
+  if (!committed) {
     return NextResponse.json(
-      { error: "adjust_failed", message: rpcErr.message },
+      {
+        error: "adjust_failed",
+        message: "Could not commit credit adjustment after retries — please try again.",
+      },
       { status: 500 },
     )
   }
 
-  const row = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows
-  if (!row) {
+  // 4. Append ledger row. We log even zero-delta no-ops so an admin
+  // can audit every click; the ledger is the source of truth for
+  // *what was attempted*, the balance for *what is*.
+  const delta = newBalance - previousBalance
+  const { error: ledgerErr } = await admin
+    .from("credit_transactions")
+    .insert({
+      user_id: userId,
+      amount: delta,
+      type: "admin_gift",
+      reason: "admin manual adjustment",
+      review_id: null,
+    })
+  if (ledgerErr) {
+    // Balance has already moved — surface the failure so the admin
+    // knows the ledger is out of sync, but don't try to "undo" the
+    // upsert (that itself can fail and make things worse).
+    console.error("[admin/ai-producer/credits] ledger insert failed:", ledgerErr)
     return NextResponse.json(
-      { error: "adjust_no_result", message: "RPC returned no row." },
+      {
+        error: "ledger_write_failed",
+        message: `Balance updated to ${newBalance} but ledger insert failed: ${ledgerErr.message}`,
+      },
       { status: 500 },
     )
   }
 
   return NextResponse.json({
     ok: true,
-    user_id: row.user_id,
-    previous_balance: row.previous_balance,
-    credits_balance: row.credits_balance,
-    delta: row.delta,
+    user_id: userId,
+    previous_balance: previousBalance,
+    credits_balance: newBalance,
+    delta,
   })
 }
