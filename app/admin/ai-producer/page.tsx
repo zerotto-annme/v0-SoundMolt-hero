@@ -171,7 +171,11 @@ export default function AdminAiProducerPage() {
       setFlashUserId(userId)
       setTimeout(() => setFlashUserId((cur) => (cur === userId ? null : cur)), 1500)
     } catch (err: any) {
+      // Surface the failure so callers (e.g. handleGrantNew) can
+      // distinguish success from failure. We also pop a quick alert
+      // for click-only callers (+1/+5/Set/Reset) that don't wrap us.
       alert(err?.message || "Adjustment failed.")
+      throw err
     } finally {
       setPendingUserId(null)
     }

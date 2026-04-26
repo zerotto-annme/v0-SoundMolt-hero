@@ -133,79 +133,41 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // ─── 1. Read current balance (treat missing row as 0) ──────────────
-  let currentBalance = 0
-  try {
-    const { data: existing, error: readErr } = await admin
-      .from("user_credits")
-      .select("credits_balance")
-      .eq("user_id", userId)
-      .maybeSingle()
-    if (readErr) {
-      console.error("[admin/ai-producer/credits] read failed:", readErr)
-      return NextResponse.json(
-        { error: "read_failed", message: readErr.message },
-        { status: 500 },
-      )
-    }
-    if (existing && typeof existing.credits_balance === "number") {
-      currentBalance = existing.credits_balance
-    }
-  } catch (err) {
-    console.error("[admin/ai-producer/credits] read threw:", err)
-    return NextResponse.json({ error: "read_threw" }, { status: 500 })
-  }
+  // ─── Atomic adjustment via SECURITY DEFINER RPC ────────────────────
+  // Migration 044 wraps read-balance + upsert + ledger insert into one
+  // transaction with a row-level lock, so concurrent admin clicks
+  // serialize cleanly and the ledger can never get out of sync with
+  // the balance.
+  const { data: rpcRows, error: rpcErr } = await admin.rpc(
+    "admin_adjust_credits",
+    {
+      p_user_id: userId,
+      p_action: action,
+      p_amount: action === "reset" ? null : amount,
+    },
+  )
 
-  // ─── 2. Compute new balance per action ─────────────────────────────
-  let newBalance: number
-  if (action === "add") {
-    newBalance = Math.max(0, currentBalance + (amount ?? 0))
-  } else if (action === "set") {
-    newBalance = Math.max(0, amount ?? 0)
-  } else {
-    newBalance = 0
-  }
-
-  const delta = newBalance - currentBalance
-
-  // ─── 3. Upsert balance ─────────────────────────────────────────────
-  const { error: upsertErr } = await admin
-    .from("user_credits")
-    .upsert(
-      { user_id: userId, credits_balance: newBalance },
-      { onConflict: "user_id" },
-    )
-
-  if (upsertErr) {
-    console.error("[admin/ai-producer/credits] upsert failed:", upsertErr)
+  if (rpcErr) {
+    console.error("[admin/ai-producer/credits] rpc failed:", rpcErr)
     return NextResponse.json(
-      { error: "upsert_failed", message: upsertErr.message },
+      { error: "adjust_failed", message: rpcErr.message },
       { status: 500 },
     )
   }
 
-  // ─── 4. Write ledger entry (skip if no actual change) ──────────────
-  if (delta !== 0) {
-    const { error: txErr } = await admin
-      .from("credit_transactions")
-      .insert({
-        user_id: userId,
-        amount: delta,
-        type: "admin_gift",
-        reason: "admin manual adjustment",
-      })
-    if (txErr) {
-      console.error("[admin/ai-producer/credits] ledger insert failed:", txErr)
-      // Don't fail the request — balance was updated and the mismatch
-      // is observable in the logs. (Idempotency-friendly for retries.)
-    }
+  const row = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows
+  if (!row) {
+    return NextResponse.json(
+      { error: "adjust_no_result", message: "RPC returned no row." },
+      { status: 500 },
+    )
   }
 
   return NextResponse.json({
     ok: true,
-    user_id: userId,
-    previous_balance: currentBalance,
-    credits_balance: newBalance,
-    delta,
+    user_id: row.user_id,
+    previous_balance: row.previous_balance,
+    credits_balance: row.credits_balance,
+    delta: row.delta,
   })
 }
