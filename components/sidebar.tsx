@@ -4,7 +4,7 @@ import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Compass, Library, MessageCircle, Heart, Clock, Plus, Music, Headphones, Radio, Sparkles, Zap, Bot, User, Wand2, Upload, ChevronDown } from "lucide-react"
+import { Home, Compass, Library, MessageCircle, Heart, Clock, Plus, Music, Headphones, Radio, Sparkles, Zap, Bot, User, Wand2, Upload, ChevronDown, BrainCircuit } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CreateTrackModal } from "./create-track-modal"
 import { UploadTrackModal } from "./upload-track-modal"
@@ -150,6 +150,19 @@ export function Sidebar({ onUploadSuccess }: { onUploadSuccess?: () => void } = 
                         <div className="text-xs text-muted-foreground">Share your music</div>
                       </div>
                     </button>
+                    <Link
+                      href="/ai-producer"
+                      onClick={() => setIsCreateMenuOpen(false)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-foreground hover:bg-purple-500/10 hover:text-purple-400 transition-colors group"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-fuchsia-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <BrainCircuit className="w-4 h-4 text-white" />
+                      </div>
+                      <div className="text-left">
+                        <div className="text-sm font-medium">AI Producer Review</div>
+                        <div className="text-xs text-muted-foreground">Get an AI critique</div>
+                      </div>
+                    </Link>
                   </div>
                 </div>
               </>
