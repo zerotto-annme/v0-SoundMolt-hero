@@ -1,0 +1,95 @@
+Before implementation:
+Find existing upload / track publishing flow.
+Do not modify:
+- normal Upload Track
+- public track publishing
+- feed logic
+- existing /api/tracks upload flow
+AI Producer Review must be implemented as a separate private module.
+All AI Producer files, routes, tables and UI must use ai_producer naming.
+Normal uploaded tracks must continue working exactly as before.
+ЭТАП 0 — Safety / подготовка
+ЭТАП 1 — Backend tables + create review endpoint
+ЭТАП 2 — Get review API
+ЭТАП 3 — AI Producer main UI page
+ЭТАП 4 — Review report page + blur logic
+ЭТАП 5 — Admin credits page
+
+IMPORTANT GLOBAL RULES:
+DO NOT:
+- auto publish tracks
+- mix AI Producer with normal upload flow
+
+AI Producer is a separate analysis system.
+
+Implement backend for AI Producer Review module.
+
+Requirements:
+
+IMPORTANT GLOBAL RULES:
+DO NOT:
+- auto publish tracks
+- mix AI Producer with normal upload flow
+
+AI Producer is a separate analysis system.
+
+Implement backend for AI Producer Review module.
+
+Requirements:
+ЭТАП 1 — Backend (основа)
+1. Create table ai_producer_reviews:
+- id
+- user_id
+
+- track_id (nullable)                // если используется внутренний ID файла
+- original_track_id (nullable)       // если выбран трек из My Tracks
+- source_type (uploaded_file | existing_track)
+
+- audio_url
+- title
+- genre
+- daw
+- feedback_focus
+- comment
+
+- status (processing | ready | failed)
+- report_json (FULL AI response)
+
+- access_type (free | full)
+- credits_used
+
+- created_at
+- updated_at
+2. Create table user_credits:
+- user_id
+- credits_balance
+
+3. Create table credit_transactions:
+- id
+- user_id
+- amount
+- type (admin_gift)
+- reason
+- review_id
+- created_at
+
+4. Implement endpoint:
+
+POST /api/ai-producer/review
+
+Behavior:
+- ALWAYS create review (even if credits = 0)
+- If user has credits:
+    access_type = full
+    subtract 1 credit
+- If user has 0 credits:
+    access_type = free
+
+- status = processing
+- call AI analysis function (mock for now)
+- save FULL report_json
+- update status to ready
+
+IMPORTANT:
+Review creation must NEVER be blocked by credits.
+Credits affect ONLY report visibility.
