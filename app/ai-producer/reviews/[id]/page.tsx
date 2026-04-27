@@ -5,8 +5,8 @@ import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import {
   Sparkles, Loader2, AlertCircle, Lock, ArrowLeft, RefreshCcw,
-  Download, Copy, Clock, FileText, Check, Flame, Wrench,
-  ArrowRight, Sliders, Layers, Activity, Wand2, TrendingUp,
+  Download, Copy, Sliders, Disc3, Layers, Wand2, TrendingUp,
+  Clock, ListChecks, FileText, Check, Music,
 } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
 import { Button } from "@/components/ui/button"
@@ -14,132 +14,36 @@ import { useAuth } from "@/components/auth-context"
 import { supabase } from "@/lib/supabase"
 
 // ─── Types ──────────────────────────────────────────────────────────────
-// Stage 14b — FIX-the-track contract (v4) with rich per-task metadata
-// and a structured 3-section full analysis. Legacy v2 (object full
-// analysis) and v3 (string full analysis, name/steps/result on tasks)
-// fields stay optional+nullable so already-stored rows keep rendering.
-type FixTaskCategory =
-  | "mix"
-  | "mastering"
-  | "arrangement"
-  | "sound_design"
-  | "commercial"
-
-type FixTask = {
-  number?: number | null
-  // v4 fields
-  task_title?: string | null
-  time_range?: string | null
-  category?: FixTaskCategory | string | null
-  problem?: string | null
-  why_it_matters?: string | null
-  daw_steps?: string[] | null
-  settings?: string[] | null
-  expected_result?: string | null
-  // v3 legacy fields kept for already-stored rows
-  name?: string | null
-  steps?: string[] | null
-  result?: string | null
-}
-
-type ExpectedResult = {
-  before?: string[] | null
-  after?: string[] | null
-}
-
-// Stage 14b — full_analysis is a structured object; identical shape
-// also doubles as the legacy v2 fallback because both versions used
-// the same three keys.
-type FullAnalysisStructured = {
-  executive_summary?: string | null
-  detailed_analysis?: string | null
-  advanced_improvements?: string | null
-}
-
-// Legacy v2 shapes — kept ONLY so already-stored reports still render
-// gracefully without crashing. New rendering paths use v4 fields.
-type LegacySection = {
+type ReportSection = {
   score?: number | null
   notes?: string[] | null
   text?: string | null
 }
-type LegacyPriorityFix = {
-  title?: string | null
-  action?: string | null
-  impact?: string | null
-}
+
+type Recommendation =
+  | string
+  | {
+      timestamp?: string | null
+      text?: string | null
+      target?: string | null
+    }
 
 type ReportJson = {
   version?: number
   generated_at?: string
   summary?: string
   overall_score?: number
-
-  // Stage 14b — current shape
-  fix_tasks?: FixTask[]
-  priority_fix?: string[]
-  expected_result?: ExpectedResult
-  // v4: structured object | v3: single string | v2: legacy structured
-  full_analysis?: FullAnalysisStructured | string
-
-  // Legacy v2 fields (only for reports stored before Stage 14)
   sections?: {
-    mix?: LegacySection
-    mastering?: LegacySection
-    arrangement?: LegacySection
-    sound_design?: LegacySection
-    commercial_potential?: LegacySection
+    mix?: ReportSection
+    mastering?: ReportSection
+    arrangement?: ReportSection
+    sound_design?: ReportSection
+    commercial_potential?: ReportSection
   }
-  priority_fixes?: LegacyPriorityFix[]
-  timestamped_recommendations?: unknown[]
+  recommendations?: Recommendation[]
   daw_instructions?: string[] | string
-  recommendations?: unknown[]
+  full_analysis?: unknown
   references?: string[]
-}
-
-// Stage 14b — per-category visual metadata for the Fix Tasks render.
-// Each entry pins a label, an icon, and a color scheme so the user can
-// scan a long list of tasks and tell at a glance which area is being
-// addressed.
-const CATEGORY_META: Record<FixTaskCategory, {
-  label:  string
-  Icon:   typeof Sliders
-  badge:  string  // tailwind classes for the small uppercase pill
-}> = {
-  mix: {
-    label: "Mix",
-    Icon:  Sliders,
-    badge: "bg-sky-500/15 border-sky-400/30 text-sky-200",
-  },
-  mastering: {
-    label: "Mastering",
-    Icon:  Activity,
-    badge: "bg-amber-500/15 border-amber-400/30 text-amber-200",
-  },
-  arrangement: {
-    label: "Arrangement",
-    Icon:  Layers,
-    badge: "bg-purple-500/15 border-purple-400/30 text-purple-200",
-  },
-  sound_design: {
-    label: "Sound Design",
-    Icon:  Wand2,
-    badge: "bg-fuchsia-500/15 border-fuchsia-400/30 text-fuchsia-200",
-  },
-  commercial: {
-    label: "Commercial",
-    Icon:  TrendingUp,
-    badge: "bg-emerald-500/15 border-emerald-400/30 text-emerald-200",
-  },
-}
-
-const FALLBACK_CATEGORY_META = CATEGORY_META.mix
-
-function categoryMeta(c: unknown) {
-  if (typeof c === "string" && (c in CATEGORY_META)) {
-    return CATEGORY_META[c as FixTaskCategory]
-  }
-  return FALLBACK_CATEGORY_META
 }
 
 type Review = {
@@ -192,6 +96,15 @@ function dawLabel(id: string | null): string | null {
 function genreLabel(id: string | null): string | null {
   if (!id) return null
   return GENRE_LABELS[id] ?? id
+}
+
+function formatRecommendation(rec: Recommendation): string {
+  if (typeof rec === "string") return rec
+  const parts: string[] = []
+  if (rec.timestamp) parts.push(`[${rec.timestamp}]`)
+  if (rec.target) parts.push(`${rec.target}:`)
+  if (rec.text) parts.push(rec.text)
+  return parts.join(" ").trim() || "—"
 }
 
 // ─── Tiny shared bits ───────────────────────────────────────────────────
@@ -294,6 +207,19 @@ function SectionCard({
   )
 }
 
+function NotesList({ notes }: { notes: string[] | null | undefined }) {
+  if (!notes || notes.length === 0) {
+    return <div className="text-muted-foreground/70 italic">No notes available.</div>
+  }
+  return (
+    <ul className="list-disc list-inside space-y-1">
+      {notes.map((n, i) => (
+        <li key={i}>{n}</li>
+      ))}
+    </ul>
+  )
+}
+
 // ─── Page ───────────────────────────────────────────────────────────────
 export default function ReviewReportPage() {
   const params = useParams<{ id: string }>()
@@ -356,93 +282,17 @@ export default function ReviewReportPage() {
   const report = review?.report_json ?? null
   const isFree = review?.access_type === "free"
 
-  // Stage 14b — Fix Tasks (6–10 actionable production tasks). Filter on
-  // ANY meaningful field across both v3 (name/steps) and v4
-  // (task_title/daw_steps) shapes so legacy rows still render.
-  const fixTasksList = useMemo<FixTask[]>(() => {
-    const v = report?.fix_tasks
-    if (!Array.isArray(v)) return []
-    return v
-      .filter((t): t is FixTask => !!t && typeof t === "object")
-      .filter((t) =>
-        (t.task_title ?? "") ||
-        (t.name ?? "") ||
-        (t.problem ?? "") ||
-        (Array.isArray(t.daw_steps) && t.daw_steps.length > 0) ||
-        (Array.isArray(t.steps) && t.steps.length > 0)
-      )
-      .slice(0, 10)
+  const recommendationsList = useMemo<string[]>(() => {
+    if (!report?.recommendations || !Array.isArray(report.recommendations)) return []
+    return report.recommendations.map(formatRecommendation)
   }, [report])
 
-  // Stage 14 — Priority Fix (top-3 short string actions). Fall back to
-  // the legacy v2 shape (priority_fixes:object[]) for already-stored
-  // reports so they keep rendering something useful.
-  const priorityFixList = useMemo<string[]>(() => {
-    const v = report?.priority_fix
-    if (Array.isArray(v)) {
-      const out = v.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
-        .map((s) => s.trim())
-        .slice(0, 3)
-      if (out.length > 0) return out
-    }
-    const legacy = report?.priority_fixes
-    if (Array.isArray(legacy)) {
-      const out: string[] = []
-      for (const item of legacy) {
-        if (!item || typeof item !== "object") continue
-        const action = (item.action ?? item.title ?? "").toString().trim()
-        if (action) out.push(action)
-        if (out.length >= 3) break
-      }
-      return out
-    }
-    return []
+  const dawInstructionsList = useMemo<string[]>(() => {
+    const v = report?.daw_instructions
+    if (!v) return []
+    if (Array.isArray(v)) return v
+    return v.split("\n").map((s) => s.trim()).filter(Boolean)
   }, [report])
-
-  // Stage 14 — Expected Result (before / after bullets).
-  const expectedBefore = useMemo<string[]>(() => {
-    const v = report?.expected_result?.before
-    if (!Array.isArray(v)) return []
-    return v.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
-      .map((s) => s.trim())
-      .slice(0, 8)
-  }, [report])
-
-  const expectedAfter = useMemo<string[]>(() => {
-    const v = report?.expected_result?.after
-    if (!Array.isArray(v)) return []
-    return v.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
-      .map((s) => s.trim())
-      .slice(0, 8)
-  }, [report])
-
-  // Stage 14b — Full Analysis is a STRUCTURED OBJECT with three
-  // sections. For legacy v3 reports (single string) we fold the string
-  // into executive_summary so the section still surfaces something
-  // useful; v2 reports already used the same three-key shape.
-  const fullAnalysis = useMemo<{
-    executive_summary: string
-    detailed_analysis: string
-    advanced_improvements: string
-  }>(() => {
-    const v = report?.full_analysis
-    if (typeof v === "string") {
-      return { executive_summary: v.trim(), detailed_analysis: "", advanced_improvements: "" }
-    }
-    if (v && typeof v === "object") {
-      const o = v as FullAnalysisStructured
-      return {
-        executive_summary:     (o.executive_summary     ?? "").trim(),
-        detailed_analysis:     (o.detailed_analysis     ?? "").trim(),
-        advanced_improvements: (o.advanced_improvements ?? "").trim(),
-      }
-    }
-    return { executive_summary: "", detailed_analysis: "", advanced_improvements: "" }
-  }, [report])
-  const hasFullAnalysis =
-    fullAnalysis.executive_summary.length > 0 ||
-    fullAnalysis.detailed_analysis.length > 0 ||
-    fullAnalysis.advanced_improvements.length > 0
 
   const handleCopyRecommendations = async () => {
     let text = ""
@@ -457,61 +307,15 @@ export default function ReviewReportPage() {
     } else {
       const lines: string[] = []
       if (review?.title) lines.push(`Track: ${review.title}`)
-      if (priorityFixList.length > 0) {
-        lines.push("", "Priority fix (top 3):")
-        priorityFixList.forEach((p, i) => lines.push(`${i + 1}. ${p}`))
+      if (recommendationsList.length > 0) {
+        lines.push("", "Recommendations:")
+        recommendationsList.forEach((r) => lines.push(`- ${r}`))
       }
-      if (fixTasksList.length > 0) {
-        lines.push("", "Fix tasks:")
-        fixTasksList.forEach((t, i) => {
-          const num    = typeof t.number === "number" ? t.number : i + 1
-          const title  = t.task_title ?? t.name ?? "(untitled)"
-          const range  = t.time_range ? ` (${t.time_range})` : ""
-          const cat    = categoryMeta(t.category).label
-          const steps  = Array.isArray(t.daw_steps) && t.daw_steps.length > 0
-                          ? t.daw_steps
-                          : (Array.isArray(t.steps) ? t.steps : [])
-          const result = t.expected_result ?? t.result ?? ""
-          lines.push(`TASK ${num} — ${title}${range}  [${cat}]`)
-          if (t.problem)        lines.push(`   Problem: ${t.problem}`)
-          if (t.why_it_matters) lines.push(`   Why it matters: ${t.why_it_matters}`)
-          if (steps.length > 0) {
-            lines.push(`   Do this:`)
-            steps.forEach((s) => lines.push(`     - ${s}`))
-          }
-          if (Array.isArray(t.settings) && t.settings.length > 0) {
-            lines.push(`   Settings:`)
-            t.settings.forEach((s) => lines.push(`     • ${s}`))
-          }
-          if (result) lines.push(`   Result: ${result}`)
-          lines.push("")
-        })
+      if (dawInstructionsList.length > 0) {
+        lines.push("", "DAW instructions:")
+        dawInstructionsList.forEach((r) => lines.push(`- ${r}`))
       }
-      if (expectedBefore.length > 0 || expectedAfter.length > 0) {
-        lines.push("Expected result:")
-        if (expectedBefore.length > 0) {
-          lines.push("  Before:")
-          expectedBefore.forEach((s) => lines.push(`    - ${s}`))
-        }
-        if (expectedAfter.length > 0) {
-          lines.push("  After:")
-          expectedAfter.forEach((s) => lines.push(`    - ${s}`))
-        }
-        lines.push("")
-      }
-      if (hasFullAnalysis) {
-        lines.push("Full analysis:")
-        if (fullAnalysis.executive_summary) {
-          lines.push("  Executive summary:", `    ${fullAnalysis.executive_summary}`)
-        }
-        if (fullAnalysis.detailed_analysis) {
-          lines.push("  Detailed analysis:", `    ${fullAnalysis.detailed_analysis}`)
-        }
-        if (fullAnalysis.advanced_improvements) {
-          lines.push("  Advanced improvements:", `    ${fullAnalysis.advanced_improvements}`)
-        }
-      }
-      text = lines.join("\n").trimEnd()
+      text = lines.join("\n")
     }
     if (!text) text = "(nothing to copy)"
     try {
@@ -686,6 +490,11 @@ export default function ReviewReportPage() {
   // ── Ready: full report ─────────────────────────────────────────────
   const overallScore = typeof report?.overall_score === "number" ? report.overall_score : null
   const summary = report?.summary || null
+  const mix = report?.sections?.mix
+  const mastering = report?.sections?.mastering
+  const arrangement = report?.sections?.arrangement
+  const soundDesign = report?.sections?.sound_design
+  const commercial = report?.sections?.commercial_potential
 
   // Action buttons (top right of header)
   const actionsRow = (
@@ -742,201 +551,97 @@ export default function ReviewReportPage() {
     </div>
   )
 
-  // Stage 14 — Locked-zone content (rendered for both free + full; in
-  // free we wrap it with a blurred overlay). Order: Priority Fix top-3
-  // → Fix Tasks → Expected Result (before/after) → Full Analysis.
+  const mixBlock = (
+    <SectionCard icon={Sliders} title="Mix Balance" score={mix?.score}>
+      {mix?.text && <p className="whitespace-pre-line">{mix.text}</p>}
+      <NotesList notes={mix?.notes ?? null} />
+    </SectionCard>
+  )
+
+  // Locked-zone content (rendered for both free + full; in free we wrap
+  // it with a blurred overlay).
   const lockedContent = (
     <div className="space-y-4">
-      {priorityFixList.length > 0 && (
-        <div className="rounded-2xl border border-amber-400/30 bg-gradient-to-br from-amber-950/30 via-card/40 to-rose-950/20 p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-400/30 flex items-center justify-center">
-              <Flame className="w-4 h-4 text-amber-300" />
-            </div>
-            <h3 className="text-base font-semibold">Priority Fix</h3>
-            <span className="text-[11px] uppercase tracking-wider font-mono px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-400/30 text-amber-300">
-              Top 3
-            </span>
-          </div>
-          <ol className="space-y-2">
-            {priorityFixList.map((p, i) => (
-              <li
-                key={i}
-                className="rounded-xl border border-border/40 bg-background/40 p-3 sm:p-4 flex items-start gap-3"
-              >
-                <span className="mt-0.5 inline-flex w-6 h-6 shrink-0 items-center justify-center rounded-md bg-amber-500/15 border border-amber-400/30 text-amber-200 text-xs font-mono">
-                  {i + 1}
-                </span>
-                <span className="text-sm text-foreground leading-relaxed">{p}</span>
+      <SectionCard icon={Disc3} title="Mastering" score={mastering?.score}>
+        {mastering?.text && <p className="whitespace-pre-line">{mastering.text}</p>}
+        <NotesList notes={mastering?.notes ?? null} />
+      </SectionCard>
+
+      <SectionCard icon={Layers} title="Arrangement" score={arrangement?.score}>
+        {arrangement?.text && <p className="whitespace-pre-line">{arrangement.text}</p>}
+        <NotesList notes={arrangement?.notes ?? null} />
+      </SectionCard>
+
+      <SectionCard icon={Wand2} title="Sound Design" score={soundDesign?.score}>
+        {soundDesign?.text && <p className="whitespace-pre-line">{soundDesign.text}</p>}
+        <NotesList notes={soundDesign?.notes ?? null} />
+      </SectionCard>
+
+      <SectionCard icon={TrendingUp} title="Commercial Potential" score={commercial?.score}>
+        {commercial?.text && <p className="whitespace-pre-line">{commercial.text}</p>}
+        <NotesList notes={commercial?.notes ?? null} />
+      </SectionCard>
+
+      <SectionCard icon={Clock} title="Timestamped Recommendations">
+        {recommendationsList.length === 0 ? (
+          <div className="text-muted-foreground/70 italic">No recommendations available.</div>
+        ) : (
+          <ul className="space-y-2">
+            {recommendationsList.map((r, i) => (
+              <li key={i} className="flex gap-2">
+                <span className="text-purple-300 shrink-0">›</span>
+                <span>{r}</span>
               </li>
             ))}
-          </ol>
-        </div>
-      )}
-
-      <SectionCard icon={Wrench} title="Fix Tasks">
-        {fixTasksList.length === 0 ? (
-          <div className="text-muted-foreground/70 italic">No fix tasks available.</div>
-        ) : (
-          <ol className="space-y-3">
-            {fixTasksList.map((t, i) => {
-              const num    = typeof t.number === "number" ? t.number : i + 1
-              const title  = t.task_title ?? t.name ?? ""
-              const meta   = categoryMeta(t.category)
-              const Icon   = meta.Icon
-              const steps  = Array.isArray(t.daw_steps) && t.daw_steps.length > 0
-                              ? t.daw_steps
-                              : (Array.isArray(t.steps) ? t.steps : [])
-              const result = t.expected_result ?? t.result ?? ""
-              return (
-                <li
-                  key={i}
-                  className="rounded-xl border border-border/40 bg-background/40 p-3 sm:p-4 space-y-2.5"
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex w-7 h-7 shrink-0 items-center justify-center rounded-md bg-purple-500/15 border border-purple-400/30 text-purple-200 text-xs font-mono">
-                      {num}
-                    </span>
-                    {title && (
-                      <span className="font-semibold text-foreground text-sm sm:text-base">
-                        {title}
-                      </span>
-                    )}
-                    <span className={`inline-flex items-center gap-1 text-[11px] uppercase tracking-wider font-mono px-2 py-0.5 rounded-full border ${meta.badge}`}>
-                      <Icon className="w-3 h-3" /> {meta.label}
-                    </span>
-                    {t.time_range && (
-                      <span className="inline-flex items-center gap-1 text-[11px] uppercase tracking-wider font-mono px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-400/30 text-purple-200">
-                        <Clock className="w-3 h-3" /> {t.time_range}
-                      </span>
-                    )}
-                  </div>
-                  {t.problem && (
-                    <div className="text-sm">
-                      <span className="text-xs uppercase tracking-wider font-mono text-amber-300/90">Problem: </span>
-                      <span className="text-muted-foreground">{t.problem}</span>
-                    </div>
-                  )}
-                  {t.why_it_matters && (
-                    <div className="text-sm">
-                      <span className="text-xs uppercase tracking-wider font-mono text-rose-300/90">Why it matters: </span>
-                      <span className="text-muted-foreground">{t.why_it_matters}</span>
-                    </div>
-                  )}
-                  {steps.length > 0 && (
-                    <div className="space-y-1.5">
-                      <div className="text-xs uppercase tracking-wider font-mono text-purple-300">Do this in your DAW:</div>
-                      <ul className="space-y-1.5 text-sm text-muted-foreground">
-                        {steps.map((s, si) => (
-                          <li key={si} className="flex gap-2">
-                            <span className="text-purple-300 shrink-0">›</span>
-                            <span className="whitespace-pre-line">{s}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {Array.isArray(t.settings) && t.settings.length > 0 && (
-                    <div className="space-y-1.5">
-                      <div className="text-xs uppercase tracking-wider font-mono text-sky-300">Settings:</div>
-                      <ul className="space-y-1 rounded-lg border border-sky-400/20 bg-sky-950/15 p-2.5">
-                        {t.settings.map((s, si) => (
-                          <li key={si} className="font-mono text-[12px] sm:text-[13px] text-sky-100/90 break-words">
-                            {s}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {result && (
-                    <div className="text-sm">
-                      <span className="text-xs uppercase tracking-wider font-mono text-emerald-300/90">Expected result: </span>
-                      <span className="text-muted-foreground">{result}</span>
-                    </div>
-                  )}
-                </li>
-              )
-            })}
-          </ol>
+          </ul>
         )}
       </SectionCard>
 
-      <SectionCard icon={ArrowRight} title="Expected Result">
-        {expectedBefore.length === 0 && expectedAfter.length === 0 ? (
-          <div className="text-muted-foreground/70 italic">No before/after comparison available.</div>
+      <SectionCard icon={ListChecks} title="DAW Instructions">
+        {dawInstructionsList.length === 0 ? (
+          <div className="text-muted-foreground/70 italic">No DAW instructions available.</div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="rounded-lg border border-rose-400/30 bg-rose-950/15 p-3 sm:p-4 space-y-2">
-              <div className="text-xs uppercase tracking-wider font-mono text-rose-300">Before</div>
-              {expectedBefore.length === 0 ? (
-                <div className="text-muted-foreground/70 italic text-sm">—</div>
-              ) : (
-                <ul className="space-y-1.5 text-sm text-muted-foreground">
-                  {expectedBefore.map((s, i) => (
-                    <li key={i} className="flex gap-2">
-                      <span className="text-rose-300 shrink-0">•</span>
-                      <span>{s}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div className="rounded-lg border border-emerald-400/30 bg-emerald-950/15 p-3 sm:p-4 space-y-2">
-              <div className="text-xs uppercase tracking-wider font-mono text-emerald-300">After</div>
-              {expectedAfter.length === 0 ? (
-                <div className="text-muted-foreground/70 italic text-sm">—</div>
-              ) : (
-                <ul className="space-y-1.5 text-sm text-muted-foreground">
-                  {expectedAfter.map((s, i) => (
-                    <li key={i} className="flex gap-2">
-                      <span className="text-emerald-300 shrink-0">•</span>
-                      <span>{s}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
+          <ul className="space-y-3">
+            {dawInstructionsList.map((d, i) => (
+              <li
+                key={i}
+                className="whitespace-pre-line rounded-lg border border-border/40 bg-background/40 p-3 font-mono text-xs leading-relaxed"
+              >
+                {d}
+              </li>
+            ))}
+          </ul>
         )}
       </SectionCard>
 
       <SectionCard icon={FileText} title="Full Analysis">
-        {!hasFullAnalysis ? (
-          <div className="text-muted-foreground/70 italic">No long-form analysis available.</div>
-        ) : (
-          <div className="space-y-4">
-            {fullAnalysis.executive_summary && (
-              <div className="rounded-xl border border-purple-400/25 bg-purple-950/15 p-3 sm:p-4 space-y-2">
-                <div className="text-xs uppercase tracking-wider font-mono text-purple-300">
-                  Executive Summary
-                </div>
-                <p className="whitespace-pre-line text-sm leading-relaxed">
-                  {fullAnalysis.executive_summary}
-                </p>
-              </div>
-            )}
-            {fullAnalysis.detailed_analysis && (
-              <div className="rounded-xl border border-sky-400/25 bg-sky-950/10 p-3 sm:p-4 space-y-2">
-                <div className="text-xs uppercase tracking-wider font-mono text-sky-300">
-                  Detailed Analysis
-                </div>
-                <p className="whitespace-pre-line text-sm leading-relaxed">
-                  {fullAnalysis.detailed_analysis}
-                </p>
-              </div>
-            )}
-            {fullAnalysis.advanced_improvements && (
-              <div className="rounded-xl border border-emerald-400/25 bg-emerald-950/10 p-3 sm:p-4 space-y-2">
-                <div className="text-xs uppercase tracking-wider font-mono text-emerald-300">
-                  Advanced Improvements
-                </div>
-                <p className="whitespace-pre-line text-sm leading-relaxed">
-                  {fullAnalysis.advanced_improvements}
-                </p>
-              </div>
-            )}
-          </div>
-        )}
+        {(() => {
+          const fa = report?.full_analysis
+          let text = ""
+          if (typeof fa === "string") {
+            text = fa
+          } else if (fa && typeof fa === "object") {
+            const o = fa as Record<string, unknown>
+            const exec = typeof o.executive_summary === "string" ? o.executive_summary.trim() : ""
+            const det  = typeof o.detailed_analysis  === "string" ? o.detailed_analysis.trim()  : ""
+            const adv  = Array.isArray(o.advanced_improvements)
+              ? (o.advanced_improvements as unknown[])
+                  .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+                  .map((x) => `- ${x.trim()}`)
+                  .join("\n")
+              : typeof o.advanced_improvements === "string" ? o.advanced_improvements.trim() : ""
+            const parts: string[] = []
+            if (exec) parts.push(exec)
+            if (det)  parts.push(det)
+            if (adv)  parts.push("=== ADVANCED IMPROVEMENTS ===\n" + adv)
+            text = parts.join("\n\n")
+          }
+          return text ? (
+            <p className="whitespace-pre-line">{text}</p>
+          ) : (
+            <div className="text-muted-foreground/70 italic">No long-form analysis available.</div>
+          )
+        })()}
       </SectionCard>
     </div>
   )
@@ -946,6 +651,7 @@ export default function ReviewReportPage() {
       {headerCard}
       <div className="flex flex-wrap justify-end">{actionsRow}</div>
       {summaryAndScore}
+      {mixBlock}
 
       {isFree ? (
         <div className="relative">
@@ -964,11 +670,9 @@ export default function ReviewReportPage() {
                   Unlock full AI Producer Review to see:
                 </div>
                 <ul className="text-sm text-purple-100/90 mt-3 space-y-1 text-left mx-auto inline-block">
-                  <li>• top-3 priority fixes with exact settings</li>
-                  <li>• 6–10 fix tasks across mix, mastering, arrangement, sound design</li>
-                  <li>• per-task DAW steps, settings &amp; expected sound</li>
-                  <li>• before / after expected result</li>
-                  <li>• 3-section in-depth producer analysis</li>
+                  <li>• detailed mix corrections</li>
+                  <li>• DAW instructions</li>
+                  <li>• full timestamp breakdown</li>
                 </ul>
               </div>
               <Button
