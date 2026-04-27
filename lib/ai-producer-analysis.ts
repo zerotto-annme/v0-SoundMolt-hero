@@ -487,10 +487,13 @@ export async function generateProducerReport(
     "---\n" +
     "STRONG OPINIONS (Stage 9 step 1): You MUST identify the TOP 3 biggest problems in THIS track. " +
     "Do not describe everything — prioritize what actually breaks the track. Lead the recommendations with these three.\n\n" +
-    "WHY IT FAILS (Stage 9 step 2 + step 3 + Stage 10 step 5): For every section, EVERY note MUST follow this exact format:\n" +
+    "WHY IT FAILS (Stage 9 step 2 + step 3 + Stage 10 step 5 + Stage 12 step 2): For every section, EVERY note MUST follow this exact format:\n" +
     "\"Problem: <what is wrong>. Why: <technical cause>. Impact: <what the listener feels>. Fix: <concrete action with Hz / mm:ss / dB / LUFS>. Result: <what will improve audibly>.\"\n" +
     "Example: \"Problem: low-end is muddy. Why: the kick (60 Hz) overlaps the bass (100 Hz) causing masking. Impact: the drop feels weak and lacks punch. Fix: high-pass the bass at 80 Hz and side-chain it -4 dB to the kick (10 ms attack, 120 ms release). Result: the low-end becomes cleaner and the kick gains punch.\"\n" +
-    "Each section MUST contain at least 3 such notes; both Fix and Result are mandatory; Fix MUST reference Hz, time, or dB/LUFS.\n\n" +
+    "PRIORITY LAYER (Stage 12 step 2): each section.notes MUST contain 1 (preferred) or 2 (max) entries — the MOST critical issues of that section only. Both Fix and Result remain mandatory; Fix MUST reference Hz, time, or dB/LUFS.\n" +
+    "  notes[0] MUST start with the literal prefix \"MAIN ISSUE — \" followed by the 5-part format string (the single biggest issue of THIS section).\n" +
+    "  notes[1] (OPTIONAL, max one) MUST start with the literal prefix \"ADDITIONAL ISSUE — \" followed by the 5-part format string (the next most important issue of THIS section).\n" +
+    "All other diagnoses, deeper polish ideas, optional improvements, and extra observations for the WHOLE report — DO NOT delete them — RELOCATE them into the ADVANCED IMPROVEMENTS block at the tail of full_analysis (see FULL_ANALYSIS STRUCTURE below). Do not duplicate an item in both a section.notes entry AND the ADVANCED IMPROVEMENTS list.\n\n" +
     "DAW MODE (Stage 9 step 4 + Stage 10 step 4 + Stage 11 step 4) — VISUAL multi-line format, NO \" | \" separators. Every entry in daw_instructions MUST be a SINGLE STRING containing ACTUAL newline characters (\\n), structured EXACTLY like this:\n" +
     "[CHANNEL: <element>]\\nStep 1 — Open <Mixer / Track>\\nStep 2 — Select <channel>\\nStep 3 — Insert <plugin>\\nStep 4 — Set:\\n  <param>: <value>\\n  <param>: <value>\\n  <param>: <value>\n" +
     "Concrete example (the literal characters \"\\n\" represent newline characters in the JSON string):\n" +
@@ -505,12 +508,15 @@ export async function generateProducerReport(
     "  Sentence 1: a verdict that names the single core problem and the audible consequence (example: \"Your track loses impact because the low-end collapses into mud.\").\n" +
     "  Sentence 2: WHY the track feels weak — the technical cause behind that verdict (example: \"The kick and bass are masking each other, killing punch and clarity.\").\n" +
     "ONLY ONE main issue is allowed. NO third sentence. NO IF-YOU-FIX list inside summary anymore (the FIX-3 list now lives at the TOP of full_analysis — see FULL_ANALYSIS STRUCTURE below).\n\n" +
-    "FULL_ANALYSIS STRUCTURE (Stage 11 step 2 + step 3) — full_analysis MUST start with two visual blocks, in this exact order, BEFORE the long-form narrative.\n" +
-    "Block A (literal newlines between every line):\n" +
+    "FULL_ANALYSIS STRUCTURE (Stage 11 step 2 + step 3 + Stage 12 step 3 + step 4) — full_analysis is a SINGLE STRING using real newline characters (\\n) and MUST follow this exact order:\n" +
+    "Block A — TOP visual block (Stage 12 step 3):\n" +
     "=== FIX THESE 3 THINGS FIRST ===\\n1. <biggest concrete fix with Hz / dB / ms / LUFS>\\n2. <second concrete fix>\\n3. <third concrete fix>\n" +
-    "Then a blank line, then Block B (literal newlines):\n" +
+    "Then a blank line, then Block B:\n" +
     "=== EXPECTED BEFORE / AFTER ===\\nBefore:\\n- <symptom 1>\\n- <symptom 2>\\nAfter:\\n- <improvement 1>\\n- <improvement 2>\\n- <improvement 3>\n" +
-    "Then a blank line, then the 300–600 word narrative (Stage 8) with explicit energy-flow analysis (Stage 9). Use real newline characters (\\n) in the JSON string.\n\n" +
+    "Then a blank line, then Block C — the 300–600 word narrative (Stage 8) with explicit energy-flow analysis (Stage 9), specific to THIS track.\n" +
+    "Then a blank line, then Block D — ADVANCED IMPROVEMENTS (Stage 12 step 4). Format EXACTLY:\n" +
+    "=== ADVANCED IMPROVEMENTS ===\\n- <deeper / optional fix 1, still with Hz / dB / ms / LUFS anchors when possible>\\n- <deeper fix 2>\\n- <deeper fix 3>\\n- ... (5–15 items total)\n" +
+    "This block is the home for ALL extra polish ideas, optional refinements, deeper observations, additional production tips, mixing nuance, mastering options, arrangement variations, sound-design experiments, commercial/marketing notes, and anything else that did NOT fit into the two-issue cap of section.notes (Stage 12 step 1: KEEP ALL INSIGHTS — do NOT delete content; relocate it here). Each item MUST stay decisive, action-oriented, and specific.\n\n" +
     "WHY THIS MATTERS (Stage 11 step 5) — every section.text (mix, mastering, arrangement, sound_design, commercial_potential) MUST end with two newlines followed by the literal line \"Why this matters: <one short sentence about how this section's issues affect what the listener feels>\". Single line, no extra paragraphs.\n\n" +
     "ANTI-REPETITION (Stage 11 step 6) — each concrete diagnosed problem may appear in ONLY ONE place across the whole report. Pick the most relevant home (summary OR mix OR mastering OR arrangement OR sound_design OR commercial_potential) and keep the strongest, most actionable wording there. Do NOT restate the same issue verbatim in summary, mix, AND mastering — pick the strongest version, mention the issue only once, and let other sections reference different aspects.\n\n" +
     "NO GUESSING (Stage 10 step 6): if a piece of audio data is not present in the DERIVED AUDIO INSIGHTS or RAW ESSENTIA FEATURES blocks, do NOT invent it. " +
@@ -604,9 +610,15 @@ Concrete example for ${dawLb}:
 "[CHANNEL: Kick]\\nStep 1 — Open Mixer (F3)\\nStep 2 — Select Kick channel\\nStep 3 — Insert Compressor\\nStep 4 — Set:\\n  Attack: 10 ms\\n  Release: 120 ms\\n  Ratio: 4:1"
 NO " | " separators, NO inlining. Step 4 MUST end with a colon and each (param: value) pair MUST be on its own indented line. Generate 4–8 such entries.
 
-SECTIONS — each of mix / mastering / arrangement / sound_design / commercial_potential MUST contain at least 3 (max 6) "notes" entries. EVERY note MUST follow this exact 5-part format string:
+SECTIONS — PRIORITY LAYER (Stage 12). Each of mix / mastering / arrangement / sound_design / commercial_potential MUST contain 1 (preferred) or 2 (max) "notes" entries — the most critical issues of that section ONLY. EVERY note MUST follow this exact 5-part format string:
 "Problem: <what is wrong>. Why: <technical cause>. Impact: <listener experience>. Fix: <action with Hz / mm:ss / dB / LUFS>. Result: <what will improve audibly>."
 Both "Fix:" and "Result:" are mandatory; "Fix:" MUST reference a frequency, time, or level.
+
+Each section.notes[] MUST be ordered as:
+  notes[0] = "MAIN ISSUE — <5-part format string>" (the SINGLE biggest issue of THIS section, MANDATORY).
+  notes[1] = "ADDITIONAL ISSUE — <5-part format string>" (the next most important issue of THIS section, OPTIONAL — max ONE).
+
+Every other diagnosis, deeper polish idea, optional improvement, or extra observation for the WHOLE report — DO NOT delete it — RELOCATE it into the ADVANCED IMPROVEMENTS block at the tail of full_analysis (described below). Do not duplicate the same item in both a section.notes entry AND the ADVANCED IMPROVEMENTS list.
 
 EVERY section.text (mix, mastering, arrangement, sound_design, commercial_potential) MUST end with two newlines (\\n\\n) followed by the literal line "Why this matters: <one short sentence about how this section's issues affect what the listener feels>". Single line, no extra paragraphs after it.
 
@@ -629,9 +641,20 @@ Only ONE main issue. NO third sentence. NO "IF YOU FIX ONLY 3 THINGS" list insid
 
 "overall_score" — integer 0–100 grounded in the derived insights.
 
-"full_analysis" — single string with real newline characters (\\n). MUST start with these two visual blocks, in this exact order, BEFORE the long-form narrative:
-=== FIX THESE 3 THINGS FIRST ===\\n1. <biggest concrete fix with Hz / dB / ms / LUFS>\\n2. <second concrete fix>\\n3. <third concrete fix>\\n\\n=== EXPECTED BEFORE / AFTER ===\\nBefore:\\n- <symptom 1>\\n- <symptom 2>\\nAfter:\\n- <improvement 1>\\n- <improvement 2>\\n- <improvement 3>\\n\\n
-Then the 300–600 word narrative specific to THIS track (not the genre), covering the energy flow analysis explicitly.
+"full_analysis" — single string with real newline characters (\\n). MUST follow this EXACT block order (A → B → C → D), with one blank line between blocks:
+
+Block A (TOP — Stage 12 step 3):
+=== FIX THESE 3 THINGS FIRST ===\\n1. <biggest concrete fix with Hz / dB / ms / LUFS>\\n2. <second concrete fix>\\n3. <third concrete fix>
+
+Block B:
+=== EXPECTED BEFORE / AFTER ===\\nBefore:\\n- <symptom 1>\\n- <symptom 2>\\nAfter:\\n- <improvement 1>\\n- <improvement 2>\\n- <improvement 3>
+
+Block C:
+The 300–600 word narrative specific to THIS track (not the genre), covering the energy flow analysis explicitly.
+
+Block D (TAIL — Stage 12 step 4 — MANDATORY):
+=== ADVANCED IMPROVEMENTS ===\\n- <deeper / optional fix 1, with Hz / dB / ms / LUFS anchors when possible>\\n- <deeper fix 2>\\n- <deeper fix 3>\\n- ... (5–15 items total)
+This block is the single home for ALL extra polish ideas, optional refinements, deeper observations, additional production tips, mixing nuance, mastering options, arrangement variations, sound-design experiments, and commercial/marketing notes — everything that did NOT fit into the 1–2 issue cap of section.notes (Stage 12 step 1: KEEP ALL INSIGHTS — do NOT delete content; relocate it here). Each item MUST stay decisive, action-oriented, and specific. Do NOT duplicate items already present in section.notes.
 
 "references" — 0–6 short reference tracks/plugins/articles relevant to the suggested fixes.
 
