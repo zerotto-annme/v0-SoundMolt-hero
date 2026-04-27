@@ -1,0 +1,164 @@
+ЗАДАЧА: Добавить в AI Producer Review “Market Position + Confidence” (мягкий премиум уровень) без изменения UI и структуры БД
+
+---
+
+КОНТЕКСТ:
+
+У нас уже есть работающий AI Producer Review.
+Нужно усилить отчёт до уровня LANDR / iZotope за счёт:
+
+1. Market Level (позиция трека на рынке)
+2. Confidence (насколько уверена система)
+
+⚠️ ВАЖНО:
+
+* НЕ менять UI
+* НЕ менять JSON schema
+* НЕ менять базу данных
+* НЕ добавлять новые поля в API
+
+👉 Только обновить systemPrompt / userPrompt (prompt-only change)
+
+---
+
+ЧТО НУЖНО СДЕЛАТЬ:
+
+1. Добавить новый блок в systemPrompt:
+
+=== MARKET POSITION (SOFT EVALUATION) ===
+
+Determine the track’s current market level using supportive, non-judgmental language.
+
+NEVER use harsh labels like "bad", "weak", or "amateur".
+
+Use this progression system:
+
+LEVELS:
+
+* Developing
+* Emerging
+* Pro
+* Commercial Ready
+
+RULES:
+
+1. Always frame as CURRENT STAGE (not final judgment)
+2. Always start with positives
+3. Only 1–2 improvements (не список из 10 пунктов)
+4. Always show NEXT LEVEL
+
+FORMAT:
+
+LEVEL: [one]
+
+This track shows [positive qualities].
+At its current stage, it sits at the [LEVEL] level.
+
+To reach the next level ([NEXT LEVEL]), focus on:
+
+* [improvement 1]
+* [improvement 2]
+
+RESULT:
+If these improvements are applied, the track can move closer to [NEXT LEVEL].
+
+---
+
+2. Добавить блок CONFIDENCE:
+
+=== ANALYSIS CONFIDENCE ===
+
+Provide a confidence level:
+
+* High
+* Medium
+* Low
+
+FORMAT:
+
+Confidence: [level]
+
+Reason:
+Short explanation based on:
+
+* loudness
+* spectrum
+* dynamics
+* or subjective elements
+
+---
+
+3. Добавить глобальное правило (очень важно):
+
+TONE RULE (CRITICAL):
+
+The report must feel like a professional mentor, not a critic.
+
+* No harsh wording
+* No "your track is bad"
+* Always constructive
+* Every issue → solution
+
+User feeling должно быть:
+"I understand how to improve"
+НЕ:
+"My track is bad"
+
+---
+
+4. ВСТАВКА В ОТЧЁТ:
+
+Добавить эти блоки в Full Analysis (в конец)
+
+ПОРЯДОК:
+
+1. Summary
+2. Sections (Mix / Master / etc.)
+3. DAW Instructions
+4. Full Analysis
+5. ➜ MARKET POSITION (новый)
+6. ➜ CONFIDENCE (новый)
+
+---
+
+5. ПРОВЕРКА:
+
+Сделать тест генерации отчёта:
+
+Ожидаем:
+
+* нет жёстких формулировок
+* есть уровень (Developing / Emerging / Pro / Commercial Ready)
+* есть переход на следующий уровень
+* Confidence объяснён
+
+---
+
+6. ОГРАНИЧЕНИЯ:
+
+* НЕ трогать PDF генерацию
+* НЕ трогать Copy button
+* НЕ менять тип recommendations
+* НЕ менять backend endpoints
+
+---
+
+РЕЗУЛЬТАТ:
+
+Отчёт должен ощущаться как:
+
+👉 AI продюсер уровня студии
+👉 не критикует, а ведёт
+👉 даёт понятный рост
+
+---
+
+ПОСЛЕ СДЕЛАННОГО:
+
+Сделай:
+
+* smoke test
+* сгенерируй 1 отчёт
+* покажи пример MARKET POSITION + CONFIDENCE
+
+---
