@@ -634,11 +634,12 @@ export async function generateProducerReport(
     "  notes[0] MUST start with the literal prefix \"MAIN ISSUE — \" followed by the 5-part format string (the single biggest issue of THIS section).\n" +
     "  notes[1] (OPTIONAL, max one) MUST start with the literal prefix \"ADDITIONAL ISSUE — \" followed by the 5-part format string (the next most important issue of THIS section).\n" +
     "All other diagnoses, deeper polish ideas, optional improvements, and extra observations for the WHOLE report — DO NOT delete them — RELOCATE them into the ADVANCED IMPROVEMENTS block at the tail of full_analysis (see FULL_ANALYSIS STRUCTURE below). Do not duplicate an item in both a section.notes entry AND the ADVANCED IMPROVEMENTS list.\n\n" +
-    "DAW MODE (Stage 9 step 4 + Stage 10 step 4 + Stage 11 step 4) — VISUAL multi-line format, NO \" | \" separators. Every entry in daw_instructions MUST be a SINGLE STRING containing ACTUAL newline characters (\\n), structured EXACTLY like this:\n" +
-    "[CHANNEL: <element>]\\nStep 1 — Open <Mixer / Track>\\nStep 2 — Select <channel>\\nStep 3 — Insert <plugin>\\nStep 4 — Set:\\n  <param>: <value>\\n  <param>: <value>\\n  <param>: <value>\n" +
-    "Concrete example (the literal characters \"\\n\" represent newline characters in the JSON string):\n" +
-    "\"[CHANNEL: Kick]\\nStep 1 — Open Mixer (F3)\\nStep 2 — Select Kick channel\\nStep 3 — Insert Compressor\\nStep 4 — Set:\\n  Attack: 10 ms\\n  Release: 120 ms\\n  Ratio: 4:1\"\n" +
-    "Step 4 MUST be on its own line ending with a colon, with each (param, value) pair indented on its own line. No \" | \", no inlining.\n\n" +
+    "DAW MODE (Stage 9 step 4 + Stage 10 step 4 + Stage 11 step 4 + REPORT-QUALITY-UPGRADE) — VISUAL multi-line format, NO \" | \" separators. Every entry in daw_instructions MUST be a SINGLE STRING containing ACTUAL newline characters (\\n), and MUST contain ALL SIX of these labelled sections in this EXACT order on their own lines: CHANNEL, WHERE, INSERT, SET, WHY, RESULT.\n" +
+    "Required template (every \\n is a real newline character in the JSON string):\n" +
+    "CHANNEL: <element / bus>\\nWHERE: <which window / view of the DAW to open and how to find it>\\nINSERT: <plugin — prefer DAW stock plugin>\\nSET:\\n  <param>: <value>\\n  <param>: <value>\\n  <param>: <value>\\nWHY: <one decisive sentence: what concrete problem in THIS track this fixes, with Hz / dB / ms / LUFS reference when possible>\\nRESULT: <one decisive sentence: what the listener will hear after applying it>\n" +
+    "Concrete example (literal \"\\n\" represents real newline characters in the JSON string):\n" +
+    "\"CHANNEL: Kick\\nWHERE: Mixer (F3) → Kick channel insert slot 1\\nINSERT: Compressor (DAW stock)\\nSET:\\n  Attack: 10 ms\\n  Release: 120 ms\\n  Ratio: 4:1\\n  Threshold: -12 dB\\nWHY: the kick transient is buried by the bass at 60–100 Hz, killing club punch\\nRESULT: tighter, punchier kick that cuts through the low-end and drives the groove\"\n" +
+    "RULES: SET MUST end with a colon and each (param: value) pair MUST be on its own indented line. WHY and RESULT MUST be present in EVERY entry — do NOT skip them. NO \" | \" separators, NO inlining, NO Step 1 / Step 2 numbering.\n\n" +
     "ENERGY FLOW (Stage 9 step 5): analyze the energy curve of the track. " +
     "If the drop lacks impact, explain WHY (no buildup, too constant energy, weak transient, frequency masking, etc.). " +
     "Put this analysis inside sections.arrangement and reference it in full_analysis.\n\n" +
@@ -747,15 +748,23 @@ WEIGHTING — adapt depth per feedback_focus="${focus}":
 - vocals / bass / drums / melody → prioritise that element specifically
 - overall     → balanced full review
 
-DAW INSTRUCTIONS (for ${dawLb}) — VISUAL multi-line format. Every entry in "daw_instructions" MUST be a SINGLE STRING containing real newline characters (\\n in the JSON), structured EXACTLY:
-[CHANNEL: <element>]\\nStep 1 — Open <Mixer / Track>\\nStep 2 — Select <channel>\\nStep 3 — Insert <plugin — prefer ${dawLb} stock plugins>\\nStep 4 — Set:\\n  <param>: <value>\\n  <param>: <value>\\n  <param>: <value>
+DAW INSTRUCTIONS (for ${dawLb}) — VISUAL multi-line format. Every entry in "daw_instructions" MUST be a SINGLE STRING containing real newline characters (\\n in the JSON), AND MUST contain ALL SIX of these labelled sections, in this EXACT order, each on its own line: CHANNEL, WHERE, INSERT, SET, WHY, RESULT.
+Required template:
+CHANNEL: <element / bus>\\nWHERE: <which window / view inside ${dawLb} and how to open it (shortcut, menu path)>\\nINSERT: <plugin — prefer ${dawLb} stock plugin>\\nSET:\\n  <param>: <value>\\n  <param>: <value>\\n  <param>: <value>\\nWHY: <one decisive sentence: what problem in THIS track this fixes, with Hz / dB / ms / LUFS reference when possible>\\nRESULT: <one decisive sentence: what the listener will hear after applying it>
 Concrete example for ${dawLb}:
-"[CHANNEL: Kick]\\nStep 1 — Open Mixer (F3)\\nStep 2 — Select Kick channel\\nStep 3 — Insert Compressor\\nStep 4 — Set:\\n  Attack: 10 ms\\n  Release: 120 ms\\n  Ratio: 4:1"
-NO " | " separators, NO inlining. Step 4 MUST end with a colon and each (param: value) pair MUST be on its own indented line. Generate 4–8 such entries.
+"CHANNEL: Kick\\nWHERE: Mixer (F3) → Kick channel insert slot 1\\nINSERT: Compressor (${dawLb} stock)\\nSET:\\n  Attack: 10 ms\\n  Release: 120 ms\\n  Ratio: 4:1\\n  Threshold: -12 dB\\nWHY: the kick transient is buried by the bass at 60–100 Hz, killing club punch\\nRESULT: tighter, punchier kick that cuts through the low-end and drives the groove"
+NO " | " separators, NO inlining, NO Step 1 / Step 2 numbering. SET MUST end with a colon and each (param: value) pair MUST be on its own indented line. WHY and RESULT MUST be present in EVERY entry. Generate 4–8 such entries, each one targeting a different channel/element of THIS track.
 
 SECTIONS — PRIORITY LAYER (Stage 12). Each of mix / mastering / arrangement / sound_design / commercial_potential MUST contain 1 (preferred) or 2 (max) "notes" entries — the most critical issues of that section ONLY. EVERY note MUST follow this exact 5-part format string:
 "Problem: <what is wrong>. Why: <technical cause>. Impact: <listener experience>. Fix: <action with Hz / mm:ss / dB / LUFS>. Result: <what will improve audibly>."
 Both "Fix:" and "Result:" are mandatory; "Fix:" MUST reference a frequency, time, or level.
+
+SECTION.TEXT BODY (REPORT-QUALITY-UPGRADE) — every section.text paragraph MUST itself explicitly cover, in order, ALL FOUR of these things for the section's main issue (using full sentences, not labels — keep the prose natural and producer-style, but every sentence MUST be present):
+  1. WHAT exactly is wrong in THIS section of THIS track (concrete, with Hz / dB / mm:ss / LUFS anchors from the derived insights).
+  2. WHY it is a problem (the technical cause and what it does to the mix / arrangement / perception).
+  3. WHAT to fix (the concrete action — plugin, parameter, frequency, level, or arrangement move).
+  4. WHAT result the user will get after the fix (audible improvement the listener will hear).
+Then the mandatory closing line "Why this matters: …" comes AFTER all four are covered.
 
 Each section.notes[] MUST be ordered as:
   notes[0] = "MAIN ISSUE — <5-part format string>" (the SINGLE biggest issue of THIS section, MANDATORY).
@@ -769,9 +778,13 @@ ANTI-REPETITION — each concrete diagnosed problem may appear in ONLY ONE place
 
 ARRANGEMENT section MUST include an explicit ENERGY FLOW analysis: describe the energy curve across intro/build/drop/outro. If the drop lacks impact, name the technical reason (no buildup, constant energy, weak transient, frequency masking, sub-bass not landing on the down-beat, etc.).
 
-TOP 3 PROBLEMS — the FIRST 3 entries of "recommendations" MUST be the three biggest issues breaking THIS track, ranked by severity. Use the object form:
-{"timestamp":"mm:ss or 'whole-track'","target":"<bus / element>","text":"<concrete fix with Hz / dB / time>"}
-After those, include 2–7 more recommendations (any form). Total 5–10.
+TIMESTAMPED RECOMMENDATIONS (REPORT-QUALITY-UPGRADE) — EVERY entry of "recommendations" (not just the first 3) MUST use the object form:
+{"timestamp":"<mm:ss anchor from ARRANGEMENT LANDMARKS, or the literal string \\"whole-track\\">","target":"<bus / element / arrangement zone>","text":"<concrete, surgical, action-oriented fix with explicit Hz / dB / ms / LUFS / mm:ss anchors>"}
+The renderer turns this into the visual line "[<timestamp>] <target>: <text>". Examples of the EXACT level of specificity required:
+  {"timestamp":"0:45","target":"buildup","text":"add snare roll + riser automation that ramps from -18 dB to -6 dB across the last 4 bars"}
+  {"timestamp":"whole-track","target":"bass","text":"high-pass at 80 Hz, sidechain to kick -4 dB with 10 ms attack and 120 ms release"}
+  {"timestamp":"2:00","target":"drop","text":"increase kick transient +2 dB using a transient shaper, and notch -3 dB at 200 Hz on the bass to free space"}
+The FIRST 3 entries MUST be the three biggest issues breaking THIS track, ranked by severity. Then include 2–7 more, all in the same object form. Total 5–10. Do NOT use plain strings — every entry MUST be an object with timestamp + target + text. Vague targets like "the mix" or "everything" are FORBIDDEN; pick the actual element (kick, sub, vocal, hi-hats, pad, snare, FX bus, master, etc.).
 
 FORBIDDEN WORDS in EVERY output string: "could", "might", "consider". Replace with decisive active phrasing: "this is causing", "this reduces", "this weakens the track", "this masks", "this kills the punch", "this must be fixed".
 
@@ -792,8 +805,13 @@ Block A (TOP — Stage 12 step 3):
 Block B:
 === EXPECTED BEFORE / AFTER ===\\nBefore:\\n- <symptom 1>\\n- <symptom 2>\\nAfter:\\n- <improvement 1>\\n- <improvement 2>\\n- <improvement 3>
 
-Block C:
-The 300–600 word narrative specific to THIS track (not the genre), covering the energy flow analysis explicitly.
+Block C — HUMAN PRODUCER CONCLUSION (REPORT-QUALITY-UPGRADE):
+The 300–600 word narrative specific to THIS track (not the genre). Write it like a senior producer giving a verdict to the artist after listening once. The narrative MUST explicitly cover, in this order, ALL FOUR of these things (in flowing prose, no labels, but every one MUST be present and easy to find):
+  1. STRONG SIDE — what is genuinely working in THIS track right now (the production element, idea, sound choice, or arrangement move that already lands).
+  2. MAIN WEAKNESS — the single biggest thing dragging the track down, with the technical reason behind it (Hz / dB / mm:ss / LUFS anchors when the data supports it).
+  3. 3–5 CONCRETE ACTIONS the artist must take to improve the track (each one specific enough to apply immediately, with frequency / time / level anchors). These actions MUST be consistent with — and may directly reference — the items in Block A "FIX THESE 3 THINGS FIRST" without contradicting them; deeper actions beyond the top 3 are welcome here.
+  4. EXPECTED RESULT — how the track will feel and sound to a listener after those actions are applied (e.g. punch returns, low-end stops collapsing, drop hits, mix translates on club system, etc.). This MUST be aligned with the "After" symptoms in Block B.
+Also include the explicit ENERGY FLOW analysis somewhere inside this narrative.
 
 Block D (TAIL — Stage 12 step 4 — MANDATORY):
 === ADVANCED IMPROVEMENTS ===\\n- <deeper / optional fix 1, with Hz / dB / ms / LUFS anchors when possible>\\n- <deeper fix 2>\\n- <deeper fix 3>\\n- ... (5–15 items total)
