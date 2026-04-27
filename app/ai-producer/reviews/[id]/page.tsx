@@ -5,8 +5,8 @@ import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import {
   Sparkles, Loader2, AlertCircle, Lock, ArrowLeft, RefreshCcw,
-  Download, Copy, Sliders, Disc3, Layers, Wand2, TrendingUp,
-  Clock, ListChecks, FileText, Check, Music, Flame,
+  Download, Copy, Clock, FileText, Check, Flame, Wrench,
+  ArrowRight,
 } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
 import { Button } from "@/components/ui/button"
@@ -14,33 +14,34 @@ import { useAuth } from "@/components/auth-context"
 import { supabase } from "@/lib/supabase"
 
 // ─── Types ──────────────────────────────────────────────────────────────
-type ReportSection = {
+// Stage 14 — FIX-the-track contract (v3).
+type FixTask = {
+  number?: number | null
+  name?: string | null
+  time_range?: string | null
+  problem?: string | null
+  steps?: string[] | null
+  result?: string | null
+}
+
+type ExpectedResult = {
+  before?: string[] | null
+  after?: string[] | null
+}
+
+// Legacy v2 shapes — kept ONLY so already-stored reports still render
+// gracefully without crashing. New rendering paths use the v3 fields.
+type LegacySection = {
   score?: number | null
   notes?: string[] | null
   text?: string | null
 }
-
-type Recommendation =
-  | string
-  | {
-      timestamp?: string | null
-      text?: string | null
-      target?: string | null
-    }
-
-type PriorityFix = {
+type LegacyPriorityFix = {
   title?: string | null
   action?: string | null
   impact?: string | null
 }
-
-type TimestampedRec = {
-  time?: string | null
-  target?: string | null
-  text?: string | null
-}
-
-type FullAnalysisStructured = {
+type LegacyFullAnalysis = {
   executive_summary?: string | null
   detailed_analysis?: string | null
   advanced_improvements?: string | null
@@ -51,24 +52,25 @@ type ReportJson = {
   generated_at?: string
   summary?: string
   overall_score?: number
+
+  // Stage 14 — new shape
+  fix_tasks?: FixTask[]
+  priority_fix?: string[]
+  expected_result?: ExpectedResult
+  full_analysis?: string | LegacyFullAnalysis
+
+  // Legacy v2 fields (only for reports stored before Stage 14)
   sections?: {
-    mix?: ReportSection
-    mastering?: ReportSection
-    arrangement?: ReportSection
-    sound_design?: ReportSection
-    commercial_potential?: ReportSection
+    mix?: LegacySection
+    mastering?: LegacySection
+    arrangement?: LegacySection
+    sound_design?: LegacySection
+    commercial_potential?: LegacySection
   }
-  // Stage 13 — new shape
-  priority_fixes?: PriorityFix[]
-  timestamped_recommendations?: TimestampedRec[]
-  // Legacy shape (still rendered for already-stored reports)
-  recommendations?: Recommendation[]
-  // daw_instructions: new shape is a single string with [CHANNEL: …] blocks
-  // separated by blank lines; legacy shape was string[]
+  priority_fixes?: LegacyPriorityFix[]
+  timestamped_recommendations?: unknown[]
   daw_instructions?: string[] | string
-  // full_analysis: new shape is a structured object; legacy shape was a string
-  full_analysis?: string | FullAnalysisStructured
-  // legacy
+  recommendations?: unknown[]
   references?: string[]
 }
 
@@ -122,15 +124,6 @@ function dawLabel(id: string | null): string | null {
 function genreLabel(id: string | null): string | null {
   if (!id) return null
   return GENRE_LABELS[id] ?? id
-}
-
-function formatRecommendation(rec: Recommendation): string {
-  if (typeof rec === "string") return rec
-  const parts: string[] = []
-  if (rec.timestamp) parts.push(`[${rec.timestamp}]`)
-  if (rec.target) parts.push(`${rec.target}:`)
-  if (rec.text) parts.push(rec.text)
-  return parts.join(" ").trim() || "—"
 }
 
 // ─── Tiny shared bits ───────────────────────────────────────────────────
@@ -233,19 +226,6 @@ function SectionCard({
   )
 }
 
-function NotesList({ notes }: { notes: string[] | null | undefined }) {
-  if (!notes || notes.length === 0) {
-    return <div className="text-muted-foreground/70 italic">No notes available.</div>
-  }
-  return (
-    <ul className="list-disc list-inside space-y-1">
-      {notes.map((n, i) => (
-        <li key={i}>{n}</li>
-      ))}
-    </ul>
-  )
-}
-
 // ─── Page ───────────────────────────────────────────────────────────────
 export default function ReviewReportPage() {
   const params = useParams<{ id: string }>()
@@ -308,67 +288,76 @@ export default function ReviewReportPage() {
   const report = review?.report_json ?? null
   const isFree = review?.access_type === "free"
 
-  // Stage 13 — Priority Fixes (new shape, top-3 prominent block).
-  const priorityFixesList = useMemo<PriorityFix[]>(() => {
-    const v = report?.priority_fixes
+  // Stage 14 — Fix Tasks (5–8 actionable production tasks).
+  const fixTasksList = useMemo<FixTask[]>(() => {
+    const v = report?.fix_tasks
     if (!Array.isArray(v)) return []
     return v
-      .filter((p): p is PriorityFix => !!p && typeof p === "object")
-      .filter((p) => (p.title ?? "") || (p.action ?? "") || (p.impact ?? ""))
-      .slice(0, 3)
+      .filter((t): t is FixTask => !!t && typeof t === "object")
+      .filter((t) =>
+        (t.name ?? "") ||
+        (t.problem ?? "") ||
+        (Array.isArray(t.steps) && t.steps.length > 0)
+      )
+      .slice(0, 8)
   }, [report])
 
-  // Stage 13 — Timestamped recommendations: prefer the new shape, fall
-  // back to the legacy `recommendations` array for already-stored reports.
-  const recommendationsList = useMemo<string[]>(() => {
-    const fresh = report?.timestamped_recommendations
-    if (Array.isArray(fresh) && fresh.length > 0) {
-      return fresh
-        .map((r) => {
-          const parts: string[] = []
-          if (r?.time) parts.push(`[${r.time}]`)
-          if (r?.target) parts.push(`${r.target}:`)
-          if (r?.text) parts.push(r.text)
-          return parts.join(" ").trim()
-        })
-        .filter(Boolean)
+  // Stage 14 — Priority Fix (top-3 short string actions). Fall back to
+  // the legacy v2 shape (priority_fixes:object[]) for already-stored
+  // reports so they keep rendering something useful.
+  const priorityFixList = useMemo<string[]>(() => {
+    const v = report?.priority_fix
+    if (Array.isArray(v)) {
+      const out = v.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+        .map((s) => s.trim())
+        .slice(0, 3)
+      if (out.length > 0) return out
     }
-    if (Array.isArray(report?.recommendations)) {
-      return report!.recommendations!.map(formatRecommendation).filter(Boolean)
+    const legacy = report?.priority_fixes
+    if (Array.isArray(legacy)) {
+      const out: string[] = []
+      for (const item of legacy) {
+        if (!item || typeof item !== "object") continue
+        const action = (item.action ?? item.title ?? "").toString().trim()
+        if (action) out.push(action)
+        if (out.length >= 3) break
+      }
+      return out
     }
     return []
   }, [report])
 
-  // Stage 13 — DAW Instructions: new shape is a single string with
-  // [CHANNEL: …] blocks separated by ONE blank line; legacy shape was a
-  // string[]. Split by blank lines so each [CHANNEL] block survives as a
-  // single multi-line card.
-  const dawInstructionsList = useMemo<string[]>(() => {
-    const v = report?.daw_instructions
-    if (!v) return []
-    if (Array.isArray(v)) return v.filter((s) => typeof s === "string" && s.trim().length > 0)
-    return v
-      .split(/\n\s*\n+/)
+  // Stage 14 — Expected Result (before / after bullets).
+  const expectedBefore = useMemo<string[]>(() => {
+    const v = report?.expected_result?.before
+    if (!Array.isArray(v)) return []
+    return v.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
       .map((s) => s.trim())
-      .filter(Boolean)
+      .slice(0, 8)
   }, [report])
 
-  // Stage 13 — Full Analysis: render structured object when present,
-  // otherwise fall back to the legacy single string.
-  const fullAnalysisStructured = useMemo<FullAnalysisStructured | null>(() => {
+  const expectedAfter = useMemo<string[]>(() => {
+    const v = report?.expected_result?.after
+    if (!Array.isArray(v)) return []
+    return v.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+      .map((s) => s.trim())
+      .slice(0, 8)
+  }, [report])
+
+  // Stage 14 — Full Analysis is now a single string (6–8 lines). For
+  // legacy v2 reports (structured object), flatten the three keys into
+  // one block so they still render.
+  const fullAnalysisText = useMemo<string>(() => {
     const v = report?.full_analysis
+    if (typeof v === "string") return v.trim()
     if (v && typeof v === "object") {
-      const o = v as FullAnalysisStructured
-      if ((o.executive_summary ?? "") || (o.detailed_analysis ?? "") || (o.advanced_improvements ?? "")) {
-        return o
-      }
+      const o = v as LegacyFullAnalysis
+      const parts = [o.executive_summary, o.detailed_analysis, o.advanced_improvements]
+        .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+        .map((x) => x.trim())
+      return parts.join("\n\n")
     }
-    return null
-  }, [report])
-
-  const fullAnalysisLegacyString = useMemo<string>(() => {
-    const v = report?.full_analysis
-    return typeof v === "string" ? v : ""
+    return ""
   }, [report])
 
   const handleCopyRecommendations = async () => {
@@ -384,22 +373,39 @@ export default function ReviewReportPage() {
     } else {
       const lines: string[] = []
       if (review?.title) lines.push(`Track: ${review.title}`)
-      if (priorityFixesList.length > 0) {
-        lines.push("", "Priority fixes:")
-        priorityFixesList.forEach((p, i) => {
-          const head = p.title ? `${i + 1}. ${p.title}` : `${i + 1}.`
-          lines.push(head)
-          if (p.action) lines.push(`   Action: ${p.action}`)
-          if (p.impact) lines.push(`   Impact: ${p.impact}`)
+      if (priorityFixList.length > 0) {
+        lines.push("", "Priority fix (top 3):")
+        priorityFixList.forEach((p, i) => lines.push(`${i + 1}. ${p}`))
+      }
+      if (fixTasksList.length > 0) {
+        lines.push("", "Fix tasks:")
+        fixTasksList.forEach((t, i) => {
+          const num = typeof t.number === "number" ? t.number : i + 1
+          const range = t.time_range ? ` (${t.time_range})` : ""
+          lines.push(`TASK ${num} — ${t.name ?? "(untitled)"}${range}`)
+          if (t.problem) lines.push(`   Problem: ${t.problem}`)
+          if (Array.isArray(t.steps) && t.steps.length > 0) {
+            lines.push(`   Do this:`)
+            t.steps.forEach((s) => lines.push(`     - ${s}`))
+          }
+          if (t.result) lines.push(`   Result: ${t.result}`)
+          lines.push("")
         })
       }
-      if (recommendationsList.length > 0) {
-        lines.push("", "Timestamped recommendations:")
-        recommendationsList.forEach((r) => lines.push(`- ${r}`))
+      if (expectedBefore.length > 0 || expectedAfter.length > 0) {
+        lines.push("Expected result:")
+        if (expectedBefore.length > 0) {
+          lines.push("  Before:")
+          expectedBefore.forEach((s) => lines.push(`    - ${s}`))
+        }
+        if (expectedAfter.length > 0) {
+          lines.push("  After:")
+          expectedAfter.forEach((s) => lines.push(`    - ${s}`))
+        }
+        lines.push("")
       }
-      if (dawInstructionsList.length > 0) {
-        lines.push("", "DAW instructions:")
-        dawInstructionsList.forEach((r) => lines.push(r, ""))
+      if (fullAnalysisText) {
+        lines.push("Full analysis:", fullAnalysisText)
       }
       text = lines.join("\n").trimEnd()
     }
@@ -576,11 +582,6 @@ export default function ReviewReportPage() {
   // ── Ready: full report ─────────────────────────────────────────────
   const overallScore = typeof report?.overall_score === "number" ? report.overall_score : null
   const summary = report?.summary || null
-  const mix = report?.sections?.mix
-  const mastering = report?.sections?.mastering
-  const arrangement = report?.sections?.arrangement
-  const soundDesign = report?.sections?.sound_design
-  const commercial = report?.sections?.commercial_potential
 
   // Action buttons (top right of header)
   const actionsRow = (
@@ -637,150 +638,139 @@ export default function ReviewReportPage() {
     </div>
   )
 
-  const mixBlock = (
-    <SectionCard icon={Sliders} title="Mix Balance" score={mix?.score}>
-      {mix?.text && <p className="whitespace-pre-line">{mix.text}</p>}
-      <NotesList notes={mix?.notes ?? null} />
-    </SectionCard>
-  )
-
-  // Locked-zone content (rendered for both free + full; in free we wrap
-  // it with a blurred overlay).
+  // Stage 14 — Locked-zone content (rendered for both free + full; in
+  // free we wrap it with a blurred overlay). Order: Priority Fix top-3
+  // → Fix Tasks → Expected Result (before/after) → Full Analysis.
   const lockedContent = (
     <div className="space-y-4">
-      {priorityFixesList.length > 0 && (
+      {priorityFixList.length > 0 && (
         <div className="rounded-2xl border border-amber-400/30 bg-gradient-to-br from-amber-950/30 via-card/40 to-rose-950/20 p-5">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-400/30 flex items-center justify-center">
               <Flame className="w-4 h-4 text-amber-300" />
             </div>
-            <h3 className="text-base font-semibold">Priority Fixes</h3>
+            <h3 className="text-base font-semibold">Priority Fix</h3>
             <span className="text-[11px] uppercase tracking-wider font-mono px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-400/30 text-amber-300">
               Top 3
             </span>
           </div>
-          <ol className="space-y-3">
-            {priorityFixesList.map((p, i) => (
+          <ol className="space-y-2">
+            {priorityFixList.map((p, i) => (
               <li
                 key={i}
-                className="rounded-xl border border-border/40 bg-background/40 p-3 sm:p-4"
+                className="rounded-xl border border-border/40 bg-background/40 p-3 sm:p-4 flex items-start gap-3"
               >
-                <div className="flex items-start gap-3">
-                  <span className="mt-0.5 inline-flex w-6 h-6 shrink-0 items-center justify-center rounded-md bg-amber-500/15 border border-amber-400/30 text-amber-200 text-xs font-mono">
-                    {i + 1}
-                  </span>
-                  <div className="flex-1 min-w-0 space-y-1.5 text-sm">
-                    {p.title && (
-                      <div className="font-semibold text-foreground">{p.title}</div>
-                    )}
-                    {p.action && (
-                      <div>
-                        <span className="text-xs uppercase tracking-wider font-mono text-amber-300/90">Action: </span>
-                        <span className="text-muted-foreground">{p.action}</span>
-                      </div>
-                    )}
-                    {p.impact && (
-                      <div>
-                        <span className="text-xs uppercase tracking-wider font-mono text-emerald-300/90">Impact: </span>
-                        <span className="text-muted-foreground">{p.impact}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <span className="mt-0.5 inline-flex w-6 h-6 shrink-0 items-center justify-center rounded-md bg-amber-500/15 border border-amber-400/30 text-amber-200 text-xs font-mono">
+                  {i + 1}
+                </span>
+                <span className="text-sm text-foreground leading-relaxed">{p}</span>
               </li>
             ))}
           </ol>
         </div>
       )}
 
-      <SectionCard icon={Disc3} title="Mastering" score={mastering?.score}>
-        {mastering?.text && <p className="whitespace-pre-line">{mastering.text}</p>}
-        <NotesList notes={mastering?.notes ?? null} />
-      </SectionCard>
-
-      <SectionCard icon={Layers} title="Arrangement" score={arrangement?.score}>
-        {arrangement?.text && <p className="whitespace-pre-line">{arrangement.text}</p>}
-        <NotesList notes={arrangement?.notes ?? null} />
-      </SectionCard>
-
-      <SectionCard icon={Wand2} title="Sound Design" score={soundDesign?.score}>
-        {soundDesign?.text && <p className="whitespace-pre-line">{soundDesign.text}</p>}
-        <NotesList notes={soundDesign?.notes ?? null} />
-      </SectionCard>
-
-      <SectionCard icon={TrendingUp} title="Commercial Potential" score={commercial?.score}>
-        {commercial?.text && <p className="whitespace-pre-line">{commercial.text}</p>}
-        <NotesList notes={commercial?.notes ?? null} />
-      </SectionCard>
-
-      <SectionCard icon={Clock} title="Timestamped Recommendations">
-        {recommendationsList.length === 0 ? (
-          <div className="text-muted-foreground/70 italic">No recommendations available.</div>
+      <SectionCard icon={Wrench} title="Fix Tasks">
+        {fixTasksList.length === 0 ? (
+          <div className="text-muted-foreground/70 italic">No fix tasks available.</div>
         ) : (
-          <ul className="space-y-2">
-            {recommendationsList.map((r, i) => (
-              <li key={i} className="flex gap-2">
-                <span className="text-purple-300 shrink-0">›</span>
-                <span>{r}</span>
-              </li>
-            ))}
-          </ul>
+          <ol className="space-y-3">
+            {fixTasksList.map((t, i) => {
+              const num = typeof t.number === "number" ? t.number : i + 1
+              return (
+                <li
+                  key={i}
+                  className="rounded-xl border border-border/40 bg-background/40 p-3 sm:p-4 space-y-2"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex w-7 h-7 shrink-0 items-center justify-center rounded-md bg-purple-500/15 border border-purple-400/30 text-purple-200 text-xs font-mono">
+                      {num}
+                    </span>
+                    {t.name && (
+                      <span className="font-semibold text-foreground text-sm sm:text-base">
+                        {t.name}
+                      </span>
+                    )}
+                    {t.time_range && (
+                      <span className="inline-flex items-center gap-1 text-[11px] uppercase tracking-wider font-mono px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-400/30 text-purple-200">
+                        <Clock className="w-3 h-3" /> {t.time_range}
+                      </span>
+                    )}
+                  </div>
+                  {t.problem && (
+                    <div className="text-sm">
+                      <span className="text-xs uppercase tracking-wider font-mono text-amber-300/90">Problem: </span>
+                      <span className="text-muted-foreground">{t.problem}</span>
+                    </div>
+                  )}
+                  {Array.isArray(t.steps) && t.steps.length > 0 && (
+                    <div className="space-y-1.5">
+                      <div className="text-xs uppercase tracking-wider font-mono text-purple-300">Do this:</div>
+                      <ul className="space-y-1.5 text-sm text-muted-foreground">
+                        {t.steps.map((s, si) => (
+                          <li key={si} className="flex gap-2">
+                            <span className="text-purple-300 shrink-0">›</span>
+                            <span className="whitespace-pre-line">{s}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {t.result && (
+                    <div className="text-sm">
+                      <span className="text-xs uppercase tracking-wider font-mono text-emerald-300/90">Result: </span>
+                      <span className="text-muted-foreground">{t.result}</span>
+                    </div>
+                  )}
+                </li>
+              )
+            })}
+          </ol>
         )}
       </SectionCard>
 
-      <SectionCard icon={ListChecks} title="DAW Instructions">
-        {dawInstructionsList.length === 0 ? (
-          <div className="text-muted-foreground/70 italic">No DAW instructions available.</div>
+      <SectionCard icon={ArrowRight} title="Expected Result">
+        {expectedBefore.length === 0 && expectedAfter.length === 0 ? (
+          <div className="text-muted-foreground/70 italic">No before/after comparison available.</div>
         ) : (
-          <ul className="space-y-3">
-            {dawInstructionsList.map((d, i) => (
-              <li
-                key={i}
-                className="whitespace-pre-line rounded-lg border border-border/40 bg-background/40 p-3 font-mono text-xs leading-relaxed"
-              >
-                {d}
-              </li>
-            ))}
-          </ul>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="rounded-lg border border-rose-400/30 bg-rose-950/15 p-3 sm:p-4 space-y-2">
+              <div className="text-xs uppercase tracking-wider font-mono text-rose-300">Before</div>
+              {expectedBefore.length === 0 ? (
+                <div className="text-muted-foreground/70 italic text-sm">—</div>
+              ) : (
+                <ul className="space-y-1.5 text-sm text-muted-foreground">
+                  {expectedBefore.map((s, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="text-rose-300 shrink-0">•</span>
+                      <span>{s}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="rounded-lg border border-emerald-400/30 bg-emerald-950/15 p-3 sm:p-4 space-y-2">
+              <div className="text-xs uppercase tracking-wider font-mono text-emerald-300">After</div>
+              {expectedAfter.length === 0 ? (
+                <div className="text-muted-foreground/70 italic text-sm">—</div>
+              ) : (
+                <ul className="space-y-1.5 text-sm text-muted-foreground">
+                  {expectedAfter.map((s, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="text-emerald-300 shrink-0">•</span>
+                      <span>{s}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
         )}
       </SectionCard>
 
       <SectionCard icon={FileText} title="Full Analysis">
-        {fullAnalysisStructured ? (
-          <div className="space-y-4">
-            {fullAnalysisStructured.executive_summary && (
-              <div className="rounded-lg border border-border/40 bg-background/40 p-3 sm:p-4 space-y-1.5">
-                <div className="text-xs uppercase tracking-wider font-mono text-purple-300">
-                  Executive Summary
-                </div>
-                <p className="whitespace-pre-line text-sm">
-                  {fullAnalysisStructured.executive_summary}
-                </p>
-              </div>
-            )}
-            {fullAnalysisStructured.detailed_analysis && (
-              <div className="rounded-lg border border-border/40 bg-background/40 p-3 sm:p-4 space-y-1.5">
-                <div className="text-xs uppercase tracking-wider font-mono text-purple-300">
-                  Detailed Analysis
-                </div>
-                <p className="whitespace-pre-line text-sm">
-                  {fullAnalysisStructured.detailed_analysis}
-                </p>
-              </div>
-            )}
-            {fullAnalysisStructured.advanced_improvements && (
-              <div className="rounded-lg border border-border/40 bg-background/40 p-3 sm:p-4 space-y-1.5">
-                <div className="text-xs uppercase tracking-wider font-mono text-emerald-300">
-                  Advanced Improvements
-                </div>
-                <p className="whitespace-pre-line text-sm">
-                  {fullAnalysisStructured.advanced_improvements}
-                </p>
-              </div>
-            )}
-          </div>
-        ) : fullAnalysisLegacyString ? (
-          <p className="whitespace-pre-line">{fullAnalysisLegacyString}</p>
+        {fullAnalysisText ? (
+          <p className="whitespace-pre-line text-sm leading-relaxed">{fullAnalysisText}</p>
         ) : (
           <div className="text-muted-foreground/70 italic">No long-form analysis available.</div>
         )}
@@ -793,7 +783,6 @@ export default function ReviewReportPage() {
       {headerCard}
       <div className="flex flex-wrap justify-end">{actionsRow}</div>
       {summaryAndScore}
-      {mixBlock}
 
       {isFree ? (
         <div className="relative">
@@ -812,9 +801,10 @@ export default function ReviewReportPage() {
                   Unlock full AI Producer Review to see:
                 </div>
                 <ul className="text-sm text-purple-100/90 mt-3 space-y-1 text-left mx-auto inline-block">
-                  <li>• detailed mix corrections</li>
-                  <li>• DAW instructions</li>
-                  <li>• full timestamp breakdown</li>
+                  <li>• top-3 priority fixes</li>
+                  <li>• 5–8 step-by-step fix tasks</li>
+                  <li>• before / after expected result</li>
+                  <li>• full long-form analysis</li>
                 </ul>
               </div>
               <Button

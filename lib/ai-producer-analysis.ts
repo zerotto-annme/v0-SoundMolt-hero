@@ -46,47 +46,30 @@ export type ProducerReportInputs = {
   track_duration:  number | null
 }
 
-type SectionShape = {
-  score: number
-  text:  string
-  notes: string[]
+export type FixTask = {
+  number:     number
+  name:       string
+  time_range: string
+  problem:    string
+  steps:      string[]
+  result:     string
 }
 
-export type PriorityFix = {
-  title:  string
-  action: string
-  impact: string
-}
-
-export type TimestampedRecommendation = {
-  time:   string
-  target: string
-  text:   string
-}
-
-export type FullAnalysisStructured = {
-  executive_summary:     string
-  detailed_analysis:     string
-  advanced_improvements: string
+export type ExpectedResult = {
+  before: string[]
+  after:  string[]
 }
 
 export type ProducerReport = {
-  version:       2
-  generated_at:  string
-  summary:       string
-  overall_score: number
-  sections: {
-    mix:                 SectionShape
-    mastering:           SectionShape
-    arrangement:         SectionShape
-    sound_design:        SectionShape
-    commercial_potential: SectionShape
-  }
-  priority_fixes:              PriorityFix[]
-  timestamped_recommendations: TimestampedRecommendation[]
-  daw_instructions:            string
-  full_analysis:               FullAnalysisStructured
-  audio_features:              EssentiaFeatures
+  version:         3
+  generated_at:    string
+  summary:         string
+  overall_score:   number
+  fix_tasks:       FixTask[]
+  priority_fix:    string[]
+  expected_result: ExpectedResult
+  full_analysis:   string
+  audio_features:  EssentiaFeatures
 }
 
 export type GenerateReportResult =
@@ -237,15 +220,6 @@ function toStringArray(v: unknown, max = 10): string[] {
   return out
 }
 
-function normaliseSection(raw: unknown, fallbackText: string): SectionShape {
-  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>
-  return {
-    score: clamp01_100(r.score, 70),
-    text:  typeof r.text === "string" && r.text.trim() ? r.text.trim() : fallbackText,
-    notes: toStringArray(r.notes, 3),
-  }
-}
-
 function pickKey(o: Record<string, unknown>, ...keys: string[]): string {
   for (const k of keys) {
     const v = o[k]
@@ -254,66 +228,69 @@ function pickKey(o: Record<string, unknown>, ...keys: string[]): string {
   return ""
 }
 
-function normalisePriorityFixes(v: unknown): PriorityFix[] {
+function pickKeyArray(o: Record<string, unknown>, max: number, ...keys: string[]): string[] {
+  for (const k of keys) {
+    const v = o[k]
+    if (Array.isArray(v)) return toStringArray(v, max)
+  }
+  return []
+}
+
+// Stage 14 — fix_tasks: 5–8 actionable production tasks. Each task names
+// the problem, lists DAW steps with concrete numbers, and states the
+// audible result.
+function normaliseFixTasks(v: unknown): FixTask[] {
   if (!Array.isArray(v)) return []
-  const out: PriorityFix[] = []
+  const out: FixTask[] = []
   for (const item of v) {
     if (!item || typeof item !== "object") continue
     const o = item as Record<string, unknown>
-    const title  = pickKey(o, "title", "name", "label")
-    const action = pickKey(o, "action", "fix", "text")
-    const impact = pickKey(o, "impact", "result", "benefit")
-    if (!action && !impact && !title) continue
-    out.push({ title, action, impact })
-    if (out.length >= 3) break
+    const name       = pickKey(o, "name", "title", "label")
+    const time_range = pickKey(o, "time_range", "time", "timestamp", "range") || "whole-track"
+    const problem    = pickKey(o, "problem", "issue", "diagnosis")
+    const result     = pickKey(o, "result", "impact", "outcome", "benefit")
+    const steps      = pickKeyArray(o, 12, "steps", "do", "actions", "instructions")
+    if (!name && !problem && steps.length === 0) continue
+    out.push({
+      number: out.length + 1,
+      name,
+      time_range,
+      problem,
+      steps,
+      result,
+    })
+    if (out.length >= 8) break
   }
   return out
 }
 
-function normaliseTimestampedRecs(v: unknown): TimestampedRecommendation[] {
-  if (!Array.isArray(v)) return []
-  const out: TimestampedRecommendation[] = []
-  for (const item of v) {
-    if (item && typeof item === "object") {
-      const o = item as Record<string, unknown>
-      const time   = pickKey(o, "time", "timestamp")
-      const target = pickKey(o, "target", "bus", "channel", "element")
-      const text   = pickKey(o, "text", "fix", "action", "note")
-      if (!text && !target && !time) continue
-      out.push({ time, target, text })
-    } else if (typeof item === "string" && item.trim()) {
-      out.push({ time: "", target: "", text: item.trim() })
-    }
-    if (out.length >= 12) break
-  }
-  return out
-}
-
-function normaliseDawInstructionsString(v: unknown): string {
-  if (typeof v === "string") return v.trim()
-  if (Array.isArray(v)) {
-    const blocks = v
-      .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
-      .map((x) => x.trim())
-    return blocks.join("\n\n")
-  }
-  return ""
-}
-
-function normaliseFullAnalysisStructured(v: unknown): FullAnalysisStructured {
+// Stage 14 — expected_result: { before:string[], after:string[] }.
+function normaliseExpectedResult(v: unknown): ExpectedResult {
   if (v && typeof v === "object" && !Array.isArray(v)) {
     const o = v as Record<string, unknown>
     return {
-      executive_summary:     pickString(o, "executive_summary", "summary", "exec", "overview"),
-      detailed_analysis:     pickString(o, "detailed_analysis", "analysis", "detailed", "deep"),
-      advanced_improvements: pickString(o, "advanced_improvements", "advanced", "improvements", "pro_tips"),
+      before: toStringArray(o.before, 8),
+      after:  toStringArray(o.after,  8),
     }
   }
-  if (typeof v === "string" && v.trim()) {
-    // Backward compat — fold the legacy single string into detailed_analysis.
-    return { executive_summary: "", detailed_analysis: v.trim(), advanced_improvements: "" }
+  return { before: [], after: [] }
+}
+
+// Stage 14 — full_analysis is a SINGLE STRING (6–8 lines).
+// Backward compat — fold a legacy structured Stage 13 object into a
+// single string so old jsonb rows still render something useful.
+function normaliseFullAnalysisString(v: unknown): string {
+  if (typeof v === "string") return v.trim()
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    const o = v as Record<string, unknown>
+    const parts: string[] = []
+    for (const k of ["executive_summary", "detailed_analysis", "advanced_improvements", "summary", "analysis"]) {
+      const x = o[k]
+      if (typeof x === "string" && x.trim()) parts.push(x.trim())
+    }
+    return parts.join("\n\n")
   }
-  return { executive_summary: "", detailed_analysis: "", advanced_improvements: "" }
+  return ""
 }
 
 // ─── Derived audio insights (Stage 8 quality upgrade) ─────────────────
@@ -528,206 +505,133 @@ export async function generateProducerReport(
   const sections = resolveSections(features, insights.duration_seconds ?? inputs.track_duration ?? null)
   const sectionsAreReal = sections.length > 0 && sections[0]!.source === "essentia"
 
-  // Step 2 — system prompt (verbatim from Stage 13 attached spec, with a
-  // short technical anchoring trailer so the model still grounds its
-  // numbers in the Essentia features the user prompt provides and so it
-  // still emits VALID JSON ONLY, no markdown fences).
+  // Stage 14 — system prompt: verbatim from the new attached spec
+  // (production-task FIX-the-track contract), followed by a short
+  // technical ANCHORING trailer so the model grounds numbers in
+  // Essentia data, adapts to the selected DAW, and emits VALID JSON
+  // ONLY (no markdown, no fences).
   const systemPrompt =
-`You are a professional music producer with 15+ years of experience in electronic music (Techno, House, EDM).
+`You are a professional music producer and mixing/mastering engineer.
 
-Your job is to analyze a track and produce a HIGH-VALUE, ACTIONABLE, NON-REDUNDANT report.
+Your task is NOT to analyze — your task is to FIX the track.
 
-CRITICAL RULES:
+Output must be highly practical, actionable, and structured as production tasks.
 
-1. NO GENERIC PHRASES
-❌ Avoid: "could be improved", "nice idea", "good foundation"
-✅ Use: specific, confident, slightly critical tone
+DO NOT write long explanations.
+DO NOT write generic feedback.
+DO NOT repeat obvious things.
+DO NOT use phrases like "this may help" or "consider".
 
-2. NO REPETITION BETWEEN SECTIONS
-- If something is already mentioned in Mix/Mastering/Arrangement/Sound Design → DO NOT repeat it in Full Analysis
-- Full Analysis must EXPLAIN, not repeat
-
-3. ALWAYS USE NUMBERS WHEN POSSIBLE
-Use:
-- Hz (frequency)
-- dB (gain)
-- LUFS (loudness)
-- ms (attack/release)
-- timestamps (if available)
-
-4. WRITE LIKE A REAL PRODUCER
-Tone:
-- confident
-- direct
-- slightly critical
-- practical
-
-Example:
-❌ "The mix could be better"
-✅ "The low-end is congested due to overlap between 60 Hz kick and 100 Hz bass"
+You must give clear instructions that a producer can immediately apply inside a DAW (Cubase, Ableton, FL Studio).
 
 ---
 
-# OUTPUT STRUCTURE (STRICT)
+OUTPUT STRUCTURE:
 
-Return JSON with this structure:
+1. SUMMARY (max 3 sentences)
 
-{
-  "summary": "...",
-  "overall_score": number,
-
-  "sections": {
-    "mix": { "score": number, "text": "...", "notes": [] },
-    "mastering": { "score": number, "text": "...", "notes": [] },
-    "arrangement": { "score": number, "text": "...", "notes": [] },
-    "sound_design": { "score": number, "text": "...", "notes": [] },
-    "commercial_potential": { "score": number, "text": "...", "notes": [] }
-  },
-
-  "priority_fixes": [
-    { "title": "...", "action": "...", "impact": "..." }
-  ],
-
-  "timestamped_recommendations": [
-    { "time": "...", "target": "...", "text": "..." }
-  ],
-
-  "daw_instructions": "...",
-
-  "full_analysis": {
-    "executive_summary": "...",
-    "detailed_analysis": "...",
-    "advanced_improvements": "..."
-  }
-}
+* What is wrong
+* Why it kills the track
+* What will fix it
 
 ---
 
-# SECTION RULES
+2. FIX TASKS (MAIN SECTION — MOST IMPORTANT)
 
-## SUMMARY
-- 2–4 sentences MAX
-- must describe MAIN PROBLEM
-- must explain IMPACT
+Create 5–8 TASKS максимум.
 
----
-
-## PRIORITY_FIXES (🔥 VERY IMPORTANT)
-
-- EXACTLY 3 items
-- each item MUST include:
-  - action
-  - impact (what improves)
-
-Example:
-{
-  "title": "Fix low-end masking",
-  "action": "High-pass bass at 80 Hz and sidechain it to kick (-4 dB, 10 ms attack, 120 ms release)",
-  "impact": "Restores punch and clarity in the drop"
-}
+Each TASK must follow this format:
 
 ---
 
-## SECTIONS (Mix / Mastering / etc.)
+🔧 TASK [NUMBER] — [NAME] ([TIME RANGE or WHOLE TRACK])
 
-Each section:
+Problem: [specific technical issue]
 
-- SHORT paragraph (no overload)
-- 2–3 key problems MAX
-- use Problem → Why → Impact → Fix logic
+Do this:
 
----
+* Step-by-step actions inside DAW
+* Include exact values (Hz, dB, ms, ratios, LUFS)
+* Include plugins/tools (EQ, Compressor, Limiter, Saturation, etc.)
 
-## TIMESTAMPED RECOMMENDATIONS
+Optional:
 
-- mix of:
-  - [0:45]
-  - [1:30]
-  - [whole-track]
+* MIDI changes (velocity, pattern, automation)
+* Arrangement changes (add/remove elements)
 
----
-
-## DAW INSTRUCTIONS
-
-MUST follow this structure:
-
-[CHANNEL: Name]
-1. Open Mixer
-2. Select Channel
-3. Insert Plugin
-4. Set parameters (Hz / dB / ms)
-
-Use DAW-specific naming if provided (Cubase / FL / Ableton / Logic).
-
-Output as a SINGLE STRING. Multiple [CHANNEL: ...] blocks separated by ONE blank line. Use real \\n newline characters between every line.
+Result: [what will change in sound]
 
 ---
 
-# 🔥 FULL ANALYSIS (MOST IMPORTANT PART)
+STRICT RULES:
 
-This is where most mistakes happen.
-
-You MUST split into 3 parts (returned as the OBJECT shape shown above with three string keys: executive_summary, detailed_analysis, advanced_improvements):
-
----
-
-## 1. EXECUTIVE SUMMARY (SHORT)
-
-- 4–6 lines MAX
-- NO numbers
-- NO repetition from sections
-- explain:
-  - what's wrong globally
-  - what will happen if fixed
+* Every task must be actionable
+* Every task must include numbers/settings
+* No vague language
+* No theory explanations
 
 ---
 
-## 2. DETAILED ANALYSIS (DEEP)
+3. PRIORITY FIX (TOP 3)
 
-- explain WHY problems exist
-- connect:
-  - mix + arrangement + energy
-- DO NOT repeat same sentences from sections
-- go deeper, not wider
+List only 3 most important fixes:
 
-Example:
-❌ "kick and bass overlap"
-✅ "The interaction between kick transient and sustained bass energy reduces perceived punch, especially during drop sections"
+1. [action]
+2. [action]
+3. [action]
 
 ---
 
-## 3. ADVANCED IMPROVEMENTS (PRO LEVEL)
+4. EXPECTED RESULT
 
-- optional optimizations
-- more creative / pro techniques
-- NOT basic fixes
+Write BEFORE / AFTER:
 
-Examples:
-- transient shaping
-- automation
-- stereo field tricks
-- layering
+Before:
+
+* [problems]
+
+After:
+
+* [clear improvements]
 
 ---
 
-# FINAL GOAL
+5. FULL ANALYSIS (SHORT — max 6–8 lines)
 
-The report must feel like:
+Write like a professional producer conclusion.
 
-👉 a real producer analyzed the track
-👉 not like AI generated text
-👉 no repetition
-👉 clear action path
-👉 clear reasoning
+Example style:
+"Your track has a strong foundation, but the impact is limited by low-end masking and lack of loudness..."
 
-If there is repetition → the output is WRONG.
+No repetition from tasks.
+No long explanations.
+
+---
+
+IMPORTANT:
+
+* Always include time-based fixes (timestamps)
+* Always include mixing + arrangement + mastering
+* Always include at least:
+  • 1 low-end fix
+  • 1 energy/arrangement fix
+  • 1 loudness/mastering fix
+
+---
+
+GOAL:
+
+User must be able to:
+open DAW → follow steps → improve track immediately
+
+If instructions are not actionable → output is invalid.
 
 ---
 
 ANCHORING (technical, do not violate):
-- You are analyzing a REAL track. The user prompt provides DERIVED AUDIO INSIGHTS and RAW ESSENTIA FEATURES. Every Hz / dB / LUFS / ms / mm:ss number you write MUST come from those blocks; do NOT invent values that are not present there.
-- Adapt advice to the selected DAW (Cubase, FL Studio, Ableton, Logic) — use stock plugin names of that DAW where relevant.
-- Output VALID JSON ONLY matching the schema above — no prose, no markdown, no code fences, no extra keys.`
+- You are fixing a REAL track. The user prompt provides DERIVED AUDIO INSIGHTS, ARRANGEMENT LANDMARKS, and RAW ESSENTIA FEATURES. Every Hz / dB / LUFS / ms / mm:ss number you write MUST come from those blocks; do NOT invent values that are not present there.
+- Adapt advice to the selected DAW (Cubase, FL Studio, Ableton, Logic) — use stock plugin names of ${dawLb} where relevant.
+- Output VALID JSON ONLY — no prose, no markdown, no code fences, no extra keys. Match exactly the schema the user prompt specifies.`
 
   // Compact, human-readable insight block (only fields that were
   // actually derived — missing values are simply not listed so the
@@ -758,13 +662,12 @@ ANCHORING (technical, do not violate):
     rawFeaturesJson = "{}"
   }
 
-  // Stage 13 — user prompt: feeds DERIVED AUDIO INSIGHTS, real
-  // arrangement landmarks, raw Essentia features, focus weighting, DAW
-  // name, and the strict NEW JSON schema (priority_fixes,
-  // timestamped_recommendations, daw_instructions:string,
-  // full_analysis:object).
+  // Stage 14 — user prompt: feeds CONTEXT, DERIVED AUDIO INSIGHTS,
+  // ARRANGEMENT LANDMARKS, RAW ESSENTIA FEATURES, focus weighting, and
+  // the strict FIX-the-track JSON schema (summary, fix_tasks[5–8],
+  // priority_fix[3], expected_result{before,after}, full_analysis:string).
   const userPrompt =
-`Generate a producer-style review for the user's track in strict JSON.
+`Generate a producer-style FIX plan for the user's track in strict JSON.
 
 CONTEXT (user-supplied):
 - title: ${inputs.title ?? "Untitled"}
@@ -774,7 +677,7 @@ CONTEXT (user-supplied):
 - track_duration_seconds: ${insights.duration_seconds ?? inputs.track_duration ?? "unknown"}
 - user_comment: ${inputs.comment ?? "(none)"}
 
-DERIVED AUDIO INSIGHTS (ground truth — quote these in your analysis; do NOT invent numbers that are not here or in the raw features below):
+DERIVED AUDIO INSIGHTS (ground truth — quote these; do NOT invent numbers that are not here or in the raw features below):
 ${insightBlock}
 
 ${sectionsHeader}
@@ -783,62 +686,46 @@ ${sectionLines}
 RAW ESSENTIA FEATURES (for deeper inspection if you need them):
 ${rawFeaturesJson}
 
-WEIGHTING — adapt depth per feedback_focus="${focus}":
+WEIGHTING — bias the FIX TASKS per feedback_focus="${focus}":
 - mastering   → loudness, dynamics, limiting, tonal balance, LUFS targets
 - mixing      → balance, EQ, compression, stereo image, headroom
 - arrangement → structure, intro/build/drop/outro, energy curve
 - vocals / bass / drums / melody → prioritise that element specifically
-- overall     → balanced full review
+- overall     → balanced full FIX plan
 
 Return ONLY this JSON shape — no extra keys, no markdown, no code fences:
 {
   "summary": string,
   "overall_score": number,
-  "sections": {
-    "mix":                  { "score": number, "text": string, "notes": string[] },
-    "mastering":            { "score": number, "text": string, "notes": string[] },
-    "arrangement":          { "score": number, "text": string, "notes": string[] },
-    "sound_design":         { "score": number, "text": string, "notes": string[] },
-    "commercial_potential": { "score": number, "text": string, "notes": string[] }
+  "fix_tasks": [
+    {
+      "number": number,
+      "name": string,
+      "time_range": string,
+      "problem": string,
+      "steps": string[],
+      "result": string
+    }
+  ],
+  "priority_fix": [string, string, string],
+  "expected_result": {
+    "before": string[],
+    "after":  string[]
   },
-  "priority_fixes": [
-    { "title": string, "action": string, "impact": string },
-    { "title": string, "action": string, "impact": string },
-    { "title": string, "action": string, "impact": string }
-  ],
-  "timestamped_recommendations": [
-    { "time": string, "target": string, "text": string }
-  ],
-  "daw_instructions": string,
-  "full_analysis": {
-    "executive_summary": string,
-    "detailed_analysis": string,
-    "advanced_improvements": string
-  }
+  "full_analysis": string
 }
 
 REMINDERS (enforced — re-read system prompt rules before writing):
-- summary: 2–4 sentences MAX. Name the MAIN PROBLEM and its IMPACT on what the listener feels.
-- sections (mix / mastering / arrangement / sound_design / commercial_potential): SHORT paragraph in "text", and 2–3 entries MAX in "notes". Each note follows Problem → Why → Impact → Fix logic with concrete Hz / dB / ms / mm:ss / LUFS anchors when relevant. ARRANGEMENT section MUST cover the energy curve across intro / build / drop / outro.
-- priority_fixes: EXACTLY 3 items, ordered by severity. "title" = short label, "action" = concrete fix with Hz / dB / ms / LUFS anchors, "impact" = what audibly improves. These are the three things that actually break THIS track.
-- timestamped_recommendations: 4–8 entries. "time" is "mm:ss" (e.g. "0:45") or the literal "whole-track". "target" names the bus / element (e.g. "kick bus", "lead synth", "master"). "text" is the concrete fix.
-- daw_instructions: SINGLE STRING. Multiple [CHANNEL: <element>] blocks separated by ONE blank line (\\n\\n). Each block uses real \\n newlines and EXACTLY this layout:
-  [CHANNEL: <element>]
-  1. Open Mixer
-  2. Select <channel>
-  3. Insert <plugin — prefer ${dawLb} stock plugins>
-  4. Set:
-    <param>: <value with Hz / dB / ms>
-    <param>: <value>
-    <param>: <value>
-  Generate 4–8 channel blocks. NO " | " separators. NO inlining. Step 4 MUST end with a colon and each (param: value) pair MUST be on its own indented line.
-- full_analysis: OBJECT with three string keys. NO numbers, NO sentences copy-pasted from section.text or section.notes.
-  - executive_summary: 4–6 lines MAX. What is globally wrong and what improves when fixed.
-  - detailed_analysis: deep WHY. Connect mix + arrangement + energy. Go DEEPER, not WIDER. Do NOT repeat sentences from sections.
-  - advanced_improvements: PRO-level / creative / optional techniques only — transient shaping, automation, stereo field tricks, layering, parallel processing, mid/side moves, sidechain creativity. NOT basic fixes (those belong in priority_fixes / sections).
-- ANTI-REPETITION across the WHOLE report. If a concrete problem appears in section.notes, it MUST NOT appear verbatim in another section, in priority_fixes, in timestamped_recommendations, or in full_analysis. Pick the most relevant home and keep it there only.
-- FORBIDDEN WORDS in every output string: "could", "might", "consider". Replace with decisive active phrasing: "this is causing", "this reduces", "this weakens the track", "this masks", "this kills the punch", "this must be fixed".
-- NO GUESSING — if a piece of audio data is not present in the DERIVED AUDIO INSIGHTS or RAW ESSENTIA FEATURES blocks above, do NOT invent a number. Skip the observation rather than fabricate.`
+- summary: max 3 sentences. Cover (1) what is wrong, (2) why it kills the track, (3) what will fix it.
+- fix_tasks: 5–8 items. "number" is the 1-based index. "name" is a short label (e.g. "Tame low-end masking"). "time_range" is "mm:ss-mm:ss" (e.g. "0:45-1:00") OR the literal "whole-track". "problem" is one decisive sentence naming the technical issue. "steps" is a string[] of step-by-step DAW actions — each step MUST include exact values (Hz, dB, ms, ratios, LUFS) and prefer ${dawLb} stock plugin names where relevant. "result" is one decisive sentence describing what audibly changes.
+- COVERAGE in fix_tasks: across the 5–8 items there MUST be at least one low-end fix, one energy/arrangement fix, and one loudness/mastering fix. Always include time-based fixes (concrete mm:ss anchors taken from the ARRANGEMENT LANDMARKS above).
+- priority_fix: EXACTLY 3 short string actions, ordered by severity. These are the three things that actually break THIS track. They MUST mirror the most critical 3 fix_tasks (use the action wording, not just the name).
+- expected_result.before: 3–6 short bullets describing concrete current problems (matched to fix_tasks).
+- expected_result.after: 3–6 short bullets describing concrete improvements once the fix_tasks are applied.
+- full_analysis: SINGLE STRING, 6–8 lines MAX, written like a professional producer conclusion. NO repetition from fix_tasks. NO long explanations. NO numbers. NO bullet symbols (write flowing prose with real \\n newlines).
+- FORBIDDEN PHRASING in every string: "could", "might", "consider", "this may help". Replace with decisive active phrasing: "this is causing", "this reduces", "this kills the punch", "this must be fixed".
+- NO GUESSING — if a piece of audio data is not present in the DERIVED AUDIO INSIGHTS or RAW ESSENTIA FEATURES blocks above, do NOT invent a number. Skip the observation rather than fabricate.
+- If instructions are not actionable, the output is invalid.`
 
   let raw: string
   try {
@@ -880,35 +767,95 @@ REMINDERS (enforced — re-read system prompt rules before writing):
     }
   }
 
-  const sectionsRaw = (parsed.sections && typeof parsed.sections === "object"
-    ? parsed.sections
-    : {}) as Record<string, unknown>
+  // Stage 14 — assemble the FIX-the-track report (v3). The contract is
+  // strict: priority_fix MUST be exactly 3 strings and fix_tasks MUST be
+  // 5–8 entries. The model is instructed to obey this, but we still
+  // enforce both cardinalities here so a mis-behaving response cannot
+  // produce a malformed jsonb row. Backward compat: legacy keys
+  // priority_fixes (object[]) and full_analysis (object) are still
+  // accepted from already-stored rows and from older model output.
+  const fixTasksRaw = normaliseFixTasks(parsed.fix_tasks)
 
-  // Stage 13 — fall back to legacy `recommendations` if the model still
-  // emits the old key, so already-deployed prompts and stored responses
-  // do not silently lose data.
-  const tsRecs = normaliseTimestampedRecs(parsed.timestamped_recommendations)
-  const tsRecsFinal = tsRecs.length > 0 ? tsRecs : normaliseTimestampedRecs(parsed.recommendations)
+  // Helper: append a candidate string into priorityFix, trimmed and
+  // case-insensitively deduplicated, until the cap of 3 is reached.
+  const pushPriority = (raw: unknown, bucket: string[]): void => {
+    if (typeof raw !== "string") return
+    const s = raw.trim()
+    if (!s || bucket.length >= 3) return
+    const key = s.toLowerCase()
+    if (bucket.some((existing) => existing.toLowerCase() === key)) return
+    bucket.push(s)
+  }
+
+  // 1) priority_fix from the model (deduplicated as we go).
+  const priorityFixBuf: string[] = []
+  if (Array.isArray(parsed.priority_fix)) {
+    for (const item of parsed.priority_fix) {
+      pushPriority(item, priorityFixBuf)
+      if (priorityFixBuf.length >= 3) break
+    }
+  }
+
+  // 2) BC fallback: legacy v2 priority_fixes (object[] with action/title).
+  // Runs whenever we still have < 3 entries so we can fill on top of a
+  // partial model response, not only when the model returned nothing.
+  if (priorityFixBuf.length < 3 && Array.isArray(parsed.priority_fixes)) {
+    for (const item of parsed.priority_fixes as unknown[]) {
+      if (item && typeof item === "object") {
+        const o = item as Record<string, unknown>
+        const s = pickKey(o, "action", "fix", "text", "title")
+        if (s) pushPriority(s, priorityFixBuf)
+      } else {
+        pushPriority(item, priorityFixBuf)
+      }
+      if (priorityFixBuf.length >= 3) break
+    }
+  }
+
+  // 3) Pad priority_fix to exactly 3 by mirroring the most critical
+  // fix_tasks (their name, falling back to problem). Same dedupe rules.
+  for (const t of fixTasksRaw) {
+    if (priorityFixBuf.length >= 3) break
+    pushPriority(t.name || t.problem || "", priorityFixBuf)
+  }
+
+  // 4) Still short → generic placeholders so the contract always holds.
+  while (priorityFixBuf.length < 3) {
+    priorityFixBuf.push(`Apply fix task ${priorityFixBuf.length + 1}`)
+  }
+  const priorityFix = priorityFixBuf.slice(0, 3)
+
+  // 5) Pad fix_tasks to at least 5 (cap is already 8 inside the
+  // normaliser). Seed each padded task from the matching priority_fix
+  // entry so the padding is at least loosely tied to real findings.
+  const fixTasks = fixTasksRaw.slice()
+  while (fixTasks.length < 5) {
+    const idx = fixTasks.length
+    const seed = priorityFix[idx] ?? `Additional refinement pass #${idx + 1}`
+    fixTasks.push({
+      number:     idx + 1,
+      name:       seed,
+      time_range: "whole-track",
+      problem:    seed,
+      steps:      [],
+      result:     "",
+    })
+  }
+  // Renumber so `number` is always 1..N and contiguous.
+  for (let i = 0; i < fixTasks.length; i++) fixTasks[i].number = i + 1
 
   const report: ProducerReport = {
-    version:       2,
-    generated_at:  new Date().toISOString(),
-    summary:       typeof parsed.summary === "string" && parsed.summary.trim()
-                     ? parsed.summary.trim()
-                     : `Automated AI Producer review for "${inputs.title ?? "Untitled"}".`,
-    overall_score: clamp01_100(parsed.overall_score, 70),
-    sections: {
-      mix:                  normaliseSection(sectionsRaw.mix,                  "Mix balance review."),
-      mastering:            normaliseSection(sectionsRaw.mastering,            "Mastering review."),
-      arrangement:          normaliseSection(sectionsRaw.arrangement,          "Arrangement review."),
-      sound_design:         normaliseSection(sectionsRaw.sound_design,         "Sound design review."),
-      commercial_potential: normaliseSection(sectionsRaw.commercial_potential, "Commercial potential review."),
-    },
-    priority_fixes:              normalisePriorityFixes(parsed.priority_fixes),
-    timestamped_recommendations: tsRecsFinal,
-    daw_instructions:            normaliseDawInstructionsString(parsed.daw_instructions),
-    full_analysis:               normaliseFullAnalysisStructured(parsed.full_analysis),
-    audio_features:              features,
+    version:         3,
+    generated_at:    new Date().toISOString(),
+    summary:         typeof parsed.summary === "string" && parsed.summary.trim()
+                       ? parsed.summary.trim()
+                       : `Automated AI Producer fix plan for "${inputs.title ?? "Untitled"}".`,
+    overall_score:   clamp01_100(parsed.overall_score, 70),
+    fix_tasks:       fixTasks,
+    priority_fix:    priorityFix,
+    expected_result: normaliseExpectedResult(parsed.expected_result),
+    full_analysis:   normaliseFullAnalysisString(parsed.full_analysis),
+    audio_features:  features,
   }
 
   return { ok: true, report }
