@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import {
   Sparkles, Loader2, AlertCircle, Lock, ArrowLeft, RefreshCcw,
   Download, Copy, Clock, FileText, Check, Flame, Wrench,
-  ArrowRight,
+  ArrowRight, Sliders, Layers, Activity, Wand2, TrendingUp,
 } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
 import { Button } from "@/components/ui/button"
@@ -14,12 +14,30 @@ import { useAuth } from "@/components/auth-context"
 import { supabase } from "@/lib/supabase"
 
 // ─── Types ──────────────────────────────────────────────────────────────
-// Stage 14 — FIX-the-track contract (v3).
+// Stage 14b — FIX-the-track contract (v4) with rich per-task metadata
+// and a structured 3-section full analysis. Legacy v2 (object full
+// analysis) and v3 (string full analysis, name/steps/result on tasks)
+// fields stay optional+nullable so already-stored rows keep rendering.
+type FixTaskCategory =
+  | "mix"
+  | "mastering"
+  | "arrangement"
+  | "sound_design"
+  | "commercial"
+
 type FixTask = {
   number?: number | null
-  name?: string | null
+  // v4 fields
+  task_title?: string | null
   time_range?: string | null
+  category?: FixTaskCategory | string | null
   problem?: string | null
+  why_it_matters?: string | null
+  daw_steps?: string[] | null
+  settings?: string[] | null
+  expected_result?: string | null
+  // v3 legacy fields kept for already-stored rows
+  name?: string | null
   steps?: string[] | null
   result?: string | null
 }
@@ -29,8 +47,17 @@ type ExpectedResult = {
   after?: string[] | null
 }
 
+// Stage 14b — full_analysis is a structured object; identical shape
+// also doubles as the legacy v2 fallback because both versions used
+// the same three keys.
+type FullAnalysisStructured = {
+  executive_summary?: string | null
+  detailed_analysis?: string | null
+  advanced_improvements?: string | null
+}
+
 // Legacy v2 shapes — kept ONLY so already-stored reports still render
-// gracefully without crashing. New rendering paths use the v3 fields.
+// gracefully without crashing. New rendering paths use v4 fields.
 type LegacySection = {
   score?: number | null
   notes?: string[] | null
@@ -41,11 +68,6 @@ type LegacyPriorityFix = {
   action?: string | null
   impact?: string | null
 }
-type LegacyFullAnalysis = {
-  executive_summary?: string | null
-  detailed_analysis?: string | null
-  advanced_improvements?: string | null
-}
 
 type ReportJson = {
   version?: number
@@ -53,11 +75,12 @@ type ReportJson = {
   summary?: string
   overall_score?: number
 
-  // Stage 14 — new shape
+  // Stage 14b — current shape
   fix_tasks?: FixTask[]
   priority_fix?: string[]
   expected_result?: ExpectedResult
-  full_analysis?: string | LegacyFullAnalysis
+  // v4: structured object | v3: single string | v2: legacy structured
+  full_analysis?: FullAnalysisStructured | string
 
   // Legacy v2 fields (only for reports stored before Stage 14)
   sections?: {
@@ -72,6 +95,51 @@ type ReportJson = {
   daw_instructions?: string[] | string
   recommendations?: unknown[]
   references?: string[]
+}
+
+// Stage 14b — per-category visual metadata for the Fix Tasks render.
+// Each entry pins a label, an icon, and a color scheme so the user can
+// scan a long list of tasks and tell at a glance which area is being
+// addressed.
+const CATEGORY_META: Record<FixTaskCategory, {
+  label:  string
+  Icon:   typeof Sliders
+  badge:  string  // tailwind classes for the small uppercase pill
+}> = {
+  mix: {
+    label: "Mix",
+    Icon:  Sliders,
+    badge: "bg-sky-500/15 border-sky-400/30 text-sky-200",
+  },
+  mastering: {
+    label: "Mastering",
+    Icon:  Activity,
+    badge: "bg-amber-500/15 border-amber-400/30 text-amber-200",
+  },
+  arrangement: {
+    label: "Arrangement",
+    Icon:  Layers,
+    badge: "bg-purple-500/15 border-purple-400/30 text-purple-200",
+  },
+  sound_design: {
+    label: "Sound Design",
+    Icon:  Wand2,
+    badge: "bg-fuchsia-500/15 border-fuchsia-400/30 text-fuchsia-200",
+  },
+  commercial: {
+    label: "Commercial",
+    Icon:  TrendingUp,
+    badge: "bg-emerald-500/15 border-emerald-400/30 text-emerald-200",
+  },
+}
+
+const FALLBACK_CATEGORY_META = CATEGORY_META.mix
+
+function categoryMeta(c: unknown) {
+  if (typeof c === "string" && (c in CATEGORY_META)) {
+    return CATEGORY_META[c as FixTaskCategory]
+  }
+  return FALLBACK_CATEGORY_META
 }
 
 type Review = {
@@ -288,18 +356,22 @@ export default function ReviewReportPage() {
   const report = review?.report_json ?? null
   const isFree = review?.access_type === "free"
 
-  // Stage 14 — Fix Tasks (5–8 actionable production tasks).
+  // Stage 14b — Fix Tasks (6–10 actionable production tasks). Filter on
+  // ANY meaningful field across both v3 (name/steps) and v4
+  // (task_title/daw_steps) shapes so legacy rows still render.
   const fixTasksList = useMemo<FixTask[]>(() => {
     const v = report?.fix_tasks
     if (!Array.isArray(v)) return []
     return v
       .filter((t): t is FixTask => !!t && typeof t === "object")
       .filter((t) =>
+        (t.task_title ?? "") ||
         (t.name ?? "") ||
         (t.problem ?? "") ||
+        (Array.isArray(t.daw_steps) && t.daw_steps.length > 0) ||
         (Array.isArray(t.steps) && t.steps.length > 0)
       )
-      .slice(0, 8)
+      .slice(0, 10)
   }, [report])
 
   // Stage 14 — Priority Fix (top-3 short string actions). Fall back to
@@ -344,21 +416,33 @@ export default function ReviewReportPage() {
       .slice(0, 8)
   }, [report])
 
-  // Stage 14 — Full Analysis is now a single string (6–8 lines). For
-  // legacy v2 reports (structured object), flatten the three keys into
-  // one block so they still render.
-  const fullAnalysisText = useMemo<string>(() => {
+  // Stage 14b — Full Analysis is a STRUCTURED OBJECT with three
+  // sections. For legacy v3 reports (single string) we fold the string
+  // into executive_summary so the section still surfaces something
+  // useful; v2 reports already used the same three-key shape.
+  const fullAnalysis = useMemo<{
+    executive_summary: string
+    detailed_analysis: string
+    advanced_improvements: string
+  }>(() => {
     const v = report?.full_analysis
-    if (typeof v === "string") return v.trim()
-    if (v && typeof v === "object") {
-      const o = v as LegacyFullAnalysis
-      const parts = [o.executive_summary, o.detailed_analysis, o.advanced_improvements]
-        .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
-        .map((x) => x.trim())
-      return parts.join("\n\n")
+    if (typeof v === "string") {
+      return { executive_summary: v.trim(), detailed_analysis: "", advanced_improvements: "" }
     }
-    return ""
+    if (v && typeof v === "object") {
+      const o = v as FullAnalysisStructured
+      return {
+        executive_summary:     (o.executive_summary     ?? "").trim(),
+        detailed_analysis:     (o.detailed_analysis     ?? "").trim(),
+        advanced_improvements: (o.advanced_improvements ?? "").trim(),
+      }
+    }
+    return { executive_summary: "", detailed_analysis: "", advanced_improvements: "" }
   }, [report])
+  const hasFullAnalysis =
+    fullAnalysis.executive_summary.length > 0 ||
+    fullAnalysis.detailed_analysis.length > 0 ||
+    fullAnalysis.advanced_improvements.length > 0
 
   const handleCopyRecommendations = async () => {
     let text = ""
@@ -380,15 +464,26 @@ export default function ReviewReportPage() {
       if (fixTasksList.length > 0) {
         lines.push("", "Fix tasks:")
         fixTasksList.forEach((t, i) => {
-          const num = typeof t.number === "number" ? t.number : i + 1
-          const range = t.time_range ? ` (${t.time_range})` : ""
-          lines.push(`TASK ${num} — ${t.name ?? "(untitled)"}${range}`)
-          if (t.problem) lines.push(`   Problem: ${t.problem}`)
-          if (Array.isArray(t.steps) && t.steps.length > 0) {
+          const num    = typeof t.number === "number" ? t.number : i + 1
+          const title  = t.task_title ?? t.name ?? "(untitled)"
+          const range  = t.time_range ? ` (${t.time_range})` : ""
+          const cat    = categoryMeta(t.category).label
+          const steps  = Array.isArray(t.daw_steps) && t.daw_steps.length > 0
+                          ? t.daw_steps
+                          : (Array.isArray(t.steps) ? t.steps : [])
+          const result = t.expected_result ?? t.result ?? ""
+          lines.push(`TASK ${num} — ${title}${range}  [${cat}]`)
+          if (t.problem)        lines.push(`   Problem: ${t.problem}`)
+          if (t.why_it_matters) lines.push(`   Why it matters: ${t.why_it_matters}`)
+          if (steps.length > 0) {
             lines.push(`   Do this:`)
-            t.steps.forEach((s) => lines.push(`     - ${s}`))
+            steps.forEach((s) => lines.push(`     - ${s}`))
           }
-          if (t.result) lines.push(`   Result: ${t.result}`)
+          if (Array.isArray(t.settings) && t.settings.length > 0) {
+            lines.push(`   Settings:`)
+            t.settings.forEach((s) => lines.push(`     • ${s}`))
+          }
+          if (result) lines.push(`   Result: ${result}`)
           lines.push("")
         })
       }
@@ -404,8 +499,17 @@ export default function ReviewReportPage() {
         }
         lines.push("")
       }
-      if (fullAnalysisText) {
-        lines.push("Full analysis:", fullAnalysisText)
+      if (hasFullAnalysis) {
+        lines.push("Full analysis:")
+        if (fullAnalysis.executive_summary) {
+          lines.push("  Executive summary:", `    ${fullAnalysis.executive_summary}`)
+        }
+        if (fullAnalysis.detailed_analysis) {
+          lines.push("  Detailed analysis:", `    ${fullAnalysis.detailed_analysis}`)
+        }
+        if (fullAnalysis.advanced_improvements) {
+          lines.push("  Advanced improvements:", `    ${fullAnalysis.advanced_improvements}`)
+        }
       }
       text = lines.join("\n").trimEnd()
     }
@@ -676,21 +780,31 @@ export default function ReviewReportPage() {
         ) : (
           <ol className="space-y-3">
             {fixTasksList.map((t, i) => {
-              const num = typeof t.number === "number" ? t.number : i + 1
+              const num    = typeof t.number === "number" ? t.number : i + 1
+              const title  = t.task_title ?? t.name ?? ""
+              const meta   = categoryMeta(t.category)
+              const Icon   = meta.Icon
+              const steps  = Array.isArray(t.daw_steps) && t.daw_steps.length > 0
+                              ? t.daw_steps
+                              : (Array.isArray(t.steps) ? t.steps : [])
+              const result = t.expected_result ?? t.result ?? ""
               return (
                 <li
                   key={i}
-                  className="rounded-xl border border-border/40 bg-background/40 p-3 sm:p-4 space-y-2"
+                  className="rounded-xl border border-border/40 bg-background/40 p-3 sm:p-4 space-y-2.5"
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="inline-flex w-7 h-7 shrink-0 items-center justify-center rounded-md bg-purple-500/15 border border-purple-400/30 text-purple-200 text-xs font-mono">
                       {num}
                     </span>
-                    {t.name && (
+                    {title && (
                       <span className="font-semibold text-foreground text-sm sm:text-base">
-                        {t.name}
+                        {title}
                       </span>
                     )}
+                    <span className={`inline-flex items-center gap-1 text-[11px] uppercase tracking-wider font-mono px-2 py-0.5 rounded-full border ${meta.badge}`}>
+                      <Icon className="w-3 h-3" /> {meta.label}
+                    </span>
                     {t.time_range && (
                       <span className="inline-flex items-center gap-1 text-[11px] uppercase tracking-wider font-mono px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-400/30 text-purple-200">
                         <Clock className="w-3 h-3" /> {t.time_range}
@@ -703,11 +817,17 @@ export default function ReviewReportPage() {
                       <span className="text-muted-foreground">{t.problem}</span>
                     </div>
                   )}
-                  {Array.isArray(t.steps) && t.steps.length > 0 && (
+                  {t.why_it_matters && (
+                    <div className="text-sm">
+                      <span className="text-xs uppercase tracking-wider font-mono text-rose-300/90">Why it matters: </span>
+                      <span className="text-muted-foreground">{t.why_it_matters}</span>
+                    </div>
+                  )}
+                  {steps.length > 0 && (
                     <div className="space-y-1.5">
-                      <div className="text-xs uppercase tracking-wider font-mono text-purple-300">Do this:</div>
+                      <div className="text-xs uppercase tracking-wider font-mono text-purple-300">Do this in your DAW:</div>
                       <ul className="space-y-1.5 text-sm text-muted-foreground">
-                        {t.steps.map((s, si) => (
+                        {steps.map((s, si) => (
                           <li key={si} className="flex gap-2">
                             <span className="text-purple-300 shrink-0">›</span>
                             <span className="whitespace-pre-line">{s}</span>
@@ -716,10 +836,22 @@ export default function ReviewReportPage() {
                       </ul>
                     </div>
                   )}
-                  {t.result && (
+                  {Array.isArray(t.settings) && t.settings.length > 0 && (
+                    <div className="space-y-1.5">
+                      <div className="text-xs uppercase tracking-wider font-mono text-sky-300">Settings:</div>
+                      <ul className="space-y-1 rounded-lg border border-sky-400/20 bg-sky-950/15 p-2.5">
+                        {t.settings.map((s, si) => (
+                          <li key={si} className="font-mono text-[12px] sm:text-[13px] text-sky-100/90 break-words">
+                            {s}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {result && (
                     <div className="text-sm">
-                      <span className="text-xs uppercase tracking-wider font-mono text-emerald-300/90">Result: </span>
-                      <span className="text-muted-foreground">{t.result}</span>
+                      <span className="text-xs uppercase tracking-wider font-mono text-emerald-300/90">Expected result: </span>
+                      <span className="text-muted-foreground">{result}</span>
                     </div>
                   )}
                 </li>
@@ -769,10 +901,41 @@ export default function ReviewReportPage() {
       </SectionCard>
 
       <SectionCard icon={FileText} title="Full Analysis">
-        {fullAnalysisText ? (
-          <p className="whitespace-pre-line text-sm leading-relaxed">{fullAnalysisText}</p>
-        ) : (
+        {!hasFullAnalysis ? (
           <div className="text-muted-foreground/70 italic">No long-form analysis available.</div>
+        ) : (
+          <div className="space-y-4">
+            {fullAnalysis.executive_summary && (
+              <div className="rounded-xl border border-purple-400/25 bg-purple-950/15 p-3 sm:p-4 space-y-2">
+                <div className="text-xs uppercase tracking-wider font-mono text-purple-300">
+                  Executive Summary
+                </div>
+                <p className="whitespace-pre-line text-sm leading-relaxed">
+                  {fullAnalysis.executive_summary}
+                </p>
+              </div>
+            )}
+            {fullAnalysis.detailed_analysis && (
+              <div className="rounded-xl border border-sky-400/25 bg-sky-950/10 p-3 sm:p-4 space-y-2">
+                <div className="text-xs uppercase tracking-wider font-mono text-sky-300">
+                  Detailed Analysis
+                </div>
+                <p className="whitespace-pre-line text-sm leading-relaxed">
+                  {fullAnalysis.detailed_analysis}
+                </p>
+              </div>
+            )}
+            {fullAnalysis.advanced_improvements && (
+              <div className="rounded-xl border border-emerald-400/25 bg-emerald-950/10 p-3 sm:p-4 space-y-2">
+                <div className="text-xs uppercase tracking-wider font-mono text-emerald-300">
+                  Advanced Improvements
+                </div>
+                <p className="whitespace-pre-line text-sm leading-relaxed">
+                  {fullAnalysis.advanced_improvements}
+                </p>
+              </div>
+            )}
+          </div>
         )}
       </SectionCard>
     </div>
@@ -801,10 +964,11 @@ export default function ReviewReportPage() {
                   Unlock full AI Producer Review to see:
                 </div>
                 <ul className="text-sm text-purple-100/90 mt-3 space-y-1 text-left mx-auto inline-block">
-                  <li>• top-3 priority fixes</li>
-                  <li>• 5–8 step-by-step fix tasks</li>
+                  <li>• top-3 priority fixes with exact settings</li>
+                  <li>• 6–10 fix tasks across mix, mastering, arrangement, sound design</li>
+                  <li>• per-task DAW steps, settings &amp; expected sound</li>
                   <li>• before / after expected result</li>
-                  <li>• full long-form analysis</li>
+                  <li>• 3-section in-depth producer analysis</li>
                 </ul>
               </div>
               <Button

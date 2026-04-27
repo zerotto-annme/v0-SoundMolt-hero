@@ -1,0 +1,140 @@
+FIX STAGE 14 — RESTORE DEPTH, KEEP TASK UI
+
+Current result is too generic.
+Do NOT keep this simplified report logic.
+
+Problem:
+- Fix Tasks are too vague
+- Mostly whole-track
+- No real timestamps
+- No clear DAW-level actions per moment
+- Old sections were removed too aggressively
+- Report lost depth and producer value
+
+Goal:
+Keep the new Fix Tasks UI, but restore deep analysis quality.
+
+IMPORTANT:
+Do NOT remove content.
+Do NOT reduce report depth.
+Do NOT generate generic task names like “Improve energy dynamics”.
+Each task must feel like a real producer instruction.
+
+Required structure:
+
+1. Summary
+Keep short.
+
+2. Priority Fix
+Top 3 must include:
+- exact action
+- exact setting/value
+- expected sound result
+
+Bad:
+“Increase loudness with limiting”
+
+Good:
+“Set master limiter to -8 LUFS / -0.3 dB ceiling to make the track compete in techno playlists”
+
+3. Fix Tasks
+Must be 6–10 tasks.
+Each task must include:
+
+- task_title
+- time_range
+- category: mix | mastering | arrangement | sound_design | commercial
+- problem
+- why_it_matters
+- daw_steps
+- settings
+- expected_result
+
+Each task must be practical.
+
+Example:
+
+TASK — Clean kick/bass conflict
+Time: 00:00–full track
+Category: Mix
+
+Problem:
+Kick around 60 Hz and bass around 100 Hz overlap, creating low-end mud.
+
+Why it matters:
+The drop loses punch because the kick transient cannot cut through the bass energy.
+
+DAW steps:
+1. Open Mixer (F3)
+2. Select Bass channel
+3. Insert Cubase Frequency EQ
+4. Enable high-pass filter at 80 Hz
+5. Add sidechain compressor triggered by Kick
+
+Settings:
+- HPF: 80 Hz
+- Sidechain gain reduction: -4 dB
+- Attack: 10 ms
+- Release: 120 ms
+
+Expected result:
+Cleaner low-end, stronger kick punch, more club-ready drop.
+
+4. Restore categories visually
+Do NOT remove categories completely.
+Either:
+- group Fix Tasks by category
+OR
+- show category badge on each task.
+
+5. Time ranges
+Avoid everything being [whole-track].
+At least 3 tasks must have real timestamps:
+- intro
+- buildup
+- drop
+- outro
+
+If exact timestamps are unavailable, estimate from track duration:
+- intro: 0:00–0:30
+- buildup: 0:30–1:00
+- drop: 1:00–2:00
+- outro: last 30 seconds
+
+6. DAW instructions
+DAW instructions must live INSIDE each task.
+Do NOT create separate generic DAW block.
+
+Each task must include:
+- exact channel
+- exact plugin
+- exact setting
+- exact target
+
+7. Full Analysis
+Restore depth.
+
+Full Analysis must include:
+- executive summary
+- detailed analysis
+- advanced improvements
+
+Do NOT make it one short paragraph.
+
+But avoid copy-paste repetition from tasks.
+
+8. Expected Result
+Keep Before / After block.
+
+9. Backward compatibility
+Old v2 reports should still render if present.
+
+10. Frontend
+Keep the new visual task cards, but improve content rendering:
+- category badge
+- time badge
+- settings block
+- DAW steps block
+- expected result block
+
+END

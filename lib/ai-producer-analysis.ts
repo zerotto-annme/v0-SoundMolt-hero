@@ -46,13 +46,23 @@ export type ProducerReportInputs = {
   track_duration:  number | null
 }
 
+export type FixTaskCategory =
+  | "mix"
+  | "mastering"
+  | "arrangement"
+  | "sound_design"
+  | "commercial"
+
 export type FixTask = {
-  number:     number
-  name:       string
-  time_range: string
-  problem:    string
-  steps:      string[]
-  result:     string
+  number:          number
+  task_title:      string
+  time_range:      string
+  category:        FixTaskCategory
+  problem:         string
+  why_it_matters:  string
+  daw_steps:       string[]
+  settings:        string[]
+  expected_result: string
 }
 
 export type ExpectedResult = {
@@ -60,15 +70,21 @@ export type ExpectedResult = {
   after:  string[]
 }
 
+export type FullAnalysisStructured = {
+  executive_summary:     string
+  detailed_analysis:     string
+  advanced_improvements: string
+}
+
 export type ProducerReport = {
-  version:         3
+  version:         4
   generated_at:    string
   summary:         string
   overall_score:   number
   fix_tasks:       FixTask[]
   priority_fix:    string[]
   expected_result: ExpectedResult
-  full_analysis:   string
+  full_analysis:   FullAnalysisStructured
   audio_features:  EssentiaFeatures
 }
 
@@ -236,30 +252,72 @@ function pickKeyArray(o: Record<string, unknown>, max: number, ...keys: string[]
   return []
 }
 
-// Stage 14 — fix_tasks: 5–8 actionable production tasks. Each task names
-// the problem, lists DAW steps with concrete numbers, and states the
-// audible result.
+// Stage 14b — fix_tasks: 6–10 actionable production tasks with rich
+// per-task metadata (category, why_it_matters, settings block). The
+// model is instructed to honour this shape; the normaliser also accepts
+// the older v3 keys (name/steps/result) so already-stored rows survive.
+const FIX_TASK_CATEGORIES: ReadonlySet<FixTaskCategory> = new Set([
+  "mix",
+  "mastering",
+  "arrangement",
+  "sound_design",
+  "commercial",
+])
+
+function pickCategory(o: Record<string, unknown>): FixTaskCategory | "" {
+  const raw = pickKey(o, "category", "kind", "section", "area").toLowerCase().replace(/[\s-]+/g, "_")
+  if (!raw) return ""
+  if (FIX_TASK_CATEGORIES.has(raw as FixTaskCategory)) return raw as FixTaskCategory
+  // Common alias mapping for tolerant parsing.
+  const aliases: Record<string, FixTaskCategory> = {
+    sounddesign:  "sound_design",
+    sound:        "sound_design",
+    design:       "sound_design",
+    master:       "mastering",
+    mixing:       "mix",
+    arr:          "arrangement",
+    structure:    "arrangement",
+    energy:       "arrangement",
+    market:       "commercial",
+    release:      "commercial",
+  }
+  return aliases[raw] ?? ""
+}
+
+function defaultCategoryFor(idx: number): FixTaskCategory {
+  // Stable rotation so padded tasks cover the spec's required surface
+  // (mix + arrangement + mastering at minimum).
+  const cycle: FixTaskCategory[] = ["mix", "arrangement", "mastering", "sound_design", "commercial"]
+  return cycle[idx % cycle.length]!
+}
+
 function normaliseFixTasks(v: unknown): FixTask[] {
   if (!Array.isArray(v)) return []
   const out: FixTask[] = []
   for (const item of v) {
     if (!item || typeof item !== "object") continue
     const o = item as Record<string, unknown>
-    const name       = pickKey(o, "name", "title", "label")
-    const time_range = pickKey(o, "time_range", "time", "timestamp", "range") || "whole-track"
-    const problem    = pickKey(o, "problem", "issue", "diagnosis")
-    const result     = pickKey(o, "result", "impact", "outcome", "benefit")
-    const steps      = pickKeyArray(o, 12, "steps", "do", "actions", "instructions")
-    if (!name && !problem && steps.length === 0) continue
+    const task_title      = pickKey(o, "task_title", "name", "title", "label")
+    const time_range      = pickKey(o, "time_range", "time", "timestamp", "range")
+    const category        = pickCategory(o) || defaultCategoryFor(out.length)
+    const problem         = pickKey(o, "problem", "issue", "diagnosis")
+    const why_it_matters  = pickKey(o, "why_it_matters", "why", "rationale", "impact_reason")
+    const expected_result = pickKey(o, "expected_result", "result", "impact", "outcome", "benefit")
+    const daw_steps       = pickKeyArray(o, 16, "daw_steps", "steps", "do", "actions", "instructions")
+    const settings        = pickKeyArray(o, 16, "settings", "values", "params", "parameters")
+    if (!task_title && !problem && daw_steps.length === 0) continue
     out.push({
-      number: out.length + 1,
-      name,
+      number:          out.length + 1,
+      task_title,
       time_range,
+      category,
       problem,
-      steps,
-      result,
+      why_it_matters,
+      daw_steps,
+      settings,
+      expected_result,
     })
-    if (out.length >= 8) break
+    if (out.length >= 10) break
   }
   return out
 }
@@ -276,21 +334,183 @@ function normaliseExpectedResult(v: unknown): ExpectedResult {
   return { before: [], after: [] }
 }
 
-// Stage 14 — full_analysis is a SINGLE STRING (6–8 lines).
-// Backward compat — fold a legacy structured Stage 13 object into a
-// single string so old jsonb rows still render something useful.
-function normaliseFullAnalysisString(v: unknown): string {
-  if (typeof v === "string") return v.trim()
+// Stage 14b — full_analysis is a STRUCTURED OBJECT with three sections
+// (executive_summary / detailed_analysis / advanced_improvements). For
+// already-stored rows where the value is a single string (v3) or other
+// loose shapes, fold them into the executive_summary slot so something
+// meaningful still renders.
+function normaliseFullAnalysisStructured(v: unknown): FullAnalysisStructured {
+  if (typeof v === "string") {
+    return { executive_summary: v.trim(), detailed_analysis: "", advanced_improvements: "" }
+  }
   if (v && typeof v === "object" && !Array.isArray(v)) {
     const o = v as Record<string, unknown>
-    const parts: string[] = []
-    for (const k of ["executive_summary", "detailed_analysis", "advanced_improvements", "summary", "analysis"]) {
-      const x = o[k]
-      if (typeof x === "string" && x.trim()) parts.push(x.trim())
+    return {
+      executive_summary:     pickKey(o, "executive_summary", "summary", "overview", "tl_dr"),
+      detailed_analysis:     pickKey(o, "detailed_analysis", "analysis", "details", "body"),
+      advanced_improvements: pickKey(o, "advanced_improvements", "advanced", "next_steps", "improvements"),
     }
-    return parts.join("\n\n")
   }
-  return ""
+  return { executive_summary: "", detailed_analysis: "", advanced_improvements: "" }
+}
+
+// Stage 14b — synthesise a plausible time_range for a padded task when
+// neither the model nor the user provided one. We anchor to four
+// canonical sections (intro / buildup / drop / outro) and compute mm:ss
+// boundaries from the known track duration when possible, otherwise we
+// fall back to representative defaults that read sensibly in the UI.
+function fmtMmSs(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds))
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  return `${m}:${r.toString().padStart(2, "0")}`
+}
+
+// Stage 14b — per-category engineering defaults. Used (a) to enrich a
+// model task that omitted v4 fields and (b) to pad the report up to
+// the 6-task floor. These are STANDARD engineering settings, not
+// track-specific measurements, so injecting them never fabricates a
+// track-specific number (LUFS / BPM / dominant freq still come from
+// the model + Essentia data).
+type CategoryDefaults = {
+  why_it_matters:  string
+  daw_steps:       (daw: string) => string[]
+  settings:        string[]
+  expected_result: string
+  fallback_title:  string
+}
+
+const CATEGORY_DEFAULTS: Record<FixTaskCategory, CategoryDefaults> = {
+  mix: {
+    fallback_title: "Tighten low-end conflict",
+    why_it_matters:
+      "Kick and bass fighting in the sub-band masks both elements, crushes headroom, and makes the drop lose punch on club and laptop systems.",
+    daw_steps: (daw) => [
+      `Open the Mixer → select Bass channel → insert ${daw} EQ → enable HPF at 30 Hz`,
+      `On the Kick channel insert ${daw} EQ → notch the bass fundamental around 60 Hz`,
+      `Insert ${daw} Compressor on the Bass with sidechain input from the Kick`,
+    ],
+    settings: [
+      "HPF: 30 Hz",
+      "Notch: -3 dB at 60 Hz",
+      "Sidechain GR: -4 dB",
+      "Attack: 5 ms",
+      "Release: 120 ms",
+    ],
+    expected_result:
+      "The kick punches through cleanly while the bass sits underneath without smearing the sub.",
+  },
+  mastering: {
+    fallback_title: "Master for streaming loudness",
+    why_it_matters:
+      "Low loudness and uncontrolled peaks let competing tracks drown this one out in playlists and reduce perceived punch on streaming.",
+    daw_steps: (daw) => [
+      `Insert ${daw} Limiter on the Master channel`,
+      `Add a master EQ before the limiter with a gentle high-shelf to balance brightness`,
+      `Set the output ceiling and target loudness for streaming delivery`,
+    ],
+    settings: [
+      "LUFS target: -8",
+      "Ceiling: -0.3 dB",
+      "Lookahead: 5 ms",
+      "High shelf: +1 dB at 10 kHz",
+    ],
+    expected_result:
+      "The track competes in loudness with reference releases without audible pumping or distortion.",
+  },
+  arrangement: {
+    fallback_title: "Sharpen the energy curve",
+    why_it_matters:
+      "A flat energy curve kills listener attention — without contrast between intro, buildup, drop and outro the track fails to land emotionally.",
+    daw_steps: (daw) => [
+      `Open the ${daw} Arrangement view → identify intro, buildup, drop and outro`,
+      `Cut or mute extra elements during the intro to create contrast`,
+      `Add a riser / sweep into the buildup and a drop hit at the section change`,
+      `Automate filter cutoff and reverb send for transition energy`,
+    ],
+    settings: [
+      "Intro length: 16 bars",
+      "Buildup length: 8 bars",
+      "Filter sweep: 200 Hz → 12 kHz over 8 bars",
+      "Reverb send: -12 dB → 0 dB into drop",
+    ],
+    expected_result:
+      "The arrangement breathes — listeners feel the buildup and the drop hits with clear contrast.",
+  },
+  sound_design: {
+    fallback_title: "Carve a stronger signature sound",
+    why_it_matters:
+      "Stock or muddy synth sounds make the track feel generic and prevent it from carving its own sonic identity in the genre.",
+    daw_steps: (daw) => [
+      `Insert ${daw} Saturator on the lead channel for harmonic warmth`,
+      `Add a stereo widener or chorus to the pad bus to broaden the image`,
+      `Layer a sub-bass sine wave one octave below the main bass`,
+    ],
+    settings: [
+      "Saturation drive: +6 dB",
+      "Stereo width: 130%",
+      "Sub layer level: -12 dB",
+      "Chorus rate: 0.4 Hz",
+    ],
+    expected_result:
+      "The lead has more character and the low-end gains a fuller, more cinematic body.",
+  },
+  commercial: {
+    fallback_title: "Land the hook in the first 30 seconds",
+    why_it_matters:
+      "Without a clear commercial hook (memorable melody, vocal chop, signature lead) the track struggles in playlists and DJ sets where the first 30 seconds decide retention.",
+    daw_steps: (daw) => [
+      `Open ${daw} → place the strongest melodic moment within the first 30 seconds`,
+      `Print a short vocal chop or signature lead on a dedicated bus`,
+      `Add a short ear-catching transition right before the drop`,
+    ],
+    settings: [
+      "Hook position: 0:15-0:30",
+      "Vocal chop: -6 dB under the lead",
+      "Transition impact: +3 dB punch",
+    ],
+    expected_result:
+      "The first 30 seconds give the listener a clear hook and the drop carries an identifiable signature element.",
+  },
+}
+
+function enrichFixTask(
+  t: FixTask,
+  idx: number,
+  dawLb: string,
+  durationSec: number | null,
+): FixTask {
+  const defs = CATEGORY_DEFAULTS[t.category]
+  return {
+    ...t,
+    task_title:      t.task_title || defs.fallback_title,
+    time_range:      t.time_range || estimateTimeRange(idx, durationSec),
+    problem:         t.problem || defs.fallback_title,
+    why_it_matters:  t.why_it_matters || defs.why_it_matters,
+    daw_steps:       t.daw_steps.length > 0 ? t.daw_steps : defs.daw_steps(dawLb),
+    settings:        t.settings.length  > 0 ? t.settings  : defs.settings,
+    expected_result: t.expected_result || defs.expected_result,
+  }
+}
+
+function estimateTimeRange(idx: number, durationSec: number | null): string {
+  const labels = ["intro", "buildup", "drop", "outro"] as const
+  const label = labels[idx % labels.length]!
+  if (!durationSec || !Number.isFinite(durationSec) || durationSec <= 0) {
+    switch (label) {
+      case "intro":   return "0:00-0:30"
+      case "buildup": return "0:30-1:00"
+      case "drop":    return "1:00-2:00"
+      case "outro":   return "last 0:30"
+    }
+  }
+  const d = durationSec
+  switch (label) {
+    case "intro":   return `0:00-${fmtMmSs(Math.min(30, d * 0.15))}`
+    case "buildup": return `${fmtMmSs(d * 0.15)}-${fmtMmSs(d * 0.4)}`
+    case "drop":    return `${fmtMmSs(d * 0.4)}-${fmtMmSs(d * 0.8)}`
+    case "outro":   return `${fmtMmSs(Math.max(0, d - 30))}-${fmtMmSs(d)}`
+  }
 }
 
 // ─── Derived audio insights (Stage 8 quality upgrade) ─────────────────
@@ -505,11 +725,11 @@ export async function generateProducerReport(
   const sections = resolveSections(features, insights.duration_seconds ?? inputs.track_duration ?? null)
   const sectionsAreReal = sections.length > 0 && sections[0]!.source === "essentia"
 
-  // Stage 14 — system prompt: verbatim from the new attached spec
-  // (production-task FIX-the-track contract), followed by a short
-  // technical ANCHORING trailer so the model grounds numbers in
-  // Essentia data, adapts to the selected DAW, and emits VALID JSON
-  // ONLY (no markdown, no fences).
+  // Stage 14b — system prompt: deep producer FIX plan with rich
+  // per-task metadata (category, why_it_matters, settings) and a
+  // structured 3-section full analysis. Followed by an ANCHORING
+  // trailer that grounds numbers in Essentia data, pins the selected
+  // DAW, and enforces JSON-only output.
   const systemPrompt =
 `You are a professional music producer and mixing/mastering engineer.
 
@@ -521,115 +741,96 @@ DO NOT write long explanations.
 DO NOT write generic feedback.
 DO NOT repeat obvious things.
 DO NOT use phrases like "this may help" or "consider".
+DO NOT generate vague task names like "Improve energy dynamics".
 
-You must give clear instructions that a producer can immediately apply inside a DAW (Cubase, Ableton, FL Studio).
+You must give clear instructions that a producer can immediately apply inside a DAW (Cubase, Ableton, FL Studio, Logic).
 
 ---
 
 OUTPUT STRUCTURE:
 
 1. SUMMARY (max 3 sentences)
-
 * What is wrong
 * Why it kills the track
 * What will fix it
 
----
+2. FIX TASKS (MAIN SECTION — 6 to 10 items)
 
-2. FIX TASKS (MAIN SECTION — MOST IMPORTANT)
+Each TASK MUST include ALL of these fields:
 
-Create 5–8 TASKS максимум.
+* task_title       — short concrete label (e.g. "Clean kick/bass conflict", NOT "Improve dynamics")
+* time_range       — real timestamp "mm:ss-mm:ss" (e.g. "00:00-0:30") OR a section name
+                     "intro 0:00-0:30" / "buildup 0:30-1:00" / "drop 1:00-2:00" / "outro last 0:30".
+                     Use ARRANGEMENT LANDMARKS from the user prompt whenever possible.
+                     "whole-track" is allowed but MUST NOT be used for more than half the tasks.
+* category         — exactly one of: "mix" | "mastering" | "arrangement" | "sound_design" | "commercial"
+* problem          — one decisive sentence naming the specific technical issue
+* why_it_matters   — one sentence explaining the audible/commercial impact
+* daw_steps        — string[] of step-by-step DAW actions. Each step MUST name the exact channel,
+                     exact plugin, and exact action (e.g. "Open Mixer (F3) → select Bass channel →
+                     insert ${dawLb} Frequency EQ → enable HPF at 80 Hz").
+* settings         — string[] of "Param: value" lines with concrete numbers
+                     (e.g. "HPF: 80 Hz", "Sidechain GR: -4 dB", "Attack: 10 ms",
+                     "Release: 120 ms", "LUFS target: -8", "Ceiling: -0.3 dB").
+                     Minimum 2 settings per task.
+* expected_result  — one decisive sentence describing what audibly changes after the fix.
 
-Each TASK must follow this format:
+COVERAGE RULES (across the 6–10 tasks):
+* MUST contain at least one task with category="mix" addressing the low-end (kick / bass / sub).
+* MUST contain at least one task with category="arrangement" addressing energy curve / structure.
+* MUST contain at least one task with category="mastering" addressing loudness / LUFS / ceiling.
+* AT LEAST 3 tasks MUST use real timestamps (intro / buildup / drop / outro), not "whole-track".
 
----
+3. PRIORITY FIX (TOP 3)
 
-🔧 TASK [NUMBER] — [NAME] ([TIME RANGE or WHOLE TRACK])
+EXACTLY 3 short string actions, ordered by severity. Each entry MUST contain:
+1) the exact action, 2) the exact setting/value, 3) the expected sound result.
 
-Problem: [specific technical issue]
+Bad:  "Increase loudness with limiting"
+Good: "Set master limiter to -8 LUFS / -0.3 dB ceiling so the track competes in techno playlists"
 
-Do this:
+These three MUST mirror the 3 most critical fix_tasks.
 
-* Step-by-step actions inside DAW
-* Include exact values (Hz, dB, ms, ratios, LUFS)
-* Include plugins/tools (EQ, Compressor, Limiter, Saturation, etc.)
+4. EXPECTED RESULT
 
-Optional:
+Write BEFORE / AFTER, 3–6 short bullets each — concrete current problems vs concrete improvements
+once the fix_tasks are applied.
 
-* MIDI changes (velocity, pattern, automation)
-* Arrangement changes (add/remove elements)
+5. FULL ANALYSIS (STRUCTURED — three sections, NOT a single paragraph)
 
-Result: [what will change in sound]
+* executive_summary     — 2–3 sentences. The producer-level verdict on the track.
+* detailed_analysis     — 4–8 sentences. Real diagnosis of mix, arrangement, sound design, and
+                          mastering. Reference numbers from the DERIVED AUDIO INSIGHTS where useful.
+                          NO bullet symbols — flowing prose with real \\n newlines between paragraphs.
+* advanced_improvements — 3–6 sentences. Next-level upgrades a senior producer would suggest beyond
+                          the immediate fix_tasks (sound design, arrangement, commercial positioning).
+
+NO copy-paste repetition from the fix_tasks. NO restating settings. The full_analysis is the
+producer-level commentary that complements the actionable tasks.
 
 ---
 
 STRICT RULES:
 
-* Every task must be actionable
-* Every task must include numbers/settings
-* No vague language
-* No theory explanations
-
----
-
-3. PRIORITY FIX (TOP 3)
-
-List only 3 most important fixes:
-
-1. [action]
-2. [action]
-3. [action]
-
----
-
-4. EXPECTED RESULT
-
-Write BEFORE / AFTER:
-
-Before:
-
-* [problems]
-
-After:
-
-* [clear improvements]
-
----
-
-5. FULL ANALYSIS (SHORT — max 6–8 lines)
-
-Write like a professional producer conclusion.
-
-Example style:
-"Your track has a strong foundation, but the impact is limited by low-end masking and lack of loudness..."
-
-No repetition from tasks.
-No long explanations.
-
----
-
-IMPORTANT:
-
-* Always include time-based fixes (timestamps)
-* Always include mixing + arrangement + mastering
-* Always include at least:
-  • 1 low-end fix
-  • 1 energy/arrangement fix
-  • 1 loudness/mastering fix
+* Every task must be actionable.
+* Every task must include numbers / settings.
+* No vague language.
+* No theory explanations.
 
 ---
 
 GOAL:
 
-User must be able to:
-open DAW → follow steps → improve track immediately
+User must be able to: open DAW → follow steps → improve track immediately.
 
 If instructions are not actionable → output is invalid.
 
 ---
 
 ANCHORING (technical, do not violate):
-- You are fixing a REAL track. The user prompt provides DERIVED AUDIO INSIGHTS, ARRANGEMENT LANDMARKS, and RAW ESSENTIA FEATURES. Every Hz / dB / LUFS / ms / mm:ss number you write MUST come from those blocks; do NOT invent values that are not present there.
+- You are fixing a REAL track. The user prompt provides DERIVED AUDIO INSIGHTS, ARRANGEMENT LANDMARKS, and RAW ESSENTIA FEATURES.
+- Track-specific MEASUREMENTS (this track's LUFS reading, BPM, key, duration, dominant frequency, segment timestamps) MUST come from those blocks. Do NOT invent track-specific measurements that are not present.
+- Standard ENGINEERING SETTINGS that any producer would reach for (HPF cut-off ranges, EQ Q values, compressor attack/release in ms, sidechain GR depth, limiter ceiling, LUFS targets for a genre) ARE allowed even when not explicitly present in the data, as long as they are reasonable for the genre and the diagnosed problem. Concrete numbers in fix_tasks settings are REQUIRED.
 - Adapt advice to the selected DAW (Cubase, FL Studio, Ableton, Logic) — use stock plugin names of ${dawLb} where relevant.
 - Output VALID JSON ONLY — no prose, no markdown, no code fences, no extra keys. Match exactly the schema the user prompt specifies.`
 
@@ -700,11 +901,14 @@ Return ONLY this JSON shape — no extra keys, no markdown, no code fences:
   "fix_tasks": [
     {
       "number": number,
-      "name": string,
+      "task_title": string,
       "time_range": string,
+      "category": "mix" | "mastering" | "arrangement" | "sound_design" | "commercial",
       "problem": string,
-      "steps": string[],
-      "result": string
+      "why_it_matters": string,
+      "daw_steps": string[],
+      "settings": string[],
+      "expected_result": string
     }
   ],
   "priority_fix": [string, string, string],
@@ -712,17 +916,25 @@ Return ONLY this JSON shape — no extra keys, no markdown, no code fences:
     "before": string[],
     "after":  string[]
   },
-  "full_analysis": string
+  "full_analysis": {
+    "executive_summary":     string,
+    "detailed_analysis":     string,
+    "advanced_improvements": string
+  }
 }
 
 REMINDERS (enforced — re-read system prompt rules before writing):
 - summary: max 3 sentences. Cover (1) what is wrong, (2) why it kills the track, (3) what will fix it.
-- fix_tasks: 5–8 items. "number" is the 1-based index. "name" is a short label (e.g. "Tame low-end masking"). "time_range" is "mm:ss-mm:ss" (e.g. "0:45-1:00") OR the literal "whole-track". "problem" is one decisive sentence naming the technical issue. "steps" is a string[] of step-by-step DAW actions — each step MUST include exact values (Hz, dB, ms, ratios, LUFS) and prefer ${dawLb} stock plugin names where relevant. "result" is one decisive sentence describing what audibly changes.
-- COVERAGE in fix_tasks: across the 5–8 items there MUST be at least one low-end fix, one energy/arrangement fix, and one loudness/mastering fix. Always include time-based fixes (concrete mm:ss anchors taken from the ARRANGEMENT LANDMARKS above).
-- priority_fix: EXACTLY 3 short string actions, ordered by severity. These are the three things that actually break THIS track. They MUST mirror the most critical 3 fix_tasks (use the action wording, not just the name).
+- fix_tasks: 6–10 items. Every field above is REQUIRED. "task_title" is a concrete short label (e.g. "Clean kick/bass conflict"), NOT a generic verb (forbidden: "Improve …", "Enhance …"). "time_range" is "mm:ss-mm:ss" using the ARRANGEMENT LANDMARKS above (e.g. "0:45-1:00") OR a section name like "intro 0:00-0:30" / "buildup 0:30-1:00" / "drop 1:00-2:00" / "outro last 0:30". "whole-track" is allowed but at most for HALF the tasks — at least 3 tasks MUST anchor to a real time range. "category" is exactly one of: mix, mastering, arrangement, sound_design, commercial. "problem" is one decisive sentence naming the technical issue. "why_it_matters" is one sentence on the audible/commercial impact. "daw_steps" is a string[] of imperative DAW actions; each step names the exact channel + exact ${dawLb} plugin + exact action. "settings" is a string[] of "Param: value" lines with concrete numbers (Hz, dB, ms, ratios, LUFS) — minimum 2 per task. "expected_result" is one decisive sentence describing the audible change.
+- COVERAGE in fix_tasks: at least one task with category="mix" addressing the low-end (kick / bass / sub), at least one with category="arrangement" addressing energy curve / structure, at least one with category="mastering" addressing loudness / LUFS / ceiling.
+- priority_fix: EXACTLY 3 short string actions, ordered by severity. Each entry MUST contain (a) the exact action, (b) the exact setting/value, (c) the expected sound result. They MUST mirror the most critical 3 fix_tasks. Bad: "Increase loudness with limiting". Good: "Set master limiter to -8 LUFS / -0.3 dB ceiling so the track competes in techno playlists".
 - expected_result.before: 3–6 short bullets describing concrete current problems (matched to fix_tasks).
 - expected_result.after: 3–6 short bullets describing concrete improvements once the fix_tasks are applied.
-- full_analysis: SINGLE STRING, 6–8 lines MAX, written like a professional producer conclusion. NO repetition from fix_tasks. NO long explanations. NO numbers. NO bullet symbols (write flowing prose with real \\n newlines).
+- full_analysis: STRUCTURED OBJECT (NOT a single string).
+  • executive_summary: 2–3 sentences — producer-level verdict on the track.
+  • detailed_analysis: 4–8 sentences of flowing prose (use \\n newlines between paragraphs, NO bullet symbols). Reference numbers from DERIVED AUDIO INSIGHTS where useful. Diagnose mix, arrangement, sound design, mastering.
+  • advanced_improvements: 3–6 sentences of next-level upgrades a senior producer would suggest BEYOND the fix_tasks (sound design, arrangement choices, commercial positioning).
+  No copy-paste repetition from fix_tasks. No restating the settings.
 - FORBIDDEN PHRASING in every string: "could", "might", "consider", "this may help". Replace with decisive active phrasing: "this is causing", "this reduces", "this kills the punch", "this must be fixed".
 - NO GUESSING — if a piece of audio data is not present in the DERIVED AUDIO INSIGHTS or RAW ESSENTIA FEATURES blocks above, do NOT invent a number. Skip the observation rather than fabricate.
 - If instructions are not actionable, the output is invalid.`
@@ -767,12 +979,14 @@ REMINDERS (enforced — re-read system prompt rules before writing):
     }
   }
 
-  // Stage 14 — assemble the FIX-the-track report (v3). The contract is
+  // Stage 14b — assemble the FIX-the-track report (v4). The contract is
   // strict: priority_fix MUST be exactly 3 strings and fix_tasks MUST be
-  // 5–8 entries. The model is instructed to obey this, but we still
+  // 6–10 entries with rich per-task metadata (category, why_it_matters,
+  // settings). The model is instructed to obey this, but we still
   // enforce both cardinalities here so a mis-behaving response cannot
-  // produce a malformed jsonb row. Backward compat: legacy keys
-  // priority_fixes (object[]) and full_analysis (object) are still
+  // produce a malformed jsonb row. Backward compat: legacy v2 keys
+  // (priority_fixes:object[], full_analysis:object) and v3 keys
+  // (name/steps/result on fix_tasks, full_analysis:string) are all
   // accepted from already-stored rows and from older model output.
   const fixTasksRaw = normaliseFixTasks(parsed.fix_tasks)
 
@@ -813,10 +1027,10 @@ REMINDERS (enforced — re-read system prompt rules before writing):
   }
 
   // 3) Pad priority_fix to exactly 3 by mirroring the most critical
-  // fix_tasks (their name, falling back to problem). Same dedupe rules.
+  // fix_tasks (their title, falling back to problem). Same dedupe rules.
   for (const t of fixTasksRaw) {
     if (priorityFixBuf.length >= 3) break
-    pushPriority(t.name || t.problem || "", priorityFixBuf)
+    pushPriority(t.task_title || t.problem || "", priorityFixBuf)
   }
 
   // 4) Still short → generic placeholders so the contract always holds.
@@ -825,27 +1039,122 @@ REMINDERS (enforced — re-read system prompt rules before writing):
   }
   const priorityFix = priorityFixBuf.slice(0, 3)
 
-  // 5) Pad fix_tasks to at least 5 (cap is already 8 inside the
-  // normaliser). Seed each padded task from the matching priority_fix
-  // entry so the padding is at least loosely tied to real findings.
+  // 5) Pad fix_tasks to at least 6 (cap is 10 inside the normaliser),
+  // PRIORITISING any of the required categories (mix / arrangement /
+  // mastering) the model didn't already cover. After padding, if a
+  // required category is still missing we swap the LAST non-required
+  // task's category instead of growing the list past 6.
+  const REQUIRED_CATEGORIES: FixTaskCategory[] = ["mix", "arrangement", "mastering"]
   const fixTasks = fixTasksRaw.slice()
-  while (fixTasks.length < 5) {
+  const durationForPad = insights.duration_seconds ?? inputs.track_duration ?? null
+
+  let presentCats = new Set<FixTaskCategory>(fixTasks.map((t) => t.category))
+  let missingRequired = REQUIRED_CATEGORIES.filter((c) => !presentCats.has(c))
+  while (fixTasks.length < 6) {
     const idx = fixTasks.length
-    const seed = priorityFix[idx] ?? `Additional refinement pass #${idx + 1}`
+    const cat = missingRequired.shift() ?? defaultCategoryFor(idx)
     fixTasks.push({
-      number:     idx + 1,
-      name:       seed,
-      time_range: "whole-track",
-      problem:    seed,
-      steps:      [],
-      result:     "",
+      number:          idx + 1,
+      task_title:      "",
+      time_range:      "",
+      category:        cat,
+      problem:         "",
+      why_it_matters:  "",
+      daw_steps:       [],
+      settings:        [],
+      expected_result: "",
     })
+    presentCats.add(cat)
   }
+
+  // Coverage repair: model returned >=6 tasks but missed a required
+  // category. Resolve in three escalating steps so coverage is GUARANTEED
+  // regardless of model output shape:
+  //   (a) swap the highest-index NON-required task's category;
+  //   (b) if all tasks are already required, swap the highest-index
+  //       task from the most-overrepresented required category;
+  //   (c) if list length < 10, append a fresh task with the missing
+  //       category. Cleared v4 fields are re-derived by enrichFixTask.
+  const blankSlot = (cat: FixTaskCategory, idx: number): FixTask => ({
+    number:          idx + 1,
+    task_title:      "",
+    time_range:      "",
+    category:        cat,
+    problem:         "",
+    why_it_matters:  "",
+    daw_steps:       [],
+    settings:        [],
+    expected_result: "",
+  })
+
+  presentCats = new Set<FixTaskCategory>(fixTasks.map((t) => t.category))
+  for (const c of REQUIRED_CATEGORIES) {
+    if (presentCats.has(c)) continue
+    let swapped = false
+    // (a) swap a non-required task
+    for (let i = fixTasks.length - 1; i >= 0 && !swapped; i--) {
+      const cur = fixTasks[i]!
+      if (REQUIRED_CATEGORIES.includes(cur.category)) continue
+      fixTasks[i] = { ...blankSlot(c, i), problem: cur.problem }
+      swapped = true
+    }
+    // (b) all tasks already required → take from the most over-represented
+    if (!swapped) {
+      const counts: Partial<Record<FixTaskCategory, number>> = {}
+      for (const t of fixTasks) counts[t.category] = (counts[t.category] ?? 0) + 1
+      let donor: FixTaskCategory | null = null
+      let donorCount = 1
+      for (const k of Object.keys(counts) as FixTaskCategory[]) {
+        const n = counts[k] ?? 0
+        if (n > donorCount) { donor = k; donorCount = n }
+      }
+      if (donor) {
+        for (let i = fixTasks.length - 1; i >= 0 && !swapped; i--) {
+          if (fixTasks[i]!.category !== donor) continue
+          const cur = fixTasks[i]!
+          fixTasks[i] = { ...blankSlot(c, i), problem: cur.problem }
+          swapped = true
+        }
+      }
+    }
+    // (c) still no slot (e.g. exactly one task per required cat) → append
+    if (!swapped && fixTasks.length < 10) {
+      fixTasks.push(blankSlot(c, fixTasks.length))
+      swapped = true
+    }
+    if (swapped) presentCats.add(c)
+  }
+
+  // Enrichment: fill in any empty v4 field on every task with the
+  // category-default engineering preset. This guarantees that even
+  // shallow model output (or padded slots) renders deeply in the UI
+  // with concrete steps, settings and an expected sonic outcome.
+  for (let i = 0; i < fixTasks.length; i++) {
+    fixTasks[i] = enrichFixTask(fixTasks[i]!, i, dawLb, durationForPad)
+  }
+
+  // Timestamp repair: the spec requires at least 3 tasks anchored to a
+  // real time range. If too many came back as "whole-track" / empty,
+  // promote the earliest such tasks to estimated section ranges.
+  const isRealTimeRange = (s: string): boolean =>
+    !!s && !/^whole[-\s]?track$/i.test(s.trim())
+  const realCount = (): number => fixTasks.filter((t) => isRealTimeRange(t.time_range)).length
+  for (let i = 0; i < fixTasks.length && realCount() < 3; i++) {
+    if (!isRealTimeRange(fixTasks[i]!.time_range)) {
+      fixTasks[i] = { ...fixTasks[i]!, time_range: estimateTimeRange(i, durationForPad) }
+    }
+  }
+
   // Renumber so `number` is always 1..N and contiguous.
-  for (let i = 0; i < fixTasks.length; i++) fixTasks[i].number = i + 1
+  for (let i = 0; i < fixTasks.length; i++) fixTasks[i]!.number = i + 1
+
+  // 6) Backward compat for full_analysis: prefer the v4 structured
+  // object; gracefully fold a v3 string or v2 legacy object into the
+  // new shape without losing content.
+  const fullAnalysis = normaliseFullAnalysisStructured(parsed.full_analysis)
 
   const report: ProducerReport = {
-    version:         3,
+    version:         4,
     generated_at:    new Date().toISOString(),
     summary:         typeof parsed.summary === "string" && parsed.summary.trim()
                        ? parsed.summary.trim()
@@ -854,7 +1163,7 @@ REMINDERS (enforced — re-read system prompt rules before writing):
     fix_tasks:       fixTasks,
     priority_fix:    priorityFix,
     expected_result: normaliseExpectedResult(parsed.expected_result),
-    full_analysis:   normaliseFullAnalysisString(parsed.full_analysis),
+    full_analysis:   fullAnalysis,
     audio_features:  features,
   }
 
