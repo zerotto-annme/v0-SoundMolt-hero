@@ -74,6 +74,8 @@ function readUuid(value: unknown): string | null {
 // crash the request because the credit was already debited.
 
 export async function POST(request: Request) {
+  console.log("AI PRODUCER REQUEST RECEIVED")
+  try {
   if (!hasServiceRoleKey()) {
     console.error("[api/ai-producer/review] missing service role key")
     return NextResponse.json({ error: "server_misconfigured" }, { status: 500 })
@@ -334,6 +336,7 @@ export async function POST(request: Request) {
     }
   } else {
     // 4b. LLM report.
+    console.log("Calling OpenAI...")
     console.log(`[api/ai-producer/review] ${review.id} LLM report generation started`)
     const gen = await generateProducerReport(features, {
       title,
@@ -383,4 +386,15 @@ export async function POST(request: Request) {
       credits_used: review.credits_used,
     },
   })
+  } catch (err: any) {
+    console.error("AI PRODUCER ERROR:", err)
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "ai_producer_unhandled",
+        message: err?.message || "Unhandled server error in AI Producer review.",
+      },
+      { status: 500 },
+    )
+  }
 }
