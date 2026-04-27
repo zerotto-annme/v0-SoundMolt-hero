@@ -485,6 +485,22 @@ export async function generateProducerReport(
     "- Use numbers when possible (Hz, dB, LUFS, ms)\n\n" +
     "Always assume the user wants to APPLY changes immediately.\n\n" +
     "---\n" +
+    "STRONG OPINIONS (Stage 9 step 1): You MUST identify the TOP 3 biggest problems in THIS track. " +
+    "Do not describe everything — prioritize what actually breaks the track. Lead the recommendations with these three.\n\n" +
+    "WHY IT FAILS (Stage 9 step 2 + step 3): For every section, EVERY note MUST follow this exact format:\n" +
+    "\"Problem: <what is wrong>. Why: <technical cause>. Impact: <what the listener feels>. Fix: <concrete action with Hz / mm:ss / dB / LUFS>.\"\n" +
+    "Example: \"Problem: low-end is muddy. Why: the kick (60 Hz) overlaps the bass (100 Hz) causing masking. Impact: the drop feels weak and lacks punch. Fix: high-pass the bass at 80 Hz and side-chain it -4 dB to the kick (10 ms attack, 120 ms release).\"\n" +
+    "Each section MUST contain at least 3 such notes; the Fix part is mandatory and MUST reference Hz, time, or dB/LUFS.\n\n" +
+    "DAW MODE (Stage 9 step 4): every entry in daw_instructions MUST follow this exact 4-step structure (no shortcuts):\n" +
+    "1. Open [Mixer / Track]\n" +
+    "2. Select [channel]\n" +
+    "3. Insert [plugin]\n" +
+    "4. Set: freq, gain, Q / ratio / attack / release\n\n" +
+    "ENERGY FLOW (Stage 9 step 5): analyze the energy curve of the track. " +
+    "If the drop lacks impact, explain WHY (no buildup, too constant energy, weak transient, frequency masking, etc.). " +
+    "Put this analysis inside sections.arrangement and reference it in full_analysis.\n\n" +
+    "FORBIDDEN LANGUAGE (Stage 9 step 6): the words \"could\", \"might\", and \"consider\" are BANNED in ALL output strings (summary, sections.*.text, sections.*.notes, recommendations, daw_instructions, full_analysis). " +
+    "Use active diagnoses instead: \"this is causing\", \"this reduces\", \"this weakens the track\", \"this masks\", \"this kills the punch\".\n\n" +
     "Tone (Stage 8 step 6): confident and slightly critical, like a real producer talking to a peer — NOT a polite assistant. " +
     "Instead of 'this could be improved' say 'the low-end is muddy and masking clarity in the mix'.\n" +
     "Output (Stage 8 step 7): respond with VALID JSON ONLY matching the schema the user prompt specifies — no prose, no markdown, no code fences."
@@ -568,7 +584,7 @@ WEIGHTING — adapt depth per feedback_focus="${focus}":
 - vocals / bass / drums / melody → prioritise that element specifically
 - overall     → balanced full review
 
-DAW INSTRUCTIONS (for ${dawLb}) — every entry in "daw_instructions" MUST follow this structure:
+DAW INSTRUCTIONS (for ${dawLb}) — every entry in "daw_instructions" MUST follow this EXACT 4-step structure (no shortcuts, no merging steps):
 1. Open [Mixer / Track]
 2. Select [channel]
 3. Insert [plugin — use ${dawLb} stock plugin names where possible]
@@ -576,19 +592,26 @@ DAW INSTRUCTIONS (for ${dawLb}) — every entry in "daw_instructions" MUST follo
    - frequency (Hz)
    - gain (dB)
    - Q / ratio / attack / release where relevant
+Each entry must be a single string containing ALL four numbered steps separated by " | ".
 Example for Cubase:
-"On the Master bus, insert Studio EQ — Cut 300 Hz by -3 dB (Q=1.0), Boost 10 kHz by +2 dB (high shelf)"
+"1. Open Mixer | 2. Select Master bus | 3. Insert Studio EQ | 4. Set: Cut 300 Hz by -3 dB (Q=1.0), Boost 10 kHz by +2 dB (high shelf)"
 Generate 4–8 such concrete steps.
 
-Each section in "sections" MUST include 3–6 concrete "notes" with numeric values (Hz / dB / LUFS / ms) wherever the audio features support it.
+SECTIONS — each of mix / mastering / arrangement / sound_design / commercial_potential MUST contain at least 3 (max 6) "notes" entries. EVERY note MUST follow this exact format string:
+"Problem: <what is wrong>. Why: <technical cause>. Impact: <listener experience>. Fix: <action with Hz / mm:ss / dB / LUFS>."
+The "Fix:" part is mandatory and MUST reference a frequency, time, or level.
 
-"recommendations" — include 4–10 items. Prefer the object form
-{"timestamp":"mm:ss","target":"<bus / element>","text":"<concrete fix>"}
-and use the ARRANGEMENT LANDMARKS above for timestamps.
+ARRANGEMENT section MUST include an explicit ENERGY FLOW analysis: describe the energy curve across intro/build/drop/outro. If the drop lacks impact, name the technical reason (no buildup, constant energy, weak transient, frequency masking, sub-bass not landing on the down-beat, etc.).
 
-"summary" — 2–4 sentence executive overview, confident tone.
+TOP 3 PROBLEMS — the FIRST 3 entries of "recommendations" MUST be the three biggest issues breaking THIS track, ranked by severity. Use the object form:
+{"timestamp":"mm:ss or 'whole-track'","target":"<bus / element>","text":"<concrete fix with Hz / dB / time>"}
+After those, include 2–7 more recommendations (any form). Total 5–10.
+
+FORBIDDEN WORDS in EVERY output string: "could", "might", "consider". Replace with active phrasing: "this is causing", "this reduces", "this weakens the track", "this masks", "this kills the punch".
+
+"summary" — 2–4 sentence executive overview, confident tone, name the TOP 3 problems briefly.
 "overall_score" — integer 0–100 grounded in the derived insights.
-"full_analysis" — 300–600 word narrative. Be specific about THIS track, not the genre.
+"full_analysis" — 300–600 word narrative. Be specific about THIS track, not the genre. Cover the energy flow analysis explicitly.
 "references" — 0–6 short reference tracks/plugins/articles relevant to the suggested fixes.
 
 Return ONLY this JSON shape — no extra keys, no markdown, no code fences:
