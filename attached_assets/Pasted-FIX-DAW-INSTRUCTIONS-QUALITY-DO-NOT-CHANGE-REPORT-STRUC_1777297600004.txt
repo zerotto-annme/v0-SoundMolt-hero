@@ -1,0 +1,109 @@
+FIX DAW INSTRUCTIONS QUALITY — DO NOT CHANGE REPORT STRUCTURE OR UI
+
+Current DAW Instructions are too generic. They look like a report, not a step-by-step DAW guide.
+
+Keep the same report structure:
+Summary
+Overall Score
+Mix Balance
+Mastering
+Arrangement
+Sound Design
+Commercial Potential
+Timestamped Recommendations
+DAW Instructions
+Full Analysis
+
+Only improve generation logic for DAW Instructions.
+
+DAW Instructions must depend on selected DAW Used.
+If DAW Used = Cubase, instructions must be Cubase-specific.
+Do not write generic "Mixer → insert plugin" only.
+
+For every DAW task, output a full click-by-click guide:
+
+CHANNEL:
+GO TO:
+CLICK:
+SELECT:
+INSERT:
+SET:
+AUTOMATE:
+CHECK:
+RESULT:
+
+Example for Cubase:
+
+CHANNEL: Master Bus
+
+GO TO:
+1. Press F3 to open MixConsole.
+2. Find the Stereo Out / Master Bus channel.
+3. Open the Inserts rack on the left side of the channel strip.
+
+CLICK:
+1. Click empty Insert Slot 1.
+2. Choose Dynamics → Limiter.
+
+SET:
+Ceiling: -1.0 dB
+Release: 50 ms
+Target loudness: -14 to -16 LUFS for Lo-Fi / -8 to -9 LUFS for Techno / -9 to -10 LUFS for House / -8 to -10 LUFS for Trap / -16 to -18 LUFS for Ambient.
+
+CHECK:
+Play the loudest part of the track.
+Make sure the master does not clip.
+Make sure the track keeps the correct genre character.
+
+RESULT:
+The track becomes louder and more controlled without destroying the genre feel.
+
+Rules:
+1. Every DAW instruction must mention the selected DAW by name.
+2. For Cubase, use Cubase terms:
+- MixConsole
+- F3
+- Stereo Out
+- Inserts rack
+- Channel Settings
+- Frequency EQ
+- Compressor
+- Limiter
+- Sends
+- Automation lane
+- Project window
+3. Do not invent vague plugins. Use stock/generic Cubase tools.
+4. Each instruction must tell the user exactly where to go and what to click.
+5. Include at least 5 DAW instruction tasks.
+6. Every task must connect to one recommendation from the report.
+7. DAW Instructions must not be a summary. It must be a practical execution guide.
+
+Examples of bad output:
+CHANNEL: Master
+WHERE: Mixer
+INSERT: Limiter
+SET: Output -15 LUFS
+
+Examples of good output:
+CHANNEL: Master Bus / Stereo Out
+GO TO:
+1. Press F3 to open Cubase MixConsole.
+2. Locate the Stereo Out channel.
+3. Open the Inserts rack.
+
+CLICK:
+1. Click Insert Slot 1.
+2. Select Dynamics → Limiter.
+
+SET:
+Ceiling: -1.0 dB
+Release: 50 ms
+Adjust input/gain until integrated loudness reaches -15 LUFS.
+
+CHECK:
+Listen to the loudest chorus/drop. If it distorts, reduce input gain by 1–2 dB.
+
+RESULT:
+The track becomes louder while keeping Lo-Fi warmth.
+
+Apply the same logic for Ableton, FL Studio, Logic Pro if those DAWs are selected, using their own DAW-specific paths and names.

@@ -214,6 +214,114 @@ function dawLabelFor(id: string | null): string {
   return DAW_LABELS[id] ?? id
 }
 
+function dawExampleFor(id: string | null): string {
+  switch (id) {
+    case "cubase":
+      return "\"CHANNEL: Master Bus / Stereo Out\\nGO TO:\\n1. Press F3 to open the Cubase MixConsole.\\n2. Locate the Stereo Out channel on the right.\\n3. Open the Inserts rack on the left side of the channel strip.\\nCLICK:\\n1. Click empty Insert Slot 1.\\n2. Choose Dynamics → Limiter (Cubase stock).\\nSET:\\n  Output (Ceiling): -1.0 dB\\n  Release: 50 ms (range: 30–80 ms)\\n  Input gain: increase until integrated loudness reaches the genre target from GENRE BRAIN above\\nCHECK:\\n1. Play the loudest chorus or drop section.\\n2. Confirm the master meter never crosses 0 dBFS.\\n3. A/B against the unprocessed mix to confirm the genre character is preserved.\\nRESULT: the track sits at the correct competitive loudness for its genre while peaks are controlled and the original mix character stays intact.\""
+    case "ableton":
+      return "\"CHANNEL: Master track\\nGO TO:\\n1. Press Tab in Ableton Live to switch to Session view.\\n2. Click the Master track (right-most channel in the Mixer section).\\n3. Open the Device chain at the bottom of the screen.\\nCLICK:\\n1. Open the Browser (Cmd/Ctrl+Alt+B) and go to Audio Effects → Dynamics → Limiter.\\n2. Drag the Limiter onto the Master track's Device chain.\\nSET:\\n  Ceiling: -1.0 dB\\n  Release: 50 ms (range: 30–80 ms)\\n  Gain: increase until integrated loudness reaches the genre target from GENRE BRAIN above\\nCHECK:\\n1. Play the loudest chorus or drop section.\\n2. Confirm the Master meter never lights red.\\n3. A/B against the bypassed Limiter to confirm the genre character is preserved.\\nRESULT: the track sits at the correct competitive loudness for its genre while peaks are controlled and the original mix character stays intact.\""
+    case "fl_studio":
+      return "\"CHANNEL: Master insert track\\nGO TO:\\n1. Press F9 in FL Studio to open the Mixer.\\n2. Select the Master insert track (slot at the far left of the Mixer).\\n3. Look at the Effect slots panel on the right-hand side.\\nCLICK:\\n1. Click empty Effect slot 1.\\n2. Choose Fruity Limiter from the plugin list.\\nSET:\\n  Ceiling: -1.0 dB\\n  Release: 50 ms (range: 30–80 ms)\\n  Gain: increase until integrated loudness reaches the genre target from GENRE BRAIN above\\nCHECK:\\n1. Play the loudest chorus or drop section.\\n2. Confirm the Master meter never crosses 0 dBFS.\\n3. A/B with the Fruity Limiter bypassed (LED on the slot) to confirm the genre character is preserved.\\nRESULT: the track sits at the correct competitive loudness for its genre while peaks are controlled and the original mix character stays intact.\""
+    case "logic":
+      return "\"CHANNEL: Stereo Out\\nGO TO:\\n1. Press X in Logic Pro to open the Mixer.\\n2. Locate the Stereo Out channel strip (right side of the Mixer).\\n3. Find the Audio FX section of the channel strip.\\nCLICK:\\n1. Click an empty Audio FX slot.\\n2. Choose Dynamics → Adaptive Limiter (Logic stock).\\nSET:\\n  Output Ceiling: -1.0 dB\\n  Release: 50 ms (range: 30–80 ms)\\n  Input gain: increase until integrated loudness reaches the genre target from GENRE BRAIN above\\nCHECK:\\n1. Play the loudest chorus or drop section.\\n2. Confirm the Stereo Out meter never crosses 0 dBFS.\\n3. A/B against the bypassed Adaptive Limiter to confirm the genre character is preserved.\\nRESULT: the track sits at the correct competitive loudness for its genre while peaks are controlled and the original mix character stays intact.\""
+    default:
+      return "\"CHANNEL: Master / stereo output channel\\nGO TO:\\n1. Open the main mixer / channel-strip view of the DAW.\\n2. Select the master / stereo output channel.\\n3. Open the insert / audio-effect slots on that channel.\\nCLICK:\\n1. Click an empty insert slot.\\n2. Choose a stock brickwall limiter.\\nSET:\\n  Ceiling: -1.0 dB\\n  Release: 50 ms (range: 30–80 ms)\\n  Input gain: increase until integrated loudness reaches the genre target from GENRE BRAIN above\\nCHECK:\\n1. Play the loudest chorus or drop section.\\n2. Confirm the master meter never crosses 0 dBFS.\\n3. A/B against the bypassed limiter to confirm the genre character is preserved.\\nRESULT: the track sits at the correct competitive loudness for its genre while peaks are controlled and the original mix character stays intact.\""
+  }
+}
+
+function dawVocabFor(id: string | null): string {
+  switch (id) {
+    case "cubase":
+      return [
+        "MIXER WINDOW: \"MixConsole\" (open with F3)",
+        "MASTER BUS NAME: \"Stereo Out\"",
+        "INSERT SLOTS: \"Inserts rack\" on the channel strip (left side)",
+        "OPEN CHANNEL SETTINGS: press \"e\" on the selected channel",
+        "STOCK EQ: \"Frequency\" / \"Frequency 2\" / \"StudioEQ\"",
+        "STOCK COMPRESSOR: \"Compressor\" (also \"VintageCompressor\", \"TubeCompressor\")",
+        "STOCK MULTIBAND: \"MultibandCompressor\"",
+        "STOCK LIMITER: \"Limiter\" / \"Maximizer\" / \"Brickwall Limiter\"",
+        "STOCK SATURATION: \"Magneto II\" / \"DaTube\"",
+        "STOCK REVERB: \"REVerence\" / \"RoomWorks\"",
+        "STOCK DELAY: \"PingPongDelay\" / \"MonoDelay\"",
+        "STOCK STEREO TOOL: \"StereoEnhancer\"",
+        "SENDS: \"Sends\" rack on the channel strip → route to an FX channel",
+        "AUTOMATION: \"Automation lane\" under the track in the Project window (R = read, W = write)",
+        "ARRANGEMENT VIEW: \"Project window\"",
+        "USE THESE EXACT TERMS in every GO TO / CLICK step",
+      ].join("\n")
+    case "ableton":
+      return [
+        "MIXER VIEW: Mixer section of Session view (Tab to switch views)",
+        "MASTER BUS NAME: \"Master\" track (right-most channel in Session view)",
+        "INSERT POINT: drag a device from the Browser into the Device chain at the bottom of the selected track",
+        "STOCK EQ: \"EQ Eight\" (or \"EQ Three\" for DJ-style cuts)",
+        "STOCK COMPRESSOR: \"Compressor\"",
+        "STOCK GLUE: \"Glue Compressor\"",
+        "STOCK MULTIBAND: \"Multiband Dynamics\"",
+        "STOCK LIMITER: \"Limiter\"",
+        "STOCK SATURATION: \"Saturator\" / \"Drum Buss\"",
+        "STOCK REVERB: \"Reverb\" / \"Hybrid Reverb\"",
+        "STOCK DELAY: \"Delay\" / \"Echo\"",
+        "STOCK STEREO TOOL: \"Utility\" (Width parameter)",
+        "SENDS: A/B/C return tracks (View → Returns) — turn the Send knob on the source track",
+        "AUTOMATION: \"Automation envelope\" (toggle with A in Arrangement view)",
+        "ARRANGEMENT VIEWS: \"Session view\" / \"Arrangement view\" (Tab to swap)",
+        "USE THESE EXACT TERMS in every GO TO / CLICK step",
+      ].join("\n")
+    case "fl_studio":
+      return [
+        "MIXER WINDOW: \"Mixer\" (open with F9)",
+        "MASTER BUS NAME: \"Master\" insert track (slot at the far left of the Mixer)",
+        "INSERT SLOTS: \"Effect slots\" on the right-hand panel of the selected mixer track (slots 1–10)",
+        "STOCK EQ: \"Fruity Parametric EQ 2\"",
+        "STOCK COMPRESSOR: \"Fruity Compressor\" / \"Fruity Multiband Compressor\"",
+        "STOCK LIMITER: \"Fruity Limiter\" (also handles compression, sat, and limiting)",
+        "STOCK SATURATION: \"Fruity Soft Clipper\" / \"Fruity Waveshaper\" / \"Fruity Fast Dist\"",
+        "STOCK REVERB: \"Fruity Reeverb 2\" / \"Fruity Convolver\"",
+        "STOCK DELAY: \"Fruity Delay 3\"",
+        "STOCK STEREO TOOL: \"Fruity Stereo Shaper\"",
+        "SENDS: route the source mixer track to another via the small arrow at the bottom of the destination channel",
+        "AUTOMATION: \"Automation clip\" (right-click any knob → \"Create automation clip\"), shown in the Playlist",
+        "MAIN VIEWS: \"Channel rack\" (F6) / \"Playlist\" (F5) / \"Mixer\" (F9)",
+        "USE THESE EXACT TERMS in every GO TO / CLICK step",
+      ].join("\n")
+    case "logic":
+      return [
+        "MIXER WINDOW: \"Mixer\" (open with X)",
+        "MASTER BUS NAME: \"Stereo Out\" channel strip (right side of the Mixer)",
+        "INSERT SLOTS: \"Audio FX\" plugin slots on the channel strip",
+        "STOCK EQ: \"Channel EQ\" (or \"Linear Phase EQ\" for mastering)",
+        "STOCK COMPRESSOR: \"Compressor\" (modes: Platinum / VCA / FET / Studio FET / Classic VCA / Vintage VCA / Vintage FET / Vintage Opto)",
+        "STOCK MULTIBAND: \"Multipressor\"",
+        "STOCK LIMITER: \"Limiter\" / \"Adaptive Limiter\"",
+        "STOCK SATURATION: \"Phat FX\" / \"Overdrive\" / \"Tape\" plugin",
+        "STOCK REVERB: \"ChromaVerb\" / \"Space Designer\"",
+        "STOCK DELAY: \"Stereo Delay\" / \"Tape Delay\"",
+        "STOCK STEREO TOOL: \"Stereo Spread\" / \"Direction Mixer\"",
+        "SENDS: \"Sends\" slot on the channel strip → select a Bus number",
+        "AUTOMATION: \"Automation lane\" (toggle with A in the Tracks area)",
+        "ARRANGEMENT VIEW: \"Tracks area\" (main timeline)",
+        "USE THESE EXACT TERMS in every GO TO / CLICK step",
+      ].join("\n")
+    default:
+      return [
+        "MIXER WINDOW: the main mixer / channel-strip view of the DAW",
+        "MASTER BUS NAME: the master / stereo output channel",
+        "INSERT SLOTS: the insert / audio-effect plugin slots on the channel strip",
+        "STOCK EQ: a generic stock parametric EQ",
+        "STOCK COMPRESSOR: a generic stock compressor",
+        "STOCK LIMITER: a generic stock brickwall limiter",
+        "STOCK SATURATION: a generic stock saturation / tape plugin",
+        "STOCK REVERB: a generic stock reverb",
+        "STOCK DELAY: a generic stock delay",
+        "SENDS: send / bus routing on the channel strip",
+        "AUTOMATION: automation lane on the track in the arrangement view",
+        "Use generic but precise channel-strip / mixer language since the DAW is unknown.",
+      ].join("\n")
+  }
+}
+
 function clamp01_100(n: unknown, fallback: number): number {
   if (typeof n !== "number" || !Number.isFinite(n)) return fallback
   return Math.max(0, Math.min(100, Math.round(n)))
@@ -634,12 +742,14 @@ export async function generateProducerReport(
     "  notes[0] MUST start with the literal prefix \"MAIN ISSUE — \" followed by the 5-part format string (the single biggest issue of THIS section).\n" +
     "  notes[1] (OPTIONAL, max one) MUST start with the literal prefix \"ADDITIONAL ISSUE — \" followed by the 5-part format string (the next most important issue of THIS section).\n" +
     "All other diagnoses, deeper polish ideas, and extra observations DO NOT belong in section.notes — keep them out. The full_analysis block is intentionally short (Strength / Main weakness / Fix / Result) and is NOT the place to dump every observation either; pick only what raises the track most.\n\n" +
-    "DAW MODE (FINAL-QUALITY-UPGRADE) — VISUAL multi-line format, NO \" | \" separators. Every entry in daw_instructions MUST be a SINGLE STRING containing ACTUAL newline characters (\\n), and MUST contain ALL SEVEN of these labelled sections in this EXACT order on their own lines: CHANNEL, WHERE, INSERT, SET, WHY, RESULT, CHECK.\n" +
-    "Required template (every \\n is a real newline character in the JSON string):\n" +
-    "CHANNEL: <element / bus>\\nWHERE: <which window / view of the DAW to open and how to find it>\\nINSERT: <plugin — prefer DAW stock plugin>\\nSET:\\n  <param>: <exact value> (range: <safe range>)\\n  <param>: <exact value> (range: <safe range>)\\n  <param>: <exact value>\\nWHY: <one decisive sentence: what concrete problem in THIS track this fixes, with Hz / dB / ms / LUFS reference>\\nRESULT: <one decisive sentence: what the listener will hear after applying it>\\nCHECK: <one short sentence: what to listen for to confirm the fix worked (e.g. \"listen for reduced muddiness without losing body\")>\n" +
-    "Concrete example (literal \"\\n\" represents real newline characters in the JSON string):\n" +
-    "\"CHANNEL: Bass\\nWHERE: Mixer (F3) → Bass channel insert slot 1\\nINSERT: ParametricEQ (DAW stock)\\nSET:\\n  Frequency: 450 Hz\\n  Gain: -3 dB (range: -2 to -4 dB)\\n  Q: 1.5 (medium bell)\\nWHY: 400–500 Hz buildup is masking the kick body and making the low-mids sound boxy\\nRESULT: cleaner low-mids, kick body cuts through, bass stays warm but stops crowding the mix\\nCHECK: listen for reduced muddiness without losing body — the kick should feel more present immediately\"\n" +
-    "RULES: SET MUST end with a colon and each (param: value) pair MUST be on its own indented line. Add a (range: …) note next to any param where a safe musical range exists (EQ gain, comp ratio, comp threshold, drive amount, mix %, etc.). WHY, RESULT and CHECK MUST be present in EVERY entry — do NOT skip them. NO \" | \" separators, NO inlining, NO Step 1 / Step 2 numbering.\n\n" +
+    "DAW MODE (CLICK-BY-CLICK GUIDE) — daw_instructions is NOT a summary of the report; it is a PRACTICAL EXECUTION GUIDE the user can follow click-by-click inside the SELECTED DAW. Every entry in daw_instructions MUST be a SINGLE STRING containing ACTUAL newline characters (\\n) and MUST be written using the EXACT terminology of the SELECTED DAW (provided in the user prompt as the DAW VOCABULARY block). NEVER write generic \"Mixer → insert plugin\" — name the actual window, the actual shortcut key, the actual stock plugin name of the selected DAW.\n" +
+    "Each entry MUST contain these SIX MANDATORY labelled blocks in this EXACT order on their own lines: CHANNEL, GO TO, CLICK, SET, CHECK, RESULT. SELECT, INSERT and AUTOMATE are OPTIONAL and may be added between CLICK and SET (or between SET and CHECK for AUTOMATE) ONLY when they make the instruction more actionable.\n" +
+    "Required template (every \\n is a real newline character in the JSON string; use the SELECTED DAW's vocabulary in every step):\n" +
+    "CHANNEL: <element / bus name in the selected DAW's terminology>\\nGO TO:\\n1. <numbered navigation step naming the actual DAW window / shortcut>\\n2. <step>\\n3. <step>\\nCLICK:\\n1. <click action: insert slot N, right-click, drag from browser, etc.>\\n2. <choose plugin from the menu — name an ACTUAL stock plugin of the selected DAW>\\nSET:\\n  <param>: <exact value> (range: <safe musical range>)\\n  <param>: <exact value> (range: <safe musical range>)\\n  <param>: <exact value>\\nCHECK:\\n1. <listening test step>\\n2. <step>\\nRESULT: <one decisive sentence — what the listener will hear after applying it>\n" +
+    "Optional blocks (use only when they add real value): SELECT (what audio range / clip / region to select first), INSERT (a separate plugin-name line if it was not already named under CLICK), AUTOMATE (what parameter to automate, when in the timeline, and by how much).\n" +
+    `Concrete example for ${dawLb} (literal "\\n" represents real newline characters in the JSON string; use it as a STYLE / FORMAT reference, NOT as content to copy verbatim):\n` +
+    `${dawExampleFor(dawId)}\n` +
+    "RULES (HARD): (1) Every entry MUST mention the SELECTED DAW by name AT LEAST ONCE in either GO TO or CLICK. (2) GO TO and CLICK MUST be NUMBERED LISTS (1. 2. 3.). (3) SET MUST end with a colon and each (param: value) pair MUST be on its own indented line; add a (range: …) note next to any param where a safe musical range exists. (4) NO generic placeholders like \"the mixer\" or \"insert a limiter\" — use the DAW vocabulary from the user prompt verbatim. (5) Do NOT invent plugins; pick from the SELECTED DAW's stock plugin list given in the DAW VOCABULARY block, or say \"a generic <type>\" if the DAW is unknown. (6) Each entry MUST be tied to a specific recommendation from the report — do NOT add generic mastering homework that is unrelated to THIS track. (7) NO \" | \" separators, NO single-line inlining.\n\n" +
     "ENERGY FLOW — analyze the energy curve of the track. " +
     "If the drop lacks impact, explain WHY (no buildup, too constant energy, weak transient, frequency masking, etc.). " +
     "This analysis lives EXCLUSIVELY inside sections.arrangement. Do NOT also place it in full_analysis (full_analysis is the short Strength / Main weakness / Fix / Result checklist — keep it tight).\n\n" +
@@ -748,12 +858,25 @@ WEIGHTING — adapt depth per feedback_focus="${focus}":
 - vocals / bass / drums / melody → prioritise that element specifically
 - overall     → balanced full review
 
-DAW INSTRUCTIONS (for ${dawLb}) — VISUAL multi-line format. Every entry in "daw_instructions" MUST be a SINGLE STRING containing real newline characters (\\n in the JSON), AND MUST contain ALL SEVEN of these labelled sections, in this EXACT order, each on its own line: CHANNEL, WHERE, INSERT, SET, WHY, RESULT, CHECK.
+DAW VOCABULARY — these are the EXACT terms you MUST use when writing daw_instructions for ${dawLb}. Do NOT use generic words like "the mixer" or "insert plugin"; use the names below verbatim:
+${dawVocabFor(dawId)}
+
+DAW INSTRUCTIONS (for ${dawLb}) — CLICK-BY-CLICK execution guide, NOT a summary of the report. Every entry in "daw_instructions" MUST be a SINGLE STRING containing real newline characters (\\n in the JSON). The user will follow each entry step-by-step inside ${dawLb}, so each entry MUST be written in ${dawLb}'s OWN terminology (use the DAW VOCABULARY block above verbatim — window names, shortcut keys, stock plugin names, master bus name, insert/effect-slot terminology).
+Each entry MUST contain these SIX MANDATORY labelled blocks in this EXACT order on their own lines: CHANNEL, GO TO, CLICK, SET, CHECK, RESULT. SELECT, INSERT and AUTOMATE are OPTIONAL and may be inserted between CLICK and SET (or AUTOMATE between SET and CHECK) ONLY when they make the instruction more actionable for THIS track.
 Required template:
-CHANNEL: <element / bus>\\nWHERE: <which window / view inside ${dawLb} and how to open it (shortcut, menu path)>\\nINSERT: <plugin — prefer ${dawLb} stock plugin>\\nSET:\\n  <param>: <exact value> (range: <safe musical range>)\\n  <param>: <exact value> (range: <safe musical range>)\\n  <param>: <exact value>\\nWHY: <one decisive sentence: what problem in THIS track this fixes, with Hz / dB / ms / LUFS reference>\\nRESULT: <one decisive sentence: what the listener will hear after applying it>\\nCHECK: <one short sentence: what to listen for to confirm the fix worked (e.g. "listen for reduced muddiness without losing body")>
-Concrete example for ${dawLb}:
-"CHANNEL: Bass\\nWHERE: Mixer (F3) → Bass channel insert slot 1\\nINSERT: ParametricEQ (${dawLb} stock)\\nSET:\\n  Frequency: 450 Hz\\n  Gain: -3 dB (range: -2 to -4 dB)\\n  Q: 1.5 (medium bell)\\nWHY: 400–500 Hz buildup is masking the kick body and making the low-mids sound boxy\\nRESULT: cleaner low-mids, kick body cuts through, bass stays warm but stops crowding the mix\\nCHECK: listen for reduced muddiness without losing body — the kick should feel more present immediately"
-NO " | " separators, NO inlining, NO Step 1 / Step 2 numbering. SET MUST end with a colon and each (param: value) pair MUST be on its own indented line. Add a (range: …) note next to any param where a safe musical range exists (EQ gain, comp ratio, comp threshold, drive, mix %, attack/release, etc.). WHY, RESULT and CHECK MUST be present in EVERY entry. Generate 4–8 such entries, each one targeting a different channel/element of THIS track.
+CHANNEL: <element / bus name in ${dawLb}'s terminology>\\nGO TO:\\n1. <numbered navigation step naming the actual ${dawLb} window / shortcut from DAW VOCABULARY>\\n2. <step>\\n3. <step>\\nCLICK:\\n1. <click action — insert slot N, drag from browser, right-click, etc.>\\n2. <choose plugin from the menu — name an ACTUAL ${dawLb} stock plugin from DAW VOCABULARY>\\nSET:\\n  <param>: <exact value> (range: <safe musical range>)\\n  <param>: <exact value> (range: <safe musical range>)\\n  <param>: <exact value>\\nCHECK:\\n1. <listening test step>\\n2. <step>\\nRESULT: <one decisive sentence — what the listener will hear after applying it>
+Optional blocks (use only when they add real value): SELECT (audio range / clip / region to select first), INSERT (separate plugin-name line if not already named under CLICK), AUTOMATE (parameter to automate, when in the timeline, by how much).
+Concrete example for ${dawLb} — use it as a STYLE / FORMAT reference, NOT as content to copy verbatim (literal "\\n" represents real newline characters):
+${dawExampleFor(dawId)}
+HARD RULES:
+1. Every entry MUST mention ${dawLb} BY NAME at least once in either GO TO or CLICK (e.g. "open the ${dawLb} mixer", "drag the ${dawLb} stock EQ from the Browser").
+2. GO TO and CLICK MUST be NUMBERED LISTS using the format "1. ", "2. ", "3. " on their own lines.
+3. SET MUST end with a colon, each (param: value) pair on its own indented line, with a (range: …) annotation when a safe musical range exists.
+4. Use ONLY the SELECTED DAW's stock plugin names and window/shortcut names from DAW VOCABULARY above — NEVER invent plugin names, NEVER recommend third-party plugins, NEVER mix terminology from other DAWs (e.g. if ${dawLb} is NOT Cubase, you are FORBIDDEN from writing MixConsole / F3 / Inserts rack / Stereo Out unless those exact terms also appear in the DAW VOCABULARY block above).
+5. NEVER write generic phrases like "the mixer", "insert a plugin", "use a limiter" — name the actual ${dawLb} window, shortcut, slot type, and plugin name from DAW VOCABULARY.
+6. Every entry MUST be tied to a specific recommendation from THIS report (mix / mastering / arrangement / sound_design / commercial_potential / timestamped recommendations) — do NOT include generic mastering homework that is unrelated to THIS track.
+7. NO " | " separators, NO single-line inlining, NO duplicate entries.
+Generate AT LEAST 5 (and up to 8) such entries, each targeting a different channel/element of THIS track and a different recommendation from the report.
 
 SECTIONS — PRIORITY LAYER (Stage 12). Each of mix / mastering / arrangement / sound_design / commercial_potential MUST contain 1 (preferred) or 2 (max) "notes" entries — the most critical issues of that section ONLY. EVERY note MUST follow this exact 5-part format string:
 "Problem: <what is wrong>. Why: <technical cause>. Impact: <listener experience>. Fix: <action with Hz / mm:ss / dB / LUFS>. Result: <what will improve audibly>."
