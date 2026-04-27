@@ -1,0 +1,165 @@
+TASK: Upgrade AI Producer Review output to PROFESSIONAL, ACTIONABLE DAW-GUIDED REPORT.
+
+STRICT RULES:
+
+1. NO DUPLICATION
+- NEVER repeat the same idea twice
+- REMOVE all summary-like repeated lines (e.g. “MAIN ISSUE — ...” after RESULT)
+- Each section must contain ONLY structured explanation (MAIN ISSUE / WHY / IMPACT / FIX / RESULT)
+
+---
+
+2. EACH FIX MUST MAP TO DAW INSTRUCTIONS
+
+Every FIX written in analysis MUST:
+→ have a corresponding DAW INSTRUCTION block
+→ and MUST include:
+
+"FIXING: <problem name>"
+
+Example:
+FIXING: muddy low-end caused by kick/bass overlap
+
+---
+
+3. DAW INSTRUCTIONS MUST BE REAL EXECUTION FLOWS
+
+Each instruction must allow a beginner to complete the fix WITHOUT THINKING.
+
+MANDATORY STRUCTURE:
+
+[STEP ID]
+
+FIXING: <clear problem being solved>
+
+CHANNEL: <exact channel>
+
+GO TO:
+(step-by-step navigation with hotkeys)
+
+FIND:
+(how to locate track/plugin)
+
+CLICK:
+(exact clicks, UI path)
+
+SET:
+(actual parameter values with ranges)
+
+CHECK:
+(OBJECTIVE RESULT — NOT "listen carefully")
+
+IF NOT AVAILABLE:
+(stock-only fallback, same DAW only)
+
+RESULT:
+(what exactly improves in sound)
+
+---
+
+4. CHECK MUST BE OBJECTIVE (CRITICAL)
+
+❌ FORBIDDEN:
+- “listen for warmth”
+- “check clarity”
+
+✅ REQUIRED:
+- “kick is clearly louder than bass on each hit”
+- “no energy conflict in 60–100 Hz range”
+- “LUFS meter shows -14 to -16 integrated”
+
+---
+
+5. SIDECHAIN MUST BE FULLY IMPLEMENTED (CRITICAL)
+
+If sidechain is mentioned:
+
+You MUST include FULL routing steps:
+
+ADD:
+
+SIDECHAIN SETUP:
+
+1. Insert Compressor on Bass channel
+2. Activate Sidechain button inside compressor
+3. Go to Kick channel → Sends
+4. Add send to Bass compressor sidechain input
+5. Set send level to 0 dB
+6. Return to compressor and confirm signal is triggering gain reduction
+
+Then continue with SET parameters.
+
+---
+
+6. NO GENERIC ADVICE
+
+❌ FORBIDDEN:
+- “add saturation”
+- “improve dynamics”
+
+✅ REQUIRED:
+- exact plugin
+- exact knob values
+- exact placement (insert slot, bus, etc.)
+
+---
+
+7. EVERY FIX MUST PRODUCE A CLEAR RESULT
+
+RESULT must describe:
+
+- what changes in sound
+- what problem disappears
+
+Example:
+
+✔ “kick becomes clearly audible above bass”
+✔ “high-end loses harsh digital edge”
+
+---
+
+8. DAW-SPECIFIC LANGUAGE ONLY
+
+Use ONLY real Cubase terminology:
+
+✔ MixConsole (F3)
+✔ Inserts
+✔ Frequency
+✔ Compressor
+✔ Stereo Out
+
+❌ DO NOT invent names
+❌ DO NOT use generic DAW wording
+
+---
+
+9. REMOVE FAKE OR UNUSED INSTRUCTIONS
+
+If a fix is NOT critical → DO NOT generate DAW instruction for it.
+
+Only include:
+→ HIGH IMPACT fixes
+
+---
+
+10. PRIORITY ORDER
+
+Always generate instructions in this order:
+
+1. LOW-END FIX (kick/bass)
+2. LOUDNESS / MASTERING
+3. HARSHNESS / HIGH-END
+4. ARRANGEMENT (if needed)
+5. SOUND DESIGN (only if impactful)
+
+---
+
+FINAL GOAL:
+
+The report must feel like:
+
+✔ a professional mixing engineer guiding step-by-step  
+✔ not analysis  
+✔ but ACTIONABLE transformation plan  
+
+If user follows ALL steps → track MUST sound noticeably better.
