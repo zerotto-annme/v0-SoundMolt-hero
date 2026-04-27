@@ -633,31 +633,26 @@ export async function generateProducerReport(
     "PRIORITY LAYER (Stage 12 step 2): each section.notes MUST contain 1 (preferred) or 2 (max) entries — the MOST critical issues of that section only. Both Fix and Result remain mandatory; Fix MUST reference Hz, time, or dB/LUFS.\n" +
     "  notes[0] MUST start with the literal prefix \"MAIN ISSUE — \" followed by the 5-part format string (the single biggest issue of THIS section).\n" +
     "  notes[1] (OPTIONAL, max one) MUST start with the literal prefix \"ADDITIONAL ISSUE — \" followed by the 5-part format string (the next most important issue of THIS section).\n" +
-    "All other diagnoses, deeper polish ideas, optional improvements, and extra observations for the WHOLE report — DO NOT delete them — RELOCATE them into the ADVANCED IMPROVEMENTS block at the tail of full_analysis (see FULL_ANALYSIS STRUCTURE below). Do not duplicate an item in both a section.notes entry AND the ADVANCED IMPROVEMENTS list.\n\n" +
-    "DAW MODE (Stage 9 step 4 + Stage 10 step 4 + Stage 11 step 4 + REPORT-QUALITY-UPGRADE) — VISUAL multi-line format, NO \" | \" separators. Every entry in daw_instructions MUST be a SINGLE STRING containing ACTUAL newline characters (\\n), and MUST contain ALL SIX of these labelled sections in this EXACT order on their own lines: CHANNEL, WHERE, INSERT, SET, WHY, RESULT.\n" +
+    "All other diagnoses, deeper polish ideas, and extra observations DO NOT belong in section.notes — keep them out. The full_analysis block is intentionally short (Strength / Main weakness / Fix / Result) and is NOT the place to dump every observation either; pick only what raises the track most.\n\n" +
+    "DAW MODE (FINAL-QUALITY-UPGRADE) — VISUAL multi-line format, NO \" | \" separators. Every entry in daw_instructions MUST be a SINGLE STRING containing ACTUAL newline characters (\\n), and MUST contain ALL SEVEN of these labelled sections in this EXACT order on their own lines: CHANNEL, WHERE, INSERT, SET, WHY, RESULT, CHECK.\n" +
     "Required template (every \\n is a real newline character in the JSON string):\n" +
-    "CHANNEL: <element / bus>\\nWHERE: <which window / view of the DAW to open and how to find it>\\nINSERT: <plugin — prefer DAW stock plugin>\\nSET:\\n  <param>: <value>\\n  <param>: <value>\\n  <param>: <value>\\nWHY: <one decisive sentence: what concrete problem in THIS track this fixes, with Hz / dB / ms / LUFS reference when possible>\\nRESULT: <one decisive sentence: what the listener will hear after applying it>\n" +
+    "CHANNEL: <element / bus>\\nWHERE: <which window / view of the DAW to open and how to find it>\\nINSERT: <plugin — prefer DAW stock plugin>\\nSET:\\n  <param>: <exact value> (range: <safe range>)\\n  <param>: <exact value> (range: <safe range>)\\n  <param>: <exact value>\\nWHY: <one decisive sentence: what concrete problem in THIS track this fixes, with Hz / dB / ms / LUFS reference>\\nRESULT: <one decisive sentence: what the listener will hear after applying it>\\nCHECK: <one short sentence: what to listen for to confirm the fix worked (e.g. \"listen for reduced muddiness without losing body\")>\n" +
     "Concrete example (literal \"\\n\" represents real newline characters in the JSON string):\n" +
-    "\"CHANNEL: Kick\\nWHERE: Mixer (F3) → Kick channel insert slot 1\\nINSERT: Compressor (DAW stock)\\nSET:\\n  Attack: 10 ms\\n  Release: 120 ms\\n  Ratio: 4:1\\n  Threshold: -12 dB\\nWHY: the kick transient is buried by the bass at 60–100 Hz, killing club punch\\nRESULT: tighter, punchier kick that cuts through the low-end and drives the groove\"\n" +
-    "RULES: SET MUST end with a colon and each (param: value) pair MUST be on its own indented line. WHY and RESULT MUST be present in EVERY entry — do NOT skip them. NO \" | \" separators, NO inlining, NO Step 1 / Step 2 numbering.\n\n" +
-    "ENERGY FLOW (Stage 9 step 5): analyze the energy curve of the track. " +
+    "\"CHANNEL: Bass\\nWHERE: Mixer (F3) → Bass channel insert slot 1\\nINSERT: ParametricEQ (DAW stock)\\nSET:\\n  Frequency: 450 Hz\\n  Gain: -3 dB (range: -2 to -4 dB)\\n  Q: 1.5 (medium bell)\\nWHY: 400–500 Hz buildup is masking the kick body and making the low-mids sound boxy\\nRESULT: cleaner low-mids, kick body cuts through, bass stays warm but stops crowding the mix\\nCHECK: listen for reduced muddiness without losing body — the kick should feel more present immediately\"\n" +
+    "RULES: SET MUST end with a colon and each (param: value) pair MUST be on its own indented line. Add a (range: …) note next to any param where a safe musical range exists (EQ gain, comp ratio, comp threshold, drive amount, mix %, etc.). WHY, RESULT and CHECK MUST be present in EVERY entry — do NOT skip them. NO \" | \" separators, NO inlining, NO Step 1 / Step 2 numbering.\n\n" +
+    "ENERGY FLOW — analyze the energy curve of the track. " +
     "If the drop lacks impact, explain WHY (no buildup, too constant energy, weak transient, frequency masking, etc.). " +
-    "Put this analysis inside sections.arrangement and reference it in full_analysis.\n\n" +
-    "FORBIDDEN LANGUAGE (Stage 9 step 6 + Stage 10 step 3): the words \"could\", \"might\", and \"consider\" are BANNED in ALL output strings (summary, sections.*.text, sections.*.notes, recommendations, daw_instructions, full_analysis). " +
+    "This analysis lives EXCLUSIVELY inside sections.arrangement. Do NOT also place it in full_analysis (full_analysis is the short Strength / Main weakness / Fix / Result checklist — keep it tight).\n\n" +
+    "FORBIDDEN LANGUAGE (FINAL-QUALITY-UPGRADE) — the words \"could\", \"might\", \"consider\", \"try\", \"subtle\", \"slight\", and \"maybe\" are BANNED in ALL output strings (summary, sections.*.text, sections.*.notes, recommendations, daw_instructions, full_analysis). " +
+    "Replace any vague hedging with a CONCRETE NUMERIC INSTRUCTION. Examples: instead of \"add subtle saturation\" → \"add tape saturation: drive 2–3 dB, mix 20–30%\". Instead of \"slight EQ cut around the low-mids\" → \"cut -3 dB at 450 Hz with Q 1.5\". Instead of \"maybe boost the highs a bit\" → \"+2 dB high shelf at 10 kHz\". " +
     "Use decisive, active diagnoses: \"this is causing\", \"this reduces\", \"this weakens the track\", \"this masks\", \"this kills the punch\", \"this must be fixed\".\n\n" +
     "MAIN DIAGNOSIS (Stage 10 step 1 + Stage 11 step 1) — VERDICT TONE. The summary field MUST start with the literal token \"MAIN ISSUE: \" followed by EXACTLY 2 short sentences:\n" +
     "  Sentence 1: a verdict that names the single core problem and the audible consequence (example: \"Your track loses impact because the low-end collapses into mud.\").\n" +
     "  Sentence 2: WHY the track feels weak — the technical cause behind that verdict (example: \"The kick and bass are masking each other, killing punch and clarity.\").\n" +
-    "ONLY ONE main issue is allowed. NO third sentence. NO IF-YOU-FIX list inside summary anymore (the FIX-3 list now lives at the TOP of full_analysis — see FULL_ANALYSIS STRUCTURE below).\n\n" +
-    "FULL_ANALYSIS STRUCTURE (Stage 11 step 2 + step 3 + Stage 12 step 3 + step 4) — full_analysis is a SINGLE STRING using real newline characters (\\n) and MUST follow this exact order:\n" +
-    "Block A — TOP visual block (Stage 12 step 3):\n" +
-    "=== FIX THESE 3 THINGS FIRST ===\\n1. <biggest concrete fix with Hz / dB / ms / LUFS>\\n2. <second concrete fix>\\n3. <third concrete fix>\n" +
-    "Then a blank line, then Block B:\n" +
-    "=== EXPECTED BEFORE / AFTER ===\\nBefore:\\n- <symptom 1>\\n- <symptom 2>\\nAfter:\\n- <improvement 1>\\n- <improvement 2>\\n- <improvement 3>\n" +
-    "Then a blank line, then Block C — the 300–600 word narrative (Stage 8) with explicit energy-flow analysis (Stage 9), specific to THIS track.\n" +
-    "Then a blank line, then Block D — ADVANCED IMPROVEMENTS (Stage 12 step 4). Format EXACTLY:\n" +
-    "=== ADVANCED IMPROVEMENTS ===\\n- <deeper / optional fix 1, still with Hz / dB / ms / LUFS anchors when possible>\\n- <deeper fix 2>\\n- <deeper fix 3>\\n- ... (5–15 items total)\n" +
-    "This block is the home for ALL extra polish ideas, optional refinements, deeper observations, additional production tips, mixing nuance, mastering options, arrangement variations, sound-design experiments, commercial/marketing notes, and anything else that did NOT fit into the two-issue cap of section.notes (Stage 12 step 1: KEEP ALL INSIGHTS — do NOT delete content; relocate it here). Each item MUST stay decisive, action-oriented, and specific.\n\n" +
+    "ONLY ONE main issue is allowed. NO third sentence.\n\n" +
+    "FULL_ANALYSIS STRUCTURE (FINAL-QUALITY-UPGRADE) — full_analysis is a SHORT, ACTION-ORIENTED SINGLE STRING using real newline characters (\\n). NO long storytelling, NO multi-paragraph essay. Read like a checklist a producer can act on in 60 seconds. MUST follow this EXACT shape (no === banners, no extra blocks, exactly four labelled sections, in order):\n" +
+    "Strength: <ONE short paragraph (max ~60 words) — what is genuinely working in THIS track right now and why it lands>\\n\\nMain weakness: <ONE decisive sentence — the single biggest problem with the technical reason behind it, with Hz / dB / mm:ss / LUFS anchors when possible>\\n\\nFix:\\n- <concrete action 1 with explicit numeric anchors>\\n- <concrete action 2>\\n- <concrete action 3>\\n  (3 to 5 bullets total — each one immediately applicable)\\n\\nResult:\\n- <audible improvement 1>\\n- <audible improvement 2>\\n- <audible improvement 3>\\n  (3 to 4 bullets total — what the listener will hear after the fixes)\n" +
+    "RULES: NO long narrative paragraphs, NO === banners, NO ADVANCED IMPROVEMENTS list, NO BEFORE/AFTER block, NO 300-word essay. The whole full_analysis MUST stay under ~250 words. Every bullet under \"Fix:\" MUST contain at least one numeric anchor (Hz, dB, ms, LUFS, %, mm:ss). The output MUST feel like \"follow these steps → your track improves\", NOT \"here is an analysis\".\n\n" +
     "WHY THIS MATTERS (Stage 11 step 5) — every section.text (mix, mastering, arrangement, sound_design, commercial_potential) MUST end with two newlines followed by the literal line \"Why this matters: <one short sentence about how this section's issues affect what the listener feels>\". Single line, no extra paragraphs.\n\n" +
     "ANTI-REPETITION (Stage 11 step 6) — each concrete diagnosed problem may appear in ONLY ONE place across the whole report. Pick the most relevant home (summary OR mix OR mastering OR arrangement OR sound_design OR commercial_potential) and keep the strongest, most actionable wording there. Do NOT restate the same issue verbatim in summary, mix, AND mastering — pick the strongest version, mention the issue only once, and let other sections reference different aspects.\n\n" +
     "NO GUESSING (Stage 10 step 6): if a piece of audio data is not present in the DERIVED AUDIO INSIGHTS or RAW ESSENTIA FEATURES blocks, do NOT invent it. " +
@@ -748,12 +743,12 @@ WEIGHTING — adapt depth per feedback_focus="${focus}":
 - vocals / bass / drums / melody → prioritise that element specifically
 - overall     → balanced full review
 
-DAW INSTRUCTIONS (for ${dawLb}) — VISUAL multi-line format. Every entry in "daw_instructions" MUST be a SINGLE STRING containing real newline characters (\\n in the JSON), AND MUST contain ALL SIX of these labelled sections, in this EXACT order, each on its own line: CHANNEL, WHERE, INSERT, SET, WHY, RESULT.
+DAW INSTRUCTIONS (for ${dawLb}) — VISUAL multi-line format. Every entry in "daw_instructions" MUST be a SINGLE STRING containing real newline characters (\\n in the JSON), AND MUST contain ALL SEVEN of these labelled sections, in this EXACT order, each on its own line: CHANNEL, WHERE, INSERT, SET, WHY, RESULT, CHECK.
 Required template:
-CHANNEL: <element / bus>\\nWHERE: <which window / view inside ${dawLb} and how to open it (shortcut, menu path)>\\nINSERT: <plugin — prefer ${dawLb} stock plugin>\\nSET:\\n  <param>: <value>\\n  <param>: <value>\\n  <param>: <value>\\nWHY: <one decisive sentence: what problem in THIS track this fixes, with Hz / dB / ms / LUFS reference when possible>\\nRESULT: <one decisive sentence: what the listener will hear after applying it>
+CHANNEL: <element / bus>\\nWHERE: <which window / view inside ${dawLb} and how to open it (shortcut, menu path)>\\nINSERT: <plugin — prefer ${dawLb} stock plugin>\\nSET:\\n  <param>: <exact value> (range: <safe musical range>)\\n  <param>: <exact value> (range: <safe musical range>)\\n  <param>: <exact value>\\nWHY: <one decisive sentence: what problem in THIS track this fixes, with Hz / dB / ms / LUFS reference>\\nRESULT: <one decisive sentence: what the listener will hear after applying it>\\nCHECK: <one short sentence: what to listen for to confirm the fix worked (e.g. "listen for reduced muddiness without losing body")>
 Concrete example for ${dawLb}:
-"CHANNEL: Kick\\nWHERE: Mixer (F3) → Kick channel insert slot 1\\nINSERT: Compressor (${dawLb} stock)\\nSET:\\n  Attack: 10 ms\\n  Release: 120 ms\\n  Ratio: 4:1\\n  Threshold: -12 dB\\nWHY: the kick transient is buried by the bass at 60–100 Hz, killing club punch\\nRESULT: tighter, punchier kick that cuts through the low-end and drives the groove"
-NO " | " separators, NO inlining, NO Step 1 / Step 2 numbering. SET MUST end with a colon and each (param: value) pair MUST be on its own indented line. WHY and RESULT MUST be present in EVERY entry. Generate 4–8 such entries, each one targeting a different channel/element of THIS track.
+"CHANNEL: Bass\\nWHERE: Mixer (F3) → Bass channel insert slot 1\\nINSERT: ParametricEQ (${dawLb} stock)\\nSET:\\n  Frequency: 450 Hz\\n  Gain: -3 dB (range: -2 to -4 dB)\\n  Q: 1.5 (medium bell)\\nWHY: 400–500 Hz buildup is masking the kick body and making the low-mids sound boxy\\nRESULT: cleaner low-mids, kick body cuts through, bass stays warm but stops crowding the mix\\nCHECK: listen for reduced muddiness without losing body — the kick should feel more present immediately"
+NO " | " separators, NO inlining, NO Step 1 / Step 2 numbering. SET MUST end with a colon and each (param: value) pair MUST be on its own indented line. Add a (range: …) note next to any param where a safe musical range exists (EQ gain, comp ratio, comp threshold, drive, mix %, attack/release, etc.). WHY, RESULT and CHECK MUST be present in EVERY entry. Generate 4–8 such entries, each one targeting a different channel/element of THIS track.
 
 SECTIONS — PRIORITY LAYER (Stage 12). Each of mix / mastering / arrangement / sound_design / commercial_potential MUST contain 1 (preferred) or 2 (max) "notes" entries — the most critical issues of that section ONLY. EVERY note MUST follow this exact 5-part format string:
 "Problem: <what is wrong>. Why: <technical cause>. Impact: <listener experience>. Fix: <action with Hz / mm:ss / dB / LUFS>. Result: <what will improve audibly>."
@@ -770,7 +765,7 @@ Each section.notes[] MUST be ordered as:
   notes[0] = "MAIN ISSUE — <5-part format string>" (the SINGLE biggest issue of THIS section, MANDATORY).
   notes[1] = "ADDITIONAL ISSUE — <5-part format string>" (the next most important issue of THIS section, OPTIONAL — max ONE).
 
-Every other diagnosis, deeper polish idea, optional improvement, or extra observation for the WHOLE report — DO NOT delete it — RELOCATE it into the ADVANCED IMPROVEMENTS block at the tail of full_analysis (described below). Do not duplicate the same item in both a section.notes entry AND the ADVANCED IMPROVEMENTS list.
+All other diagnoses, deeper polish ideas, and extra observations DO NOT belong in section.notes — keep them out. The full_analysis block is intentionally short (Strength / Main weakness / Fix / Result) and is NOT the place to dump every observation; pick only what will raise the track most.
 
 EVERY section.text (mix, mastering, arrangement, sound_design, commercial_potential) MUST end with two newlines (\\n\\n) followed by the literal line "Why this matters: <one short sentence about how this section's issues affect what the listener feels>". Single line, no extra paragraphs after it.
 
@@ -778,44 +773,46 @@ ANTI-REPETITION — each concrete diagnosed problem may appear in ONLY ONE place
 
 ARRANGEMENT section MUST include an explicit ENERGY FLOW analysis: describe the energy curve across intro/build/drop/outro. If the drop lacks impact, name the technical reason (no buildup, constant energy, weak transient, frequency masking, sub-bass not landing on the down-beat, etc.).
 
-TIMESTAMPED RECOMMENDATIONS (REPORT-QUALITY-UPGRADE) — EVERY entry of "recommendations" (not just the first 3) MUST use the object form:
-{"timestamp":"<mm:ss anchor from ARRANGEMENT LANDMARKS, or the literal string \\"whole-track\\">","target":"<bus / element / arrangement zone>","text":"<concrete, surgical, action-oriented fix with explicit Hz / dB / ms / LUFS / mm:ss anchors>"}
-The renderer turns this into the visual line "[<timestamp>] <target>: <text>". Examples of the EXACT level of specificity required:
-  {"timestamp":"0:45","target":"buildup","text":"add snare roll + riser automation that ramps from -18 dB to -6 dB across the last 4 bars"}
-  {"timestamp":"whole-track","target":"bass","text":"high-pass at 80 Hz, sidechain to kick -4 dB with 10 ms attack and 120 ms release"}
-  {"timestamp":"2:00","target":"drop","text":"increase kick transient +2 dB using a transient shaper, and notch -3 dB at 200 Hz on the bass to free space"}
-The FIRST 3 entries MUST be the three biggest issues breaking THIS track, ranked by severity. Then include 2–7 more, all in the same object form. Total 5–10. Do NOT use plain strings — every entry MUST be an object with timestamp + target + text. Vague targets like "the mix" or "everything" are FORBIDDEN; pick the actual element (kick, sub, vocal, hi-hats, pad, snare, FX bus, master, etc.).
+TIMESTAMPED RECOMMENDATIONS (FINAL-QUALITY-UPGRADE) — EVERY entry of "recommendations" (not just the first 3) MUST use the object form and MUST be TECHNICAL, not descriptive:
+{"timestamp":"<mm:ss anchor from ARRANGEMENT LANDMARKS, or the literal string \\"whole-track\\">","target":"<bus / element / arrangement zone>","text":"<surgical, action-oriented fix written as a chain of CONCRETE numeric instructions>"}
+The renderer turns this into the visual line "[<timestamp>] <target>: <text>". Examples of the EXACT level of technical specificity required:
+  BAD:  {"timestamp":"whole-track","target":"master","text":"add subtle saturation"}
+  GOOD: {"timestamp":"whole-track","target":"master","text":"add tape saturation: drive 2–3 dB, mix 20–30%, bias toward odd harmonics"}
+  GOOD: {"timestamp":"0:45","target":"buildup","text":"add snare roll + riser automation that ramps from -18 dB to -6 dB across the last 4 bars"}
+  GOOD: {"timestamp":"whole-track","target":"bass","text":"high-pass at 80 Hz (12 dB/oct), sidechain to kick -4 dB with 10 ms attack and 120 ms release"}
+  GOOD: {"timestamp":"2:00","target":"drop","text":"transient-shape kick +2 dB attack, notch bass -3 dB at 200 Hz with Q 2.0 to free space"}
+The FIRST 3 entries MUST be the three biggest issues breaking THIS track, ranked by severity. Then include 2–7 more, all in the same object form. Total 5–10. Do NOT use plain strings — every entry MUST be an object with timestamp + target + text. Vague targets like "the mix" or "everything" are FORBIDDEN; pick the actual element (kick, sub, vocal, hi-hats, pad, snare, FX bus, master, etc.). Every "text" MUST contain at least one numeric anchor (Hz, dB, ms, LUFS, %, ratio, mm:ss).
 
-FORBIDDEN WORDS in EVERY output string: "could", "might", "consider". Replace with decisive active phrasing: "this is causing", "this reduces", "this weakens the track", "this masks", "this kills the punch", "this must be fixed".
+FORBIDDEN WORDS in EVERY output string (summary, sections.*.text, sections.*.notes, recommendations, daw_instructions, full_analysis): "could", "might", "consider", "try", "subtle", "slight", "maybe". Replace any vague hedging with a CONCRETE NUMERIC INSTRUCTION (Hz, dB, ms, LUFS, %, mm:ss). Bad: "add subtle saturation". Good: "add tape saturation: drive 2–3 dB, mix 20–30%". Bad: "slight EQ cut in the low-mids". Good: "cut -3 dB at 450 Hz with Q 1.5". Use decisive, active phrasing: "this is causing", "this reduces", "this weakens the track", "this masks", "this kills the punch", "this must be fixed".
 
 NO GUESSING — if a piece of audio data is not present in the DERIVED AUDIO INSIGHTS or RAW ESSENTIA FEATURES blocks above, do NOT invent a number. Skip that observation rather than fabricate.
 
 "summary" — VERDICT TONE. MUST start with the literal token "MAIN ISSUE: " followed by EXACTLY 2 short sentences:
   Sentence 1 = verdict naming the single core problem and the audible consequence (e.g. "Your track loses impact because the low-end collapses into mud.").
   Sentence 2 = WHY the track feels weak — the technical cause behind that verdict (e.g. "The kick and bass are masking each other, killing punch and clarity.").
-Only ONE main issue. NO third sentence. NO "IF YOU FIX ONLY 3 THINGS" list inside summary — that list now lives at the TOP of full_analysis (see below).
+Only ONE main issue. NO third sentence. NO bullet list inside summary.
 
 "overall_score" — integer 0–100 grounded in the derived insights.
 
-"full_analysis" — single string with real newline characters (\\n). MUST follow this EXACT block order (A → B → C → D), with one blank line between blocks:
+"full_analysis" — SHORT, ACTION-ORIENTED single string with real newline characters (\\n). NO long storytelling, NO multi-paragraph essay. Total length under ~250 words. MUST follow this EXACT shape (four labelled sections, in order; NO === banners, NO ADVANCED IMPROVEMENTS list, NO BEFORE/AFTER list):
 
-Block A (TOP — Stage 12 step 3):
-=== FIX THESE 3 THINGS FIRST ===\\n1. <biggest concrete fix with Hz / dB / ms / LUFS>\\n2. <second concrete fix>\\n3. <third concrete fix>
+Strength: <ONE short paragraph (max ~60 words) — what is genuinely working in THIS track right now and why it lands>
 
-Block B:
-=== EXPECTED BEFORE / AFTER ===\\nBefore:\\n- <symptom 1>\\n- <symptom 2>\\nAfter:\\n- <improvement 1>\\n- <improvement 2>\\n- <improvement 3>
+Main weakness: <ONE decisive sentence — the single biggest problem with the technical reason behind it, with Hz / dB / mm:ss / LUFS anchors when possible>
 
-Block C — HUMAN PRODUCER CONCLUSION (REPORT-QUALITY-UPGRADE):
-The 300–600 word narrative specific to THIS track (not the genre). Write it like a senior producer giving a verdict to the artist after listening once. The narrative MUST explicitly cover, in this order, ALL FOUR of these things (in flowing prose, no labels, but every one MUST be present and easy to find):
-  1. STRONG SIDE — what is genuinely working in THIS track right now (the production element, idea, sound choice, or arrangement move that already lands).
-  2. MAIN WEAKNESS — the single biggest thing dragging the track down, with the technical reason behind it (Hz / dB / mm:ss / LUFS anchors when the data supports it).
-  3. 3–5 CONCRETE ACTIONS the artist must take to improve the track (each one specific enough to apply immediately, with frequency / time / level anchors). These actions MUST be consistent with — and may directly reference — the items in Block A "FIX THESE 3 THINGS FIRST" without contradicting them; deeper actions beyond the top 3 are welcome here.
-  4. EXPECTED RESULT — how the track will feel and sound to a listener after those actions are applied (e.g. punch returns, low-end stops collapsing, drop hits, mix translates on club system, etc.). This MUST be aligned with the "After" symptoms in Block B.
-Also include the explicit ENERGY FLOW analysis somewhere inside this narrative.
+Fix:
+- <concrete action 1 with explicit numeric anchors (Hz / dB / ms / LUFS / % / mm:ss)>
+- <concrete action 2>
+- <concrete action 3>
+  (3 to 5 bullets total — each one immediately applicable, no hedging)
 
-Block D (TAIL — Stage 12 step 4 — MANDATORY):
-=== ADVANCED IMPROVEMENTS ===\\n- <deeper / optional fix 1, with Hz / dB / ms / LUFS anchors when possible>\\n- <deeper fix 2>\\n- <deeper fix 3>\\n- ... (5–15 items total)
-This block is the single home for ALL extra polish ideas, optional refinements, deeper observations, additional production tips, mixing nuance, mastering options, arrangement variations, sound-design experiments, and commercial/marketing notes — everything that did NOT fit into the 1–2 issue cap of section.notes (Stage 12 step 1: KEEP ALL INSIGHTS — do NOT delete content; relocate it here). Each item MUST stay decisive, action-oriented, and specific. Do NOT duplicate items already present in section.notes.
+Result:
+- <audible improvement 1 — what the listener hears after the fixes>
+- <audible improvement 2>
+- <audible improvement 3>
+  (3 to 4 bullets total)
+
+The output MUST feel like "follow these steps → your track improves", NOT "here is an analysis". Every bullet under "Fix:" MUST contain at least one numeric anchor. The arrangement / energy-flow analysis lives inside sections.arrangement, NOT here — keep this block tight.
 
 "references" — 0–6 short reference tracks/plugins/articles relevant to the suggested fixes.
 
