@@ -1,0 +1,170 @@
+ЗАДАЧА: Внести 3 финальные улучшения в генерацию AI Producer Review (prompt-only)
+
+---
+
+КОНТЕКСТ:
+
+Система уже реализована:
+
+* структура отчёта финальная
+* DAW Instructions работают
+* Market Position + Confidence добавлены
+
+Нужно улучшить КАЧЕСТВО генерации (без изменения структуры).
+
+---
+
+⚠️ ЖЁСТКИЕ ОГРАНИЧЕНИЯ:
+
+* НЕ менять UI
+* НЕ менять JSON schema
+* НЕ менять API
+* НЕ трогать PDF / Copy
+* НЕ добавлять новые поля
+* Менять ТОЛЬКО systemPrompt / userPrompt
+
+---
+
+# 🔧 CHANGE 1 — GENRE-AWARE LOUDNESS
+
+Добавить в systemPrompt:
+
+=== LOUDNESS TARGET RULE ===
+
+Select loudness target based on detected or provided genre:
+
+Electronic (Techno / House / EDM):
+→ Target: -8 to -9 LUFS
+
+Streaming / General:
+→ Target: -12 to -14 LUFS
+
+Ambient / Lo-Fi:
+→ Target: -14 to -16 LUFS
+
+RULES:
+
+* NEVER use -14 LUFS for Electronic
+* ALWAYS use range (e.g. -8 to -9, not single value)
+* Loudness must reflect real commercial references
+
+---
+
+# 🔧 CHANGE 2 — SIDECHAIN MUST BE EXECUTABLE
+
+Добавить:
+
+=== SIDECHAIN EXECUTION RULE (STRICT) ===
+
+If the word "sidechain" appears anywhere:
+
+→ MUST generate FULL DAW INSTRUCTION BLOCK
+
+Required structure:
+
+SIDECHAIN SETUP:
+
+1. Insert Compressor on Bass channel (Insert Slot 1)
+2. Open Compressor window
+3. Enable Sidechain button
+4. Go to Kick channel
+5. Open Sends section
+6. Add send → "Compressor (Bass) – Sidechain Input"
+7. Set Send Level to 0.0 dB
+8. Return to Compressor
+9. Confirm gain reduction reacts to kick
+
+SET:
+
+* Threshold: 2–4 dB GR
+* Attack: 5–15 ms
+* Release: 80–150 ms
+* Ratio: 3:1 – 5:1
+
+METER CHECK:
+
+* Gain Reduction meter shows 2–4 dB dips
+
+STOP WHEN:
+
+* bass ducks on kick but remains audible
+
+WARNING:
+
+* if bass disappears → reduce threshold
+
+RULE:
+
+* NEVER mention sidechain without this block
+
+---
+
+# 🔧 CHANGE 3 — OBJECTIVE CHECK ENFORCEMENT
+
+Добавить:
+
+=== OBJECTIVE CHECK RULE ===
+
+FORBIDDEN WORDS:
+
+* clear
+* better
+* punchy
+* warm
+* musical
+* improved
+
+REQUIRED:
+All CHECK / STOP must be measurable.
+
+Allowed signals:
+
+* LUFS
+* dB levels
+* frequency ranges
+* gain reduction
+* peak comparison
+* spectrum behavior
+
+Examples:
+
+GOOD:
+
+* Integrated LUFS between -8 and -9
+* Kick peak is higher than bass
+* No overlap at 60–100 Hz
+
+BAD:
+
+* sounds clearer
+* better punch
+
+---
+
+# ✅ ACCEPTANCE CRITERIA
+
+После изменений:
+
+1. Electronic трек:
+   → loudness = -8 to -9 LUFS
+
+2. Если есть low-end проблема:
+   → ОБЯЗАТЕЛЬНО есть sidechain DAW block
+
+3. В отчёте:
+   → нет субъективных слов
+   → все проверки измеримые
+   → нет рекомендаций без выполнения
+
+---
+
+# 🎯 EXPECTED RESULT
+
+AI должен:
+
+* давать жанрово корректный мастеринг
+* не оставлять “висящих” советов
+* звучать как инженер, не блогер
+* давать полностью выполнимые инструкции
+
+---
