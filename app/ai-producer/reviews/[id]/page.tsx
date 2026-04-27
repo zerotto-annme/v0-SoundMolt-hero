@@ -310,6 +310,29 @@ export default function ReviewReportPage() {
     return () => clearInterval(t)
   }, [review, fetchReview])
 
+  // Hard UI safeguard — if the row stays "processing" for more than
+  // 3 minutes (the analysis itself usually takes ≤ 60s, plus another
+  // ~7.5s worst-case retry on the finalise UPDATE), assume the
+  // background task or persistence failed silently and show the user
+  // a "taking too long" message with a refresh CTA. This guarantees
+  // the polling UI never spins forever even in catastrophic backend
+  // failure cases.
+  //
+  // CRITICAL: deps must be [review?.id, review?.status] (NOT [review]).
+  // fetchReview replaces the review object reference every 3s while
+  // polling, which would reset this timer indefinitely and prevent it
+  // from ever firing. Keying on id+status keeps the timer stable
+  // across polls that return the same row with the same status.
+  const [processingTimedOut, setProcessingTimedOut] = useState(false)
+  useEffect(() => {
+    if (!review || review.status !== "processing") {
+      setProcessingTimedOut(false)
+      return
+    }
+    const t = setTimeout(() => setProcessingTimedOut(true), 180000)
+    return () => clearTimeout(t)
+  }, [review?.id, review?.status])
+
   // ── Derived data ────────────────────────────────────────────────────
   const report = review?.report_json ?? null
   const isFree = review?.access_type === "free"
@@ -702,6 +725,40 @@ export default function ReviewReportPage() {
 
   // ── Processing ─────────────────────────────────────────────────────
   if (review.status === "processing") {
+    if (processingTimedOut) {
+      return (
+        <Layout>
+          {headerCard}
+          <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-8 text-center space-y-4">
+            <div className="w-12 h-12 mx-auto rounded-xl bg-amber-500/15 border border-amber-400/30 flex items-center justify-center">
+              <AlertCircle className="w-6 h-6 text-amber-300" />
+            </div>
+            <div>
+              <div className="text-lg font-semibold text-amber-100">
+                Analysis is taking longer than expected.
+              </div>
+              <p className="text-sm text-amber-200/80 mt-1">
+                Please refresh in a moment, or run a new review if the issue persists.
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => fetchReview()}
+                className="border-amber-400/40 text-amber-100 hover:bg-amber-500/10"
+              >
+                <RefreshCcw className="w-4 h-4 mr-2" /> Refresh
+              </Button>
+              <Link href="/ai-producer">
+                <Button className="bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:opacity-90">
+                  <Sparkles className="w-4 h-4 mr-2" /> Run New Review
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </Layout>
+      )
+    }
     return (
       <Layout>
         {headerCard}

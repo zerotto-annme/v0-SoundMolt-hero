@@ -293,28 +293,45 @@ export default function AiProducerPage() {
       const { data: pub } = supabase.storage.from("audio").getPublicUrl(path)
       const audioUrl = pub.publicUrl
 
-      setSubmitStatus("Submitting for review…")
-      const res = await fetch("/api/ai-producer/review", {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          source_type: "uploaded_file",
-          audio_url: audioUrl,
-          title: title.trim() || null,
-          genre: genre || null,
-          daw: daw || null,
-          feedback_focus: focus || null,
-          comment: comment.trim() || null,
-        }),
-      })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok || !json?.review?.id) {
-        throw new Error(json?.message || json?.error || "Could not create review.")
+      setSubmitStatus("Analyzing your track (up to 60 seconds)…")
+      // Hard 120s safety net so the browser never hangs on a stuck
+      // request. Backend returns fast (~100ms) with status="processing"
+      // and the review page polls until ready/failed.
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 120000)
+      try {
+        const res = await fetch("/api/ai-producer/review", {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            source_type: "uploaded_file",
+            audio_url: audioUrl,
+            title: title.trim() || null,
+            genre: genre || null,
+            daw: daw || null,
+            feedback_focus: focus || null,
+            comment: comment.trim() || null,
+          }),
+          signal: controller.signal,
+        })
+        clearTimeout(timeout)
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok || !json?.review?.id) {
+          throw new Error(json?.message || json?.error || "Could not create review.")
+        }
+        router.push(`/ai-producer/reviews/${json.review.id}`)
+      } finally {
+        clearTimeout(timeout)
       }
-      router.push(`/ai-producer/reviews/${json.review.id}`)
     } catch (err: any) {
       console.error("[ai-producer] submit failed", err)
-      setSubmitError(err?.message || "Something went wrong. Please try again.")
+      if (err?.name === "AbortError") {
+        setSubmitError("Analysis took too long. Please try again.")
+      } else {
+        // NEVER surface a raw network message ("Failed to fetch") to
+        // the UI — fixed-copy connection error per spec.
+        setSubmitError("Connection error. Please retry.")
+      }
       setSubmitting(false)
       setSubmitStatus("")
     }
@@ -344,7 +361,12 @@ export default function AiProducerPage() {
     }
 
     setSubmitting(true)
-    setSubmitStatus("Submitting for review…")
+    setSubmitStatus("Analyzing your track (up to 60 seconds)…")
+    // Hard 120s safety net so the browser never hangs on a stuck
+    // request. Backend returns fast (~100ms) with status="processing"
+    // and the review page polls until ready/failed.
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 120000)
     try {
       const res = await fetch("/api/ai-producer/review", {
         method: "POST",
@@ -359,15 +381,24 @@ export default function AiProducerPage() {
           feedback_focus: focus || null,
           comment: comment.trim() || null,
         }),
+        signal: controller.signal,
       })
+      clearTimeout(timeout)
       const json = await res.json().catch(() => ({}))
       if (!res.ok || !json?.review?.id) {
         throw new Error(json?.message || json?.error || "Could not create review.")
       }
       router.push(`/ai-producer/reviews/${json.review.id}`)
     } catch (err: any) {
+      clearTimeout(timeout)
       console.error("[ai-producer] existing-track submit failed", err)
-      setSubmitError(err?.message || "Something went wrong. Please try again.")
+      if (err?.name === "AbortError") {
+        setSubmitError("Analysis took too long. Please try again.")
+      } else {
+        // NEVER surface a raw network message ("Failed to fetch") to
+        // the UI — fixed-copy connection error per spec.
+        setSubmitError("Connection error. Please retry.")
+      }
       setSubmitting(false)
       setSubmitStatus("")
     }

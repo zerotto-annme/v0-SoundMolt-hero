@@ -162,12 +162,19 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
     if (aiReviewSubmitting) return
     setAiReviewError(null)
     setAiReviewSubmitting(true)
+    // Hard 120s safety net so the browser never hangs on a stuck
+    // request. Backend now returns ~100ms after creating the review
+    // row (analysis runs in the background); this timeout protects
+    // only against network drops / server crashes.
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 120000)
     try {
       const { data: sessionData } = await supabase.auth.getSession()
       const token = sessionData?.session?.access_token
       if (!token) {
         setAiReviewError("Please sign in to run an AI Producer review.")
         setAiReviewSubmitting(false)
+        clearTimeout(timeout)
         return
       }
       const res = await fetch("/api/ai-producer/review", {
@@ -181,7 +188,9 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
           original_track_id: track.id,
           title: track.title,
         }),
+        signal: controller.signal,
       })
+      clearTimeout(timeout)
       const json = await res.json().catch(() => ({} as any))
       if (!res.ok || !json?.review?.id) {
         // Spec error copy — fall back to backend's own message/error
@@ -192,13 +201,22 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
       }
       // Success: close both modals and navigate. Reset state on the
       // way out so re-opening this track doesn't show a stale error.
+      // The review page polls every 3s until status flips to ready.
       setShowAiReviewConfirm(false)
       setAiReviewSubmitting(false)
       onClose()
       router.push(`/ai-producer/reviews/${json.review.id}`)
     } catch (err: any) {
+      clearTimeout(timeout)
+      // Log the raw error for debugging but NEVER surface a raw
+      // network message (e.g. "Failed to fetch") to the UI — the spec
+      // requires a fixed-copy connection error in that case.
       console.error("[track-detail-modal] AI review submit failed", err)
-      setAiReviewError(err?.message || "Network error. Please try again.")
+      if (err?.name === "AbortError") {
+        setAiReviewError("Analysis took too long. Please try again.")
+      } else {
+        setAiReviewError("Connection error. Please retry.")
+      }
       setAiReviewSubmitting(false)
     }
   }
@@ -1140,7 +1158,7 @@ export function TrackDetailModal({ track, isOpen, onClose }: TrackDetailModalPro
                 {aiReviewSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Creating review…</span>
+                    <span>Analyzing your track (up to 60 seconds)…</span>
                   </>
                 ) : (
                   <>

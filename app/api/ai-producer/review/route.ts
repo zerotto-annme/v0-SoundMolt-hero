@@ -286,7 +286,13 @@ export async function POST(request: Request) {
     }
   }
 
-  // ─── 4. Real analysis: Essentia features → OpenAI report ──────────
+  // ─── 4. Background analysis: Essentia features → OpenAI report ────
+  // The route returns IMMEDIATELY here with status="processing" so the
+  // browser never sees a "Failed to fetch" timeout on a 30–60 second
+  // pipeline. The actual analysis runs as a fire-and-forget task that
+  // updates the row to "ready" / "failed" + report_json when done.
+  // The review page (app/ai-producer/reviews/[id]/page.tsx) already
+  // polls every 3s until the row flips off "processing".
   // Pipeline (per Stage 7 spec):
   //   a. Resolve raw audio features. For an existing track we first
   //      try the cached track_analysis row (avoids re-uploading the
@@ -301,87 +307,186 @@ export async function POST(request: Request) {
   //   d. Success → status=ready with the structured report_json.
   console.log(`[api/ai-producer/review] review ${review.id} created (source=${sourceType}, credits_used=${creditsUsed})`)
 
-  let finalStatus: "ready" | "failed" = "ready"
-  let reportJson: unknown = null
+  const finalizeReview = async () => {
+    let finalStatus: "ready" | "failed" = "ready"
+    let reportJson: unknown = null
 
-  // 4a. Audio features.
-  console.log(`[api/ai-producer/review] ${review.id} audio analysis started`)
-  let features: Record<string, unknown> | null = null
-  let analysisError: string | null = null
-  if (sourceType === "existing_track" && originalTrackId) {
-    const cached = await loadCachedTrackFeatures(admin, originalTrackId)
-    if (cached) {
-      features = cached
-      console.log(`[api/ai-producer/review] ${review.id} audio analysis completed (cached)`)
-    }
-  }
-  if (!features) {
-    const extract = await extractEssentiaFeatures(audioUrl as string)
-    if (extract.ok) {
-      features = extract.features
-      console.log(`[api/ai-producer/review] ${review.id} audio analysis completed (fresh)`)
-    } else {
-      analysisError = `essentia ${extract.stage}: ${extract.error}`
-      console.error(`[api/ai-producer/review] ${review.id} audio analysis failed:`, analysisError)
-    }
-  }
+    try {
+      // 4a. Audio features.
+      console.log(`[api/ai-producer/review] ${review.id} audio analysis started`)
+      let features: Record<string, unknown> | null = null
+      let analysisError: string | null = null
+      if (sourceType === "existing_track" && originalTrackId) {
+        const cached = await loadCachedTrackFeatures(admin, originalTrackId)
+        if (cached) {
+          features = cached
+          console.log(`[api/ai-producer/review] ${review.id} audio analysis completed (cached)`)
+        }
+      }
+      if (!features) {
+        const extract = await extractEssentiaFeatures(audioUrl as string)
+        if (extract.ok) {
+          features = extract.features
+          console.log(`[api/ai-producer/review] ${review.id} audio analysis completed (fresh)`)
+        } else {
+          analysisError = `essentia ${extract.stage}: ${extract.error}`
+          console.error(`[api/ai-producer/review] ${review.id} audio analysis failed:`, analysisError)
+        }
+      }
 
-  if (!features || analysisError) {
-    finalStatus = "failed"
-    reportJson = {
-      version: 1,
-      generated_at: new Date().toISOString(),
-      error: analysisError ?? "audio_analysis_failed",
-      stage: "audio_analysis",
-    }
-  } else {
-    // 4b. LLM report.
-    console.log("Calling OpenAI...")
-    console.log(`[api/ai-producer/review] ${review.id} LLM report generation started`)
-    const gen = await generateProducerReport(features, {
-      title,
-      genre,
-      daw,
-      feedback_focus: feedbackFocus,
-      comment,
-      track_duration: trackDurationSeconds,
-    })
-    if (gen.ok) {
-      reportJson = gen.report
-      console.log(`[api/ai-producer/review] ${review.id} report saved`)
-    } else {
+      if (!features || analysisError) {
+        finalStatus = "failed"
+        reportJson = {
+          version: 1,
+          generated_at: new Date().toISOString(),
+          error: analysisError ?? "audio_analysis_failed",
+          stage: "audio_analysis",
+        }
+      } else {
+        // 4b. LLM report.
+        console.log("Calling OpenAI...")
+        console.log(`[api/ai-producer/review] ${review.id} LLM report generation started`)
+        const gen = await generateProducerReport(features, {
+          title,
+          genre,
+          daw,
+          feedback_focus: feedbackFocus,
+          comment,
+          track_duration: trackDurationSeconds,
+        })
+        if (gen.ok) {
+          reportJson = gen.report
+          console.log(`[api/ai-producer/review] ${review.id} report saved`)
+        } else {
+          finalStatus = "failed"
+          const errMsg = `openai ${gen.stage}: ${gen.error}`
+          console.error(`[api/ai-producer/review] ${review.id} LLM failed:`, errMsg)
+          reportJson = {
+            version: 1,
+            generated_at: new Date().toISOString(),
+            error: errMsg,
+            stage: "llm",
+            audio_features: features,
+          }
+        }
+      }
+    } catch (err: any) {
+      // Catch any unexpected throw from the analysis pipeline so the
+      // row never gets stuck on "processing" forever (the polling UI
+      // would spin indefinitely otherwise).
+      console.error(`[api/ai-producer/review] ${review.id} background analysis threw:`, err)
       finalStatus = "failed"
-      const errMsg = `openai ${gen.stage}: ${gen.error}`
-      console.error(`[api/ai-producer/review] ${review.id} LLM failed:`, errMsg)
       reportJson = {
         version: 1,
         generated_at: new Date().toISOString(),
-        error: errMsg,
-        stage: "llm",
-        audio_features: features,
+        error: err?.message || "background_analysis_unhandled",
+        stage: "background",
       }
+    }
+
+    // Bounded retry on the finalise UPDATE so a transient Supabase
+    // hiccup cannot leave the row stuck on "processing" forever (the
+    // polling UI would spin indefinitely otherwise). 3 attempts with
+    // exponential backoff (500ms, 2s, 5s) — total worst-case 7.5s
+    // extra latency on the background task. Each attempt is wrapped
+    // in its own try/catch so a thrown exception (vs a returned
+    // {error}) cannot kill the retry loop. If ALL attempts still
+    // fail, we attempt a last-ditch minimal "failed" UPDATE with just
+    // the status + a tiny error report (no large report_json) — this
+    // covers the case where the original payload is the problem
+    // (size, serialization, etc) so the polling UI can at least exit
+    // "processing" and show the failed state.
+    const finalisePayload = { status: finalStatus, report_json: reportJson }
+    const backoffsMs = [500, 2000, 5000]
+    let finalErr: unknown = null
+    for (let attempt = 0; attempt < backoffsMs.length; attempt++) {
+      try {
+        const { error: e } = await admin
+          .from("ai_producer_reviews")
+          .update(finalisePayload)
+          .eq("id", review.id)
+        if (!e) {
+          finalErr = null
+          break
+        }
+        finalErr = e
+        console.error(
+          `[api/ai-producer/review] ${review.id} finalise update attempt ${attempt + 1}/${backoffsMs.length} failed:`,
+          e,
+        )
+      } catch (caught) {
+        finalErr = caught
+        console.error(
+          `[api/ai-producer/review] ${review.id} finalise update attempt ${attempt + 1}/${backoffsMs.length} threw:`,
+          caught,
+        )
+      }
+      if (attempt < backoffsMs.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, backoffsMs[attempt]))
+      }
+    }
+
+    if (finalErr) {
+      // Last-ditch minimal fallback: discard report_json (which might
+      // be the cause of the failure) and at least flip status off
+      // "processing" so the polling UI exits.
+      try {
+        const fallbackPayload = {
+          status: "failed" as const,
+          report_json: {
+            version: 1,
+            generated_at: new Date().toISOString(),
+            error: "finalize_persist_failed",
+            stage: "finalize",
+          },
+        }
+        const { error: fbErr } = await admin
+          .from("ai_producer_reviews")
+          .update(fallbackPayload)
+          .eq("id", review.id)
+        if (fbErr) {
+          console.error(
+            `[api/ai-producer/review] ${review.id} CRITICAL: fallback failed update also failed — row stuck on "processing":`,
+            fbErr,
+            "original:",
+            finalErr,
+          )
+        } else {
+          console.error(
+            `[api/ai-producer/review] ${review.id} finalize fallback applied (status=failed, finalize_persist_failed). Original error:`,
+            finalErr,
+          )
+        }
+      } catch (fbCaught) {
+        console.error(
+          `[api/ai-producer/review] ${review.id} CRITICAL: fallback update threw — row stuck on "processing":`,
+          fbCaught,
+          "original:",
+          finalErr,
+        )
+      }
+    } else if (finalStatus === "failed") {
+      console.error(`[api/ai-producer/review] ${review.id} failed`)
+    } else {
+      console.log(`[api/ai-producer/review] ${review.id} finalised (status=${finalStatus})`)
     }
   }
 
-  const { error: finalErr } = await admin
-    .from("ai_producer_reviews")
-    .update({ status: finalStatus, report_json: reportJson })
-    .eq("id", review.id)
+  // Fire-and-forget. The Node process keeps running on Replit's
+  // long-running dev/prod server, so the background task completes
+  // independently of the HTTP response.
+  void finalizeReview().catch((err) => {
+    console.error(`[api/ai-producer/review] ${review.id} background finalize unexpected:`, err)
+  })
 
-  if (finalErr) {
-    console.error(`[api/ai-producer/review] ${review.id} finalise update failed:`, finalErr)
-    // The row exists — surface a 200 so the client can poll the
-    // get-review endpoint (Stage 2) instead of treating this as a
-    // creation failure.
-  } else if (finalStatus === "failed") {
-    console.error(`[api/ai-producer/review] ${review.id} failed`)
-  }
-
+  // Return IMMEDIATELY — the browser sees a fast 200, navigates to
+  // /ai-producer/reviews/:id, and that page polls every 3s until the
+  // status flips to "ready" or "failed".
   return NextResponse.json({
     ok: true,
     review: {
       id: review.id,
-      status: finalStatus,
+      status: "processing",
       access_type: review.access_type,
       credits_used: review.credits_used,
     },
