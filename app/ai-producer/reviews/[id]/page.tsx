@@ -263,6 +263,7 @@ export default function ReviewReportPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
 
   const fetchReview = useCallback(async () => {
     if (!reviewId) return
@@ -493,12 +494,82 @@ export default function ReviewReportPage() {
     }
   }
 
-  const handleDownloadPdf = () => {
+  // Generate a real .pdf file from the full report text and trigger a
+  // browser download. Uses jsPDF (text-based, so the resulting PDF is
+  // searchable and small). No window.print() / print preview is involved.
+  const handleDownloadPdf = async () => {
     if (typeof window === "undefined") return
-    // Browser print-to-PDF. Print styles in app/globals.css hide the
-    // sidebar / action buttons / back link / free-tier upsell overlay so
-    // only the AI Producer report content is printed.
-    window.print()
+    setPdfBusy(true)
+    try {
+      const text = buildFullReportText()
+      if (!text) {
+        alert("Report is empty.")
+        return
+      }
+
+      // Dynamic import keeps jsPDF out of the SSR bundle.
+      const { jsPDF } = await import("jspdf")
+      const doc = new jsPDF({ unit: "pt", format: "a4" })
+
+      const pageW = doc.internal.pageSize.getWidth()
+      const pageH = doc.internal.pageSize.getHeight()
+      const marginX = 40
+      const marginY = 48
+      const lineHeight = 14
+      const maxLineWidth = pageW - marginX * 2
+      let y = marginY
+
+      // ── Document title ────────────────────────────────────────────────
+      doc.setFont("helvetica", "bold")
+      doc.setFontSize(16)
+      const titleText = `AI Producer Review${review?.title ? ` — ${review.title}` : ""}`
+      const titleLines = doc.splitTextToSize(titleText, maxLineWidth)
+      doc.text(titleLines, marginX, y)
+      y += titleLines.length * 20 + 8
+
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(10)
+
+      // ── Body: walk the same text the Copy button produces, paginate
+      //    automatically and render === HEADING === lines as bold. ──
+      const paragraphs = text.split("\n")
+      for (const para of paragraphs) {
+        const isHeading = /^===.*===$/.test(para.trim())
+        const wrapped =
+          para === ""
+            ? [""]
+            : doc.splitTextToSize(para, maxLineWidth)
+        if (isHeading) {
+          doc.setFont("helvetica", "bold")
+          doc.setFontSize(12)
+        } else {
+          doc.setFont("helvetica", "normal")
+          doc.setFontSize(10)
+        }
+        for (const line of wrapped) {
+          if (y + lineHeight > pageH - marginY) {
+            doc.addPage()
+            y = marginY
+          }
+          doc.text(line, marginX, y)
+          y += isHeading ? lineHeight + 4 : lineHeight
+        }
+      }
+
+      // ── Filename: ai-producer-review-{slug}.pdf ───────────────────────
+      const slug =
+        ((review?.title ?? "review")
+          .toLowerCase()
+          .replace(/[^a-z0-9_-]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 60) || "review")
+      doc.save(`ai-producer-review-${slug}.pdf`)
+    } catch (err: any) {
+      console.error("PDF download failed", err)
+      alert(`Could not download PDF: ${err?.message || "unknown error"}`)
+    } finally {
+      setPdfBusy(false)
+    }
   }
 
   // ─── Render branches ────────────────────────────────────────────────
@@ -688,9 +759,15 @@ export default function ReviewReportPage() {
         variant="outline"
         size="sm"
         onClick={handleDownloadPdf}
-        title="Download / print this review as PDF"
+        disabled={pdfBusy}
+        title="Download this review as a PDF file"
       >
-        <Download className="w-4 h-4 mr-2" /> Download PDF
+        {pdfBusy ? (
+          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+        ) : (
+          <Download className="w-4 h-4 mr-2" />
+        )}
+        {pdfBusy ? "Preparing…" : "Download PDF"}
       </Button>
       <Button
         variant="outline"
