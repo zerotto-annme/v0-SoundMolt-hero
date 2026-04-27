@@ -1,0 +1,213 @@
+TASK: Upgrade AI Producer Review to PREMIUM LEVEL (LANDR / iZotope-like).
+DO NOT change UI, sections or JSON. Only improve generation quality.
+
+========================================
+0. GLOBAL PRINCIPLES (STRICT)
+========================================
+- No duplication. Each section appears once (MAIN ISSUE / WHY / IMPACT / FIX / RESULT).
+- No generic DAW names. Use REAL Cubase terms only.
+- Every FIX must have a matching DAW INSTRUCTION block.
+- Output must guide a beginner to complete fixes without thinking.
+
+========================================
+1. HARD CHANNEL POLICY (FIX “MAIN MIX” BUG)
+========================================
+FORBIDDEN:
+- "Main Mix"
+- "Main Bus"
+- "Master Channel" (generic)
+
+ALLOWED:
+- Stereo Out (master)
+- Group channels (Drum Bus, Music Bus)
+- Real track names (Kick, Bass, Synth, Vocal)
+
+RULE:
+If a fix affects the whole mix → use "Stereo Out".
+If it affects a family → use "Group channel".
+If it affects a source → use its real track (Kick/Bass/etc.).
+
+========================================
+2. FIX PRIORITY (MANDATORY)
+========================================
+After SUMMARY always output:
+
+FIX PRIORITY:
+1. <highest impact>
+2. <second>
+3. <third>
+
+RULE:
+- Low-end conflicts first (if present)
+- Loudness / mastering second
+- High-end / arrangement next
+
+========================================
+3. DAW INSTRUCTIONS = GUIDED WORKFLOW (UPGRADE)
+========================================
+Each block MUST include:
+
+[STEP ID]
+FIXING:
+CHANNEL:
+GO TO:
+FIND:
+CLICK:
+INSERT:
+SET:
+A/B CHECK:
+METER CHECK:
+STOP WHEN:
+WARNING:
+IF NOT AVAILABLE:
+RESULT:
+
+----------------------------------------
+A/B CHECK (NEW — CRITICAL)
+----------------------------------------
+Explain how to compare before/after:
+
+A/B CHECK:
+1. Click the plugin power button (bypass) ON/OFF.
+2. Compare the sound before and after.
+3. Focus on the specific problem (e.g., kick clarity, harsh highs).
+
+----------------------------------------
+METER CHECK (NEW — PREMIUM)
+----------------------------------------
+Use Cubase stock tools:
+
+METER CHECK:
+- Use SuperVision:
+  • Loudness module → Integrated LUFS
+  • Spectrum module → frequency energy
+- OR channel meters:
+  • Peak level (dBFS)
+  • Gain Reduction (compressor/limiter)
+
+----------------------------------------
+STOP WHEN (MANDATORY)
+----------------------------------------
+Define completion condition:
+
+STOP WHEN:
+- measurable condition is met
+
+Example:
+- Integrated LUFS is between -14 and -16
+- Kick peak is clearly above bass on every hit
+- No energy buildup at 400–600 Hz in spectrum
+
+----------------------------------------
+WARNING (MANDATORY)
+----------------------------------------
+Prevent mistakes:
+
+WARNING:
+- what happens if overdone
+- how to revert
+
+========================================
+4. SIDECHAIN = FULL REAL ROUTING (STRICT)
+========================================
+If sidechain appears ANYWHERE → include FULL setup:
+
+SIDECHAIN SETUP:
+
+1. Insert Compressor on Bass channel (Insert Slot 1)
+2. Open Compressor window
+3. Enable "Sidechain" button (top right)
+4. Go to Kick channel
+5. Open Sends section
+6. Add send → select "Compressor (Bass) – Sidechain"
+7. Set Send Level to 0.0 dB
+8. Return to Bass Compressor
+9. Play track and confirm Gain Reduction meter moves on kick hits
+
+SET:
+- Threshold: adjust for 2–4 dB gain reduction
+- Attack: 5–15 ms
+- Release: 80–150 ms
+- Ratio: 3:1 – 5:1
+
+METER CHECK:
+- Gain Reduction meter shows 2–4 dB dips on each kick
+
+STOP WHEN:
+- bass ducks on each kick without disappearing
+
+WARNING:
+- if bass disappears → reduce threshold by 1–2 dB
+
+========================================
+5. RANGE-BASED PARAMETERS (PREMIUM)
+========================================
+Never single values only.
+
+Use ranges:
+- Gain: -2 to -4 dB
+- Frequency: 60–100 Hz
+- Release: 30–80 ms
+
+========================================
+6. REMOVE LOW-IMPACT TASKS
+========================================
+Generate DAW blocks ONLY for high-impact fixes:
+- Low-end separation
+- Loudness/mastering
+- Harshness control
+- Critical arrangement change
+
+========================================
+7. ARRANGEMENT = TIMELINE ACTIONS
+========================================
+Must include:
+- exact time (bars/seconds)
+- what to mute/remove
+- what to automate
+
+Example:
+- mute kick + bass for 8 bars at 1:30
+- automate filter cutoff 200 Hz → 10 kHz
+- add riser from -18 dB → -6 dB
+
+========================================
+8. SOUND DESIGN = PLUGIN + LOCATION
+========================================
+Always include:
+- exact plugin (Cubase stock)
+- where (Insert on Stereo Out / Track / Group)
+- parameter ranges
+
+Example:
+- Magneto II on Stereo Out
+- Drive: 2–3 dB
+- Mix: 20–30%
+
+========================================
+9. OBJECTIVE CHECKS ONLY
+========================================
+FORBIDDEN:
+- "sounds better"
+- "listen carefully"
+
+REQUIRED:
+- measurable/observable outcomes
+
+========================================
+10. TRUST SIGNAL (NEW — PREMIUM UX)
+========================================
+Each DAW block must feel safe:
+
+User must:
+- know what to click
+- know what to measure
+- know when to stop
+- know how to undo mistake
+
+========================================
+FINAL GOAL
+========================================
+User opens Cubase → follows steps blindly → hears clear improvement.
+
+If user hesitates or guesses → output is WRONG.
