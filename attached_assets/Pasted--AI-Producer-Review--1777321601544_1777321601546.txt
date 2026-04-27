@@ -1,0 +1,200 @@
+ЗАДАЧА: Финализировать AI Producer Review (устранить последние критические недочёты)
+
+---
+
+КОНТЕКСТ:
+
+Система уже почти финальная:
+
+* структура отчёта готова
+* DAW Instructions реализованы
+* PRO MODE есть
+* Market Position + Confidence есть
+* Hybrid tone внедрён
+
+Нужно устранить последние 4 проблемы, мешающие уровню 10/10.
+
+---
+
+⚠️ ОГРАНИЧЕНИЯ (STRICT):
+
+* НЕ менять UI
+* НЕ менять JSON schema
+* НЕ менять API
+* НЕ трогать PDF / Copy
+* НЕ добавлять новые поля
+* Менять ТОЛЬКО systemPrompt / userPrompt
+
+---
+
+# 🔧 FIX 1 — УДАЛИТЬ ДУБЛИРОВАНИЕ (CRITICAL)
+
+ПРОБЛЕМА:
+В RESULT блоках повторяются MAIN ISSUE / WHY / FIX.
+
+РЕШЕНИЕ:
+
+=== DUPLICATION RULE (STRICT) ===
+
+* Each section must contain ONLY ONE structured block:
+  MAIN ISSUE → WHY → IMPACT → FIX → RESULT
+
+FORBIDDEN:
+
+* repeating the same information again in free text
+* duplicated MAIN ISSUE / WHY / FIX inside RESULT
+
+RESULT block must ONLY describe outcome (no repetition).
+
+---
+
+# 🔧 FIX 2 — SIDECHAIN = ОБЯЗАТЕЛЬНЫЙ DAW BLOCK
+
+ПРОБЛЕМА:
+Sidechain упоминается, но не всегда реализуется.
+
+РЕШЕНИЕ:
+
+=== SIDECHAIN EXECUTION RULE (MANDATORY) ===
+
+If "sidechain" is mentioned ANYWHERE:
+
+→ MUST generate a dedicated DAW INSTRUCTION BLOCK
+
+Block must include:
+
+* routing (kick → bass compressor sidechain input)
+* send setup
+* compressor settings
+* meter check
+* stop condition
+
+FORBIDDEN:
+
+* mentioning sidechain without full execution steps
+
+---
+
+# 🔧 FIX 3 — ONLY OBJECTIVE CHECKS
+
+ПРОБЛЕМА:
+Остались субъективные формулировки.
+
+РЕШЕНИЕ:
+
+=== OBJECTIVE VALIDATION RULE ===
+
+FORBIDDEN:
+
+* clear
+* fuller
+* better
+* punchier
+* more energy
+
+REQUIRED:
+All STOP WHEN / RESULT must be measurable:
+
+Use:
+
+* LUFS
+* dB differences
+* Hz ranges
+* gain reduction
+* peak relationships
+
+Example:
+
+GOOD:
+
+* kick peak is 3 dB higher than bass
+* no overlap at 60–100 Hz
+
+BAD:
+
+* bass sounds clearer
+
+---
+
+# 🔧 FIX 4 — CONTEXT-AWARE EQ (CRITICAL)
+
+ПРОБЛЕМА:
+HPF 80 Hz применяется всегда → это неправильно.
+
+РЕШЕНИЕ:
+
+=== CONTEXTUAL EQ RULE ===
+
+Do NOT use fixed EQ values blindly.
+
+RULES:
+
+* If bass = sub bass → DO NOT cut aggressively at 80 Hz
+* If bass overlaps kick → adjust dynamically (60–100 Hz range)
+* Always provide RANGE instead of fixed value
+
+Example:
+
+GOOD:
+"Apply high-pass between 60–90 Hz depending on bass role"
+
+BAD:
+"Apply high-pass at 80 Hz"
+
+---
+
+# 🔧 FIX 5 — ARRANGEMENT = ПРОДЮСЕРСКАЯ ЛОГИКА
+
+ПРОБЛЕМА:
+Сейчас звучит как “добавь элемент”.
+
+РЕШЕНИЕ:
+
+=== ARRANGEMENT INTENT RULE ===
+
+Every arrangement fix must include:
+
+* WHAT to change
+* WHERE (timestamp)
+* WHY (musical reason)
+* RESULT (listener perception)
+
+Example:
+
+GOOD:
+Remove kick during build-up (0:45–0:49) to create tension and make the drop hit harder when full drums return.
+
+BAD:
+"add riser"
+
+---
+
+# ✅ ACCEPTANCE CRITERIA
+
+После внедрения:
+
+1. ❌ нет дублирования текста
+2. ✔ sidechain всегда имеет полный DAW блок
+3. ✔ нет субъективных слов
+4. ✔ EQ адаптивный (не фиксированный 80 Hz)
+5. ✔ arrangement объясняет музыкальный эффект
+
+---
+
+# 🎯 EXPECTED RESULT
+
+AI должен:
+
+* звучать как профессиональный инженер
+* давать полностью выполнимые действия
+* не оставлять “дыр” в инструкциях
+* вызывать 100% доверие
+
+---
+
+ПОСЛЕ ВНЕДРЕНИЯ:
+
+* сгенерировать 1 отчёт
+* проверить все 5 условий выше
+
+---
