@@ -653,7 +653,12 @@ export async function generateProducerReport(
     "FULL_ANALYSIS STRUCTURE (FINAL-QUALITY-UPGRADE) — full_analysis is a SHORT, ACTION-ORIENTED SINGLE STRING using real newline characters (\\n). NO long storytelling, NO multi-paragraph essay. Read like a checklist a producer can act on in 60 seconds. MUST follow this EXACT shape (no === banners, no extra blocks, exactly four labelled sections, in order):\n" +
     "Strength: <ONE short paragraph (max ~60 words) — what is genuinely working in THIS track right now and why it lands>\\n\\nMain weakness: <ONE decisive sentence — the single biggest problem with the technical reason behind it, with Hz / dB / mm:ss / LUFS anchors when possible>\\n\\nFix:\\n- <concrete action 1 with explicit numeric anchors>\\n- <concrete action 2>\\n- <concrete action 3>\\n  (3 to 5 bullets total — each one immediately applicable)\\n\\nResult:\\n- <audible improvement 1>\\n- <audible improvement 2>\\n- <audible improvement 3>\\n  (3 to 4 bullets total — what the listener will hear after the fixes)\n" +
     "RULES: NO long narrative paragraphs, NO === banners, NO ADVANCED IMPROVEMENTS list, NO BEFORE/AFTER block, NO 300-word essay. The whole full_analysis MUST stay under ~250 words. Every bullet under \"Fix:\" MUST contain at least one numeric anchor (Hz, dB, ms, LUFS, %, mm:ss). The output MUST feel like \"follow these steps → your track improves\", NOT \"here is an analysis\".\n\n" +
-    "WHY THIS MATTERS (Stage 11 step 5) — every section.text (mix, mastering, arrangement, sound_design, commercial_potential) MUST end with two newlines followed by the literal line \"Why this matters: <one short sentence about how this section's issues affect what the listener feels>\". Single line, no extra paragraphs.\n\n" +
+    "SECTION.TEXT SHAPE (FINAL-ADJUSTMENT) — EVERY section.text (mix, mastering, arrangement, sound_design, commercial_potential) MUST be a SINGLE STRING using real newline characters (\\n) and MUST follow this EXACT four-part shape, in order:\n" +
+    "  1. <Explanation paragraph: 2–4 sentences naming WHAT is wrong in THIS section of THIS track and WHY, with Hz / dB / ms / mm:ss / LUFS anchors from the DERIVED AUDIO INSIGHTS. Decisive producer tone, no hedging.>\\n\\n" +
+    "  2. \"Fix:\\n- <concrete step 1 with explicit numeric anchors>\\n- <concrete step 2 with explicit numeric anchors>\\n- <concrete step 3>\" — 2 to 4 bullets total. Every bullet MUST contain at least one numeric anchor (Hz, dB, ms, LUFS, %, ratio, mm:ss). NO vague verbs (no \"try\", \"consider\", \"maybe\", \"subtle\", \"slight\", \"could\", \"might\").\\n\\n" +
+    "  3. \"Result:\\n- <audible change 1>\\n- <audible change 2>\" — 2 to 3 bullets total. Each bullet describes what the LISTENER will hear after the fixes (e.g. \"kick punches through, low-end stops feeling muddy\"). Decisive, concrete, no hedging.\\n\\n" +
+    "  4. The literal line \"Why this matters: <one short sentence about how this section's issues affect what the listener feels>\". Single line, no extra paragraphs after it.\n" +
+    "EVERY section.text MUST feel like \"Do this → get this result\". The Explanation block tells the user WHAT and WHY, the Fix block tells the user EXACTLY what to do (with numbers), and the Result block tells the user EXACTLY what they will hear.\n\n" +
     "ANTI-REPETITION (Stage 11 step 6) — each concrete diagnosed problem may appear in ONLY ONE place across the whole report. Pick the most relevant home (summary OR mix OR mastering OR arrangement OR sound_design OR commercial_potential) and keep the strongest, most actionable wording there. Do NOT restate the same issue verbatim in summary, mix, AND mastering — pick the strongest version, mention the issue only once, and let other sections reference different aspects.\n\n" +
     "NO GUESSING (Stage 10 step 6): if a piece of audio data is not present in the DERIVED AUDIO INSIGHTS or RAW ESSENTIA FEATURES blocks, do NOT invent it. " +
     "Skip the observation entirely rather than fabricate a number. Numeric anchors must come from the actual features, not guessed.\n\n" +
@@ -754,20 +759,31 @@ SECTIONS — PRIORITY LAYER (Stage 12). Each of mix / mastering / arrangement / 
 "Problem: <what is wrong>. Why: <technical cause>. Impact: <listener experience>. Fix: <action with Hz / mm:ss / dB / LUFS>. Result: <what will improve audibly>."
 Both "Fix:" and "Result:" are mandatory; "Fix:" MUST reference a frequency, time, or level.
 
-SECTION.TEXT BODY (REPORT-QUALITY-UPGRADE) — every section.text paragraph MUST itself explicitly cover, in order, ALL FOUR of these things for the section's main issue (using full sentences, not labels — keep the prose natural and producer-style, but every sentence MUST be present):
-  1. WHAT exactly is wrong in THIS section of THIS track (concrete, with Hz / dB / mm:ss / LUFS anchors from the derived insights).
-  2. WHY it is a problem (the technical cause and what it does to the mix / arrangement / perception).
-  3. WHAT to fix (the concrete action — plugin, parameter, frequency, level, or arrangement move).
-  4. WHAT result the user will get after the fix (audible improvement the listener will hear).
-Then the mandatory closing line "Why this matters: …" comes AFTER all four are covered.
+SECTION.TEXT SHAPE (FINAL-ADJUSTMENT) — every section.text (mix, mastering, arrangement, sound_design, commercial_potential) MUST be a SINGLE STRING using real newline characters (\\n) and MUST follow this EXACT four-part shape in order. The labels "Fix:" and "Result:" MUST appear literally in the output text so the rendered section reads "Do this → get this result":
+
+<Explanation paragraph: 2–4 sentences in decisive producer tone naming WHAT is wrong in THIS section of THIS track and WHY (technical cause + audible effect), with Hz / dB / ms / mm:ss / LUFS anchors from the DERIVED AUDIO INSIGHTS. Do not invent numbers; if a metric is missing, skip the observation.>
+
+Fix:
+- <concrete step 1 with explicit numeric anchors>
+- <concrete step 2 with explicit numeric anchors>
+- <concrete step 3 — optional>
+(2 to 4 bullets total. Every bullet MUST contain at least one numeric anchor: Hz, dB, ms, LUFS, %, ratio, or mm:ss. Each bullet is a CHAIN of concrete instructions, not vague advice.)
+
+Result:
+- <audible change 1>
+- <audible change 2>
+- <audible change 3 — optional>
+(2 to 3 bullets total. Each bullet describes what the LISTENER will hear after the fixes — kick punches through, low-end stops feeling muddy, vocal sits forward, etc. Decisive, concrete, no hedging.)
+
+Why this matters: <one short sentence about how this section's issues affect what the listener feels>
+
+This is the EXACT shape — explanation paragraph, then a literal "Fix:" label with bullets, then a literal "Result:" label with bullets, then the literal "Why this matters:" line. NO extra paragraphs after "Why this matters:". NO labels other than these three. Each section MUST feel like "Do this → get this result".
 
 Each section.notes[] MUST be ordered as:
   notes[0] = "MAIN ISSUE — <5-part format string>" (the SINGLE biggest issue of THIS section, MANDATORY).
   notes[1] = "ADDITIONAL ISSUE — <5-part format string>" (the next most important issue of THIS section, OPTIONAL — max ONE).
 
 All other diagnoses, deeper polish ideas, and extra observations DO NOT belong in section.notes — keep them out. The full_analysis block is intentionally short (Strength / Main weakness / Fix / Result) and is NOT the place to dump every observation; pick only what will raise the track most.
-
-EVERY section.text (mix, mastering, arrangement, sound_design, commercial_potential) MUST end with two newlines (\\n\\n) followed by the literal line "Why this matters: <one short sentence about how this section's issues affect what the listener feels>". Single line, no extra paragraphs after it.
 
 ANTI-REPETITION — each concrete diagnosed problem may appear in ONLY ONE place across the whole report. Pick the most relevant home (summary OR mix OR mastering OR arrangement OR sound_design OR commercial_potential), keep the strongest, most actionable wording there, and do NOT restate the same issue verbatim elsewhere.
 
