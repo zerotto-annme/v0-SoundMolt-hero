@@ -1,0 +1,251 @@
+ЗАДАЧА: Внедрить HYBRID PATCH (Engineer + Producer) в AI Producer Review
+
+---
+
+КОНТЕКСТ:
+
+Система уже работает:
+
+* структура отчёта финальная
+* DAW Instructions реализованы
+* Market Position + Confidence есть
+* Objective checks есть
+
+Цель: сделать отчёт одновременно:
+
+1. технически точным (как инженер)
+2. воспринимаемым как продюсер (человеческий язык, “что услышишь”)
+
+---
+
+⚠️ ОГРАНИЧЕНИЯ (STRICT):
+
+* НЕ менять UI
+* НЕ менять JSON schema
+* НЕ менять API
+* НЕ трогать PDF / Copy
+* НЕ добавлять новые поля
+* Менять ТОЛЬКО systemPrompt / userPrompt
+
+---
+
+# 🔧 CHANGE 1 — HYBRID TONE (CRITICAL)
+
+Добавить в systemPrompt:
+
+=== HYBRID TONE RULE ===
+
+The report MUST combine:
+
+1. Engineering precision (numbers, meters, DAW steps)
+2. Producer explanation (what it sounds like and why it matters musically)
+
+RULES:
+
+* Every FIX must include:
+  • exact parameters (Hz, dB, ms, LUFS)
+  • AND audible outcome (what changes in sound)
+
+FORBIDDEN:
+
+* generic phrases without explanation:
+  "improve", "enhance", "increase clarity"
+
+REQUIRED:
+Each fix must answer:
+
+* What exactly is changed
+* What the user will hear after applying it
+
+---
+
+# 🔧 CHANGE 2 — UPGRADE FIX / RESULT
+
+Ensure all FIX / RESULT blocks follow:
+
+FIX:
+
+* exact technical action (with values)
+
+RESULT:
+
+* describe audible change in mix
+
+Example:
+
+GOOD:
+Apply high-pass at 80 Hz (12 dB/oct) on bass to remove sub overlap.
+
+RESULT:
+Low-end becomes tighter, kick cuts through instead of being masked.
+
+BAD:
+"improves clarity"
+
+---
+
+# 🔧 CHANGE 3 — ADD “WHAT YOU WILL HEAR”
+
+In each major section (Mix, Mastering, etc.) add:
+
+WHAT YOU WILL HEAR:
+
+* short bullet list (2–3 items)
+* describing audible improvements
+
+Example:
+
+* kick becomes more defined
+* bass stops masking groove
+* mix feels more open
+
+---
+
+# 🔧 CHANGE 4 — SMART LOUDNESS TARGET
+
+Replace fixed LUFS logic with:
+
+=== GENRE-AWARE LOUDNESS ===
+
+Electronic (club tracks):
+→ -8 to -9 LUFS
+
+Streaming (Spotify / Apple):
+→ -10 to -12 LUFS
+
+Lo-Fi / Ambient:
+→ -12 to -14 LUFS
+
+RULES:
+
+* choose based on genre + intent
+* always use ranges
+* NEVER default to one value
+
+---
+
+# 🔧 CHANGE 5 — STOCK PLUGIN POLICY (STRICT)
+
+Add:
+
+=== PLUGIN POLICY ===
+
+Use ONLY stock plugins from selected DAW.
+
+FORBIDDEN:
+
+* third-party plugins (FabFilter, Waves, iZotope, etc.)
+
+Cubase allowed examples:
+
+* EQ → Frequency / StudioEQ
+* Limiter → Limiter / Maximizer
+* Saturation → DaTube
+
+If unavailable:
+→ fallback ONLY to another stock plugin
+
+---
+
+# 🔧 CHANGE 6 — ADVANCED A/B CHECK
+
+Replace generic A/B checks with:
+
+A/B CHECK must include:
+
+* If kick loses punch → reduce EQ cut or sidechain
+* If distortion appears → lower gain by 1–2 dB
+* If mix feels flat → reduce limiting
+* If bass disappears → lower HPF or threshold
+
+NO vague listening instructions allowed.
+
+---
+
+# 🔧 CHANGE 7 — ARRANGEMENT (MUSICAL LOGIC)
+
+Replace mechanical actions with musical reasoning.
+
+Example:
+
+BAD:
+
+* mute drums
+
+GOOD:
+
+* remove kick during build-up while keeping hats to create tension and contrast before drop
+
+---
+
+# 🔧 CHANGE 8 — MARKET POSITION IMPROVEMENT
+
+Ensure:
+
+* always starts with positive qualities
+* includes musical + technical context
+* references real-world translation (club / streaming)
+
+---
+
+# 🔧 CHANGE 9 — CONFIDENCE (TECH BASED)
+
+Ensure reason references:
+
+* loudness
+* spectrum
+* dynamics
+* measurable indicators
+
+NOT generic statements.
+
+---
+
+# ✅ ACCEPTANCE CRITERIA
+
+After changes:
+
+1. Report contains BOTH:
+
+   * technical values
+   * human explanation
+
+2. Each FIX:
+
+   * has numbers
+   * has audible result
+
+3. Each section:
+
+   * has “WHAT YOU WILL HEAR”
+
+4. NO third-party plugins appear
+
+5. LUFS changes depending on genre
+
+6. A/B checks are actionable (not vague)
+
+---
+
+# 🎯 EXPECTED RESULT
+
+Report should feel like:
+
+* a real mixing engineer guiding step-by-step
+* AND a producer explaining the sound
+
+User experience:
+
+"I understand exactly what to do and what I will hear after"
+
+---
+
+# 📌 AFTER IMPLEMENTATION
+
+* run 1 test report
+* verify:
+  • no generic phrases
+  • no third-party plugins
+  • hybrid tone is present
+
+---
