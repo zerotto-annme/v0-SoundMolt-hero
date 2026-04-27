@@ -1,0 +1,166 @@
+We need to improve the AI Producer Review report generation.
+
+IMPORTANT:
+- Do NOT change report structure
+- Do NOT change UI
+- Do NOT change JSON format
+- Only improve the depth and usability of generated content
+
+GOAL:
+The report must guide the user step-by-step so they can open their DAW (Cubase) and apply every fix without thinking.
+
+========================================
+1. IMPROVE DAW INSTRUCTIONS (CRITICAL)
+========================================
+
+For EVERY DAW instruction block, enforce this structure:
+
+CHANNEL:
+GO TO:
+FIND:
+CLICK:
+INSERT:
+SET:
+CHECK:
+IF NOT AVAILABLE:
+RESULT:
+
+----------------------------------------
+A. ADD "FIND" SECTION (NEW)
+----------------------------------------
+
+After GO TO, always add:
+
+FIND:
+- If channel name is unclear:
+  → look for track names (Bass, Kick, Synth, etc.)
+  → solo the track to confirm
+  → bass = low frequencies
+  → kick = short punch sound
+
+----------------------------------------
+B. EXPAND CLICK STEPS
+----------------------------------------
+
+Make CLICK extremely explicit:
+
+Instead of:
+"Click Insert Slot 1"
+
+Use:
+CLICK:
+1. Click on "Inserts" section
+2. Click on empty Insert Slot 1
+3. Plugin browser will open
+4. Navigate to: EQ → Frequency
+
+----------------------------------------
+C. ADD CHECK BLOCK (MANDATORY)
+----------------------------------------
+
+Always include:
+
+CHECK:
+1. Play the relevant section
+2. Listen for improvement (e.g. cleaner low-end, less muddiness)
+3. If effect is too strong:
+   → reduce gain by 1–2 dB
+
+----------------------------------------
+D. ADD FALLBACK (MANDATORY)
+----------------------------------------
+
+IF NOT AVAILABLE:
+→ use any similar plugin:
+   EQ → any EQ
+   Limiter → any limiter
+   Saturation → any saturation
+→ match settings approximately
+
+----------------------------------------
+E. ADD LOUDNESS METERING (WHEN LUFS IS USED)
+----------------------------------------
+
+If LUFS is mentioned:
+
+CHECK LOUDNESS:
+1. Insert "SuperVision" (Cubase)
+2. Add Loudness module
+3. Play full track
+4. Read "Integrated LUFS"
+
+Target:
+- Lo-Fi: -14 to -16 LUFS
+
+----------------------------------------
+F. ADD SIDECHAIN INSTRUCTIONS (WHEN USED)
+----------------------------------------
+
+If sidechain is mentioned, MUST include:
+
+SIDECHAIN SETUP:
+1. Insert Compressor on Bass channel
+2. Enable Sidechain (top-right button)
+3. Route Kick to sidechain input
+4. Adjust threshold for ~-4 dB gain reduction
+
+========================================
+2. IMPROVE MIX / MASTERING / SOUND DESIGN TEXT
+========================================
+
+Each section MUST always follow:
+
+- MAIN ISSUE
+- WHY
+- IMPACT
+- FIX
+- RESULT
+
+No generic phrases allowed.
+
+========================================
+3. IMPROVE TIMESTAMPED RECOMMENDATIONS
+========================================
+
+Each recommendation must be:
+
+- specific
+- technical
+- actionable
+
+Example:
+
+GOOD:
+[whole-track] bass: high-pass at 80 Hz (12 dB/oct)
+
+BAD:
+"improve bass"
+
+========================================
+4. FULL ANALYSIS RULES
+========================================
+
+Keep concise:
+
+- Strength (1–2 lines)
+- Main weakness (1 line)
+- Fix (3–5 bullet points)
+- Result (clear outcome)
+
+========================================
+5. GLOBAL RULE FOR LLM
+========================================
+
+Add this rule:
+
+Write instructions as if the user has never used the DAW before.
+
+Instructions must be:
+- step-by-step
+- click-by-click
+- explicit
+- impossible to misunderstand
+
+Never assume prior knowledge.
+
+If a user needs to think — the instruction is not detailed enough.
