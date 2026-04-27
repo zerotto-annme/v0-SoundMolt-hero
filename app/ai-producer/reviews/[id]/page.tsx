@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import {
   Sparkles, Loader2, AlertCircle, Lock, ArrowLeft, RefreshCcw,
   Download, Copy, Sliders, Disc3, Layers, Wand2, TrendingUp,
-  Clock, ListChecks, FileText, Check, Music,
+  Clock, ListChecks, FileText, Check, Music, Flame,
 } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
 import { Button } from "@/components/ui/button"
@@ -28,6 +28,24 @@ type Recommendation =
       target?: string | null
     }
 
+type PriorityFix = {
+  title?: string | null
+  action?: string | null
+  impact?: string | null
+}
+
+type TimestampedRec = {
+  time?: string | null
+  target?: string | null
+  text?: string | null
+}
+
+type FullAnalysisStructured = {
+  executive_summary?: string | null
+  detailed_analysis?: string | null
+  advanced_improvements?: string | null
+}
+
 type ReportJson = {
   version?: number
   generated_at?: string
@@ -40,9 +58,17 @@ type ReportJson = {
     sound_design?: ReportSection
     commercial_potential?: ReportSection
   }
+  // Stage 13 — new shape
+  priority_fixes?: PriorityFix[]
+  timestamped_recommendations?: TimestampedRec[]
+  // Legacy shape (still rendered for already-stored reports)
   recommendations?: Recommendation[]
+  // daw_instructions: new shape is a single string with [CHANNEL: …] blocks
+  // separated by blank lines; legacy shape was string[]
   daw_instructions?: string[] | string
-  full_analysis?: string
+  // full_analysis: new shape is a structured object; legacy shape was a string
+  full_analysis?: string | FullAnalysisStructured
+  // legacy
   references?: string[]
 }
 
@@ -282,16 +308,67 @@ export default function ReviewReportPage() {
   const report = review?.report_json ?? null
   const isFree = review?.access_type === "free"
 
-  const recommendationsList = useMemo<string[]>(() => {
-    if (!report?.recommendations || !Array.isArray(report.recommendations)) return []
-    return report.recommendations.map(formatRecommendation)
+  // Stage 13 — Priority Fixes (new shape, top-3 prominent block).
+  const priorityFixesList = useMemo<PriorityFix[]>(() => {
+    const v = report?.priority_fixes
+    if (!Array.isArray(v)) return []
+    return v
+      .filter((p): p is PriorityFix => !!p && typeof p === "object")
+      .filter((p) => (p.title ?? "") || (p.action ?? "") || (p.impact ?? ""))
+      .slice(0, 3)
   }, [report])
 
+  // Stage 13 — Timestamped recommendations: prefer the new shape, fall
+  // back to the legacy `recommendations` array for already-stored reports.
+  const recommendationsList = useMemo<string[]>(() => {
+    const fresh = report?.timestamped_recommendations
+    if (Array.isArray(fresh) && fresh.length > 0) {
+      return fresh
+        .map((r) => {
+          const parts: string[] = []
+          if (r?.time) parts.push(`[${r.time}]`)
+          if (r?.target) parts.push(`${r.target}:`)
+          if (r?.text) parts.push(r.text)
+          return parts.join(" ").trim()
+        })
+        .filter(Boolean)
+    }
+    if (Array.isArray(report?.recommendations)) {
+      return report!.recommendations!.map(formatRecommendation).filter(Boolean)
+    }
+    return []
+  }, [report])
+
+  // Stage 13 — DAW Instructions: new shape is a single string with
+  // [CHANNEL: …] blocks separated by ONE blank line; legacy shape was a
+  // string[]. Split by blank lines so each [CHANNEL] block survives as a
+  // single multi-line card.
   const dawInstructionsList = useMemo<string[]>(() => {
     const v = report?.daw_instructions
     if (!v) return []
-    if (Array.isArray(v)) return v
-    return v.split("\n").map((s) => s.trim()).filter(Boolean)
+    if (Array.isArray(v)) return v.filter((s) => typeof s === "string" && s.trim().length > 0)
+    return v
+      .split(/\n\s*\n+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+  }, [report])
+
+  // Stage 13 — Full Analysis: render structured object when present,
+  // otherwise fall back to the legacy single string.
+  const fullAnalysisStructured = useMemo<FullAnalysisStructured | null>(() => {
+    const v = report?.full_analysis
+    if (v && typeof v === "object") {
+      const o = v as FullAnalysisStructured
+      if ((o.executive_summary ?? "") || (o.detailed_analysis ?? "") || (o.advanced_improvements ?? "")) {
+        return o
+      }
+    }
+    return null
+  }, [report])
+
+  const fullAnalysisLegacyString = useMemo<string>(() => {
+    const v = report?.full_analysis
+    return typeof v === "string" ? v : ""
   }, [report])
 
   const handleCopyRecommendations = async () => {
@@ -307,15 +384,24 @@ export default function ReviewReportPage() {
     } else {
       const lines: string[] = []
       if (review?.title) lines.push(`Track: ${review.title}`)
+      if (priorityFixesList.length > 0) {
+        lines.push("", "Priority fixes:")
+        priorityFixesList.forEach((p, i) => {
+          const head = p.title ? `${i + 1}. ${p.title}` : `${i + 1}.`
+          lines.push(head)
+          if (p.action) lines.push(`   Action: ${p.action}`)
+          if (p.impact) lines.push(`   Impact: ${p.impact}`)
+        })
+      }
       if (recommendationsList.length > 0) {
-        lines.push("", "Recommendations:")
+        lines.push("", "Timestamped recommendations:")
         recommendationsList.forEach((r) => lines.push(`- ${r}`))
       }
       if (dawInstructionsList.length > 0) {
         lines.push("", "DAW instructions:")
-        dawInstructionsList.forEach((r) => lines.push(`- ${r}`))
+        dawInstructionsList.forEach((r) => lines.push(r, ""))
       }
-      text = lines.join("\n")
+      text = lines.join("\n").trimEnd()
     }
     if (!text) text = "(nothing to copy)"
     try {
@@ -562,6 +648,51 @@ export default function ReviewReportPage() {
   // it with a blurred overlay).
   const lockedContent = (
     <div className="space-y-4">
+      {priorityFixesList.length > 0 && (
+        <div className="rounded-2xl border border-amber-400/30 bg-gradient-to-br from-amber-950/30 via-card/40 to-rose-950/20 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-400/30 flex items-center justify-center">
+              <Flame className="w-4 h-4 text-amber-300" />
+            </div>
+            <h3 className="text-base font-semibold">Priority Fixes</h3>
+            <span className="text-[11px] uppercase tracking-wider font-mono px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-400/30 text-amber-300">
+              Top 3
+            </span>
+          </div>
+          <ol className="space-y-3">
+            {priorityFixesList.map((p, i) => (
+              <li
+                key={i}
+                className="rounded-xl border border-border/40 bg-background/40 p-3 sm:p-4"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 inline-flex w-6 h-6 shrink-0 items-center justify-center rounded-md bg-amber-500/15 border border-amber-400/30 text-amber-200 text-xs font-mono">
+                    {i + 1}
+                  </span>
+                  <div className="flex-1 min-w-0 space-y-1.5 text-sm">
+                    {p.title && (
+                      <div className="font-semibold text-foreground">{p.title}</div>
+                    )}
+                    {p.action && (
+                      <div>
+                        <span className="text-xs uppercase tracking-wider font-mono text-amber-300/90">Action: </span>
+                        <span className="text-muted-foreground">{p.action}</span>
+                      </div>
+                    )}
+                    {p.impact && (
+                      <div>
+                        <span className="text-xs uppercase tracking-wider font-mono text-emerald-300/90">Impact: </span>
+                        <span className="text-muted-foreground">{p.impact}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
       <SectionCard icon={Disc3} title="Mastering" score={mastering?.score}>
         {mastering?.text && <p className="whitespace-pre-line">{mastering.text}</p>}
         <NotesList notes={mastering?.notes ?? null} />
@@ -615,8 +746,41 @@ export default function ReviewReportPage() {
       </SectionCard>
 
       <SectionCard icon={FileText} title="Full Analysis">
-        {report?.full_analysis ? (
-          <p className="whitespace-pre-line">{report.full_analysis}</p>
+        {fullAnalysisStructured ? (
+          <div className="space-y-4">
+            {fullAnalysisStructured.executive_summary && (
+              <div className="rounded-lg border border-border/40 bg-background/40 p-3 sm:p-4 space-y-1.5">
+                <div className="text-xs uppercase tracking-wider font-mono text-purple-300">
+                  Executive Summary
+                </div>
+                <p className="whitespace-pre-line text-sm">
+                  {fullAnalysisStructured.executive_summary}
+                </p>
+              </div>
+            )}
+            {fullAnalysisStructured.detailed_analysis && (
+              <div className="rounded-lg border border-border/40 bg-background/40 p-3 sm:p-4 space-y-1.5">
+                <div className="text-xs uppercase tracking-wider font-mono text-purple-300">
+                  Detailed Analysis
+                </div>
+                <p className="whitespace-pre-line text-sm">
+                  {fullAnalysisStructured.detailed_analysis}
+                </p>
+              </div>
+            )}
+            {fullAnalysisStructured.advanced_improvements && (
+              <div className="rounded-lg border border-border/40 bg-background/40 p-3 sm:p-4 space-y-1.5">
+                <div className="text-xs uppercase tracking-wider font-mono text-emerald-300">
+                  Advanced Improvements
+                </div>
+                <p className="whitespace-pre-line text-sm">
+                  {fullAnalysisStructured.advanced_improvements}
+                </p>
+              </div>
+            )}
+          </div>
+        ) : fullAnalysisLegacyString ? (
+          <p className="whitespace-pre-line">{fullAnalysisLegacyString}</p>
         ) : (
           <div className="text-muted-foreground/70 italic">No long-form analysis available.</div>
         )}

@@ -52,8 +52,26 @@ type SectionShape = {
   notes: string[]
 }
 
+export type PriorityFix = {
+  title:  string
+  action: string
+  impact: string
+}
+
+export type TimestampedRecommendation = {
+  time:   string
+  target: string
+  text:   string
+}
+
+export type FullAnalysisStructured = {
+  executive_summary:     string
+  detailed_analysis:     string
+  advanced_improvements: string
+}
+
 export type ProducerReport = {
-  version:       1
+  version:       2
   generated_at:  string
   summary:       string
   overall_score: number
@@ -64,13 +82,11 @@ export type ProducerReport = {
     sound_design:        SectionShape
     commercial_potential: SectionShape
   }
-  recommendations: Array<
-    string | { timestamp?: string | null; target?: string | null; text?: string | null }
-  >
-  daw_instructions: string[]
-  full_analysis:    string
-  references:       string[]
-  audio_features:   EssentiaFeatures
+  priority_fixes:              PriorityFix[]
+  timestamped_recommendations: TimestampedRecommendation[]
+  daw_instructions:            string
+  full_analysis:               FullAnalysisStructured
+  audio_features:              EssentiaFeatures
 }
 
 export type GenerateReportResult =
@@ -226,8 +242,78 @@ function normaliseSection(raw: unknown, fallbackText: string): SectionShape {
   return {
     score: clamp01_100(r.score, 70),
     text:  typeof r.text === "string" && r.text.trim() ? r.text.trim() : fallbackText,
-    notes: toStringArray(r.notes, 8),
+    notes: toStringArray(r.notes, 3),
   }
+}
+
+function pickKey(o: Record<string, unknown>, ...keys: string[]): string {
+  for (const k of keys) {
+    const v = o[k]
+    if (typeof v === "string" && v.trim()) return v.trim()
+  }
+  return ""
+}
+
+function normalisePriorityFixes(v: unknown): PriorityFix[] {
+  if (!Array.isArray(v)) return []
+  const out: PriorityFix[] = []
+  for (const item of v) {
+    if (!item || typeof item !== "object") continue
+    const o = item as Record<string, unknown>
+    const title  = pickKey(o, "title", "name", "label")
+    const action = pickKey(o, "action", "fix", "text")
+    const impact = pickKey(o, "impact", "result", "benefit")
+    if (!action && !impact && !title) continue
+    out.push({ title, action, impact })
+    if (out.length >= 3) break
+  }
+  return out
+}
+
+function normaliseTimestampedRecs(v: unknown): TimestampedRecommendation[] {
+  if (!Array.isArray(v)) return []
+  const out: TimestampedRecommendation[] = []
+  for (const item of v) {
+    if (item && typeof item === "object") {
+      const o = item as Record<string, unknown>
+      const time   = pickKey(o, "time", "timestamp")
+      const target = pickKey(o, "target", "bus", "channel", "element")
+      const text   = pickKey(o, "text", "fix", "action", "note")
+      if (!text && !target && !time) continue
+      out.push({ time, target, text })
+    } else if (typeof item === "string" && item.trim()) {
+      out.push({ time: "", target: "", text: item.trim() })
+    }
+    if (out.length >= 12) break
+  }
+  return out
+}
+
+function normaliseDawInstructionsString(v: unknown): string {
+  if (typeof v === "string") return v.trim()
+  if (Array.isArray(v)) {
+    const blocks = v
+      .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+      .map((x) => x.trim())
+    return blocks.join("\n\n")
+  }
+  return ""
+}
+
+function normaliseFullAnalysisStructured(v: unknown): FullAnalysisStructured {
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    const o = v as Record<string, unknown>
+    return {
+      executive_summary:     pickString(o, "executive_summary", "summary", "exec", "overview"),
+      detailed_analysis:     pickString(o, "detailed_analysis", "analysis", "detailed", "deep"),
+      advanced_improvements: pickString(o, "advanced_improvements", "advanced", "improvements", "pro_tips"),
+    }
+  }
+  if (typeof v === "string" && v.trim()) {
+    // Backward compat — fold the legacy single string into detailed_analysis.
+    return { executive_summary: "", detailed_analysis: v.trim(), advanced_improvements: "" }
+  }
+  return { executive_summary: "", detailed_analysis: "", advanced_improvements: "" }
 }
 
 // ─── Derived audio insights (Stage 8 quality upgrade) ─────────────────
@@ -418,26 +504,6 @@ export function resolveSections(
   return simulateSections(durationSeconds).map(s => ({ ...s, source: "simulated" as const }))
 }
 
-function normaliseRecommendations(
-  raw: unknown,
-): ProducerReport["recommendations"] {
-  if (!Array.isArray(raw)) return []
-  const out: ProducerReport["recommendations"] = []
-  for (const item of raw) {
-    if (typeof item === "string" && item.trim()) {
-      out.push(item.trim())
-    } else if (item && typeof item === "object") {
-      const r = item as Record<string, unknown>
-      const ts     = typeof r.timestamp === "string" ? r.timestamp : null
-      const target = typeof r.target    === "string" ? r.target    : null
-      const text   = typeof r.text      === "string" ? r.text      : null
-      if (ts || target || text) out.push({ timestamp: ts, target, text })
-    }
-    if (out.length >= 20) break
-  }
-  return out
-}
-
 /**
  * Build the LLM system + user prompt and ask gpt-4o-mini for a report.
  * The model is asked to return strict JSON; we then normalise the
@@ -462,68 +528,206 @@ export async function generateProducerReport(
   const sections = resolveSections(features, insights.duration_seconds ?? inputs.track_duration ?? null)
   const sectionsAreReal = sections.length > 0 && sections[0]!.source === "essentia"
 
-  // Step 2 — system prompt (verbatim from Stage 8 spec).
-  // Step 6 (tone) and the JSON-only output rule are appended as a
-  // short trailer because the spec's Step 7 forbids breaking the
-  // existing JSON contract; the trailer cannot be expressed inside
-  // the verbatim block but is required by other steps in the spec.
+  // Step 2 — system prompt (verbatim from Stage 13 attached spec, with a
+  // short technical anchoring trailer so the model still grounds its
+  // numbers in the Essentia features the user prompt provides and so it
+  // still emits VALID JSON ONLY, no markdown fences).
   const systemPrompt =
-    "You are a professional music producer and mixing/mastering engineer with 15+ years of experience.\n\n" +
-    "You are analyzing a REAL track using audio features (BPM, key, energy, spectral balance, etc).\n\n" +
-    "Your goal is NOT to give generic advice.\n\n" +
-    "Your goal is to:\n" +
-    "1. Identify specific weaknesses in THIS track\n" +
-    "2. Explain WHY they happen (technical reasoning)\n" +
-    "3. Give precise, actionable fixes\n" +
-    "4. Adapt advice to the selected DAW (Cubase, FL Studio, Ableton, Logic)\n\n" +
-    "Avoid generic phrases like:\n" +
-    "- 'could be improved'\n" +
-    "- 'consider enhancing'\n\n" +
-    "Instead:\n" +
-    "- Be direct\n" +
-    "- Be specific\n" +
-    "- Use numbers when possible (Hz, dB, LUFS, ms)\n\n" +
-    "Always assume the user wants to APPLY changes immediately.\n\n" +
-    "---\n" +
-    "STRONG OPINIONS (Stage 9 step 1): You MUST identify the TOP 3 biggest problems in THIS track. " +
-    "Do not describe everything — prioritize what actually breaks the track. Lead the recommendations with these three.\n\n" +
-    "WHY IT FAILS (Stage 9 step 2 + step 3 + Stage 10 step 5 + Stage 12 step 2): For every section, EVERY note MUST follow this exact format:\n" +
-    "\"Problem: <what is wrong>. Why: <technical cause>. Impact: <what the listener feels>. Fix: <concrete action with Hz / mm:ss / dB / LUFS>. Result: <what will improve audibly>.\"\n" +
-    "Example: \"Problem: low-end is muddy. Why: the kick (60 Hz) overlaps the bass (100 Hz) causing masking. Impact: the drop feels weak and lacks punch. Fix: high-pass the bass at 80 Hz and side-chain it -4 dB to the kick (10 ms attack, 120 ms release). Result: the low-end becomes cleaner and the kick gains punch.\"\n" +
-    "PRIORITY LAYER (Stage 12 step 2): each section.notes MUST contain 1 (preferred) or 2 (max) entries — the MOST critical issues of that section only. Both Fix and Result remain mandatory; Fix MUST reference Hz, time, or dB/LUFS.\n" +
-    "  notes[0] MUST start with the literal prefix \"MAIN ISSUE — \" followed by the 5-part format string (the single biggest issue of THIS section).\n" +
-    "  notes[1] (OPTIONAL, max one) MUST start with the literal prefix \"ADDITIONAL ISSUE — \" followed by the 5-part format string (the next most important issue of THIS section).\n" +
-    "All other diagnoses, deeper polish ideas, optional improvements, and extra observations for the WHOLE report — DO NOT delete them — RELOCATE them into the ADVANCED IMPROVEMENTS block at the tail of full_analysis (see FULL_ANALYSIS STRUCTURE below). Do not duplicate an item in both a section.notes entry AND the ADVANCED IMPROVEMENTS list.\n\n" +
-    "DAW MODE (Stage 9 step 4 + Stage 10 step 4 + Stage 11 step 4) — VISUAL multi-line format, NO \" | \" separators. Every entry in daw_instructions MUST be a SINGLE STRING containing ACTUAL newline characters (\\n), structured EXACTLY like this:\n" +
-    "[CHANNEL: <element>]\\nStep 1 — Open <Mixer / Track>\\nStep 2 — Select <channel>\\nStep 3 — Insert <plugin>\\nStep 4 — Set:\\n  <param>: <value>\\n  <param>: <value>\\n  <param>: <value>\n" +
-    "Concrete example (the literal characters \"\\n\" represent newline characters in the JSON string):\n" +
-    "\"[CHANNEL: Kick]\\nStep 1 — Open Mixer (F3)\\nStep 2 — Select Kick channel\\nStep 3 — Insert Compressor\\nStep 4 — Set:\\n  Attack: 10 ms\\n  Release: 120 ms\\n  Ratio: 4:1\"\n" +
-    "Step 4 MUST be on its own line ending with a colon, with each (param, value) pair indented on its own line. No \" | \", no inlining.\n\n" +
-    "ENERGY FLOW (Stage 9 step 5): analyze the energy curve of the track. " +
-    "If the drop lacks impact, explain WHY (no buildup, too constant energy, weak transient, frequency masking, etc.). " +
-    "Put this analysis inside sections.arrangement and reference it in full_analysis.\n\n" +
-    "FORBIDDEN LANGUAGE (Stage 9 step 6 + Stage 10 step 3): the words \"could\", \"might\", and \"consider\" are BANNED in ALL output strings (summary, sections.*.text, sections.*.notes, recommendations, daw_instructions, full_analysis). " +
-    "Use decisive, active diagnoses: \"this is causing\", \"this reduces\", \"this weakens the track\", \"this masks\", \"this kills the punch\", \"this must be fixed\".\n\n" +
-    "MAIN DIAGNOSIS (Stage 10 step 1 + Stage 11 step 1) — VERDICT TONE. The summary field MUST start with the literal token \"MAIN ISSUE: \" followed by EXACTLY 2 short sentences:\n" +
-    "  Sentence 1: a verdict that names the single core problem and the audible consequence (example: \"Your track loses impact because the low-end collapses into mud.\").\n" +
-    "  Sentence 2: WHY the track feels weak — the technical cause behind that verdict (example: \"The kick and bass are masking each other, killing punch and clarity.\").\n" +
-    "ONLY ONE main issue is allowed. NO third sentence. NO IF-YOU-FIX list inside summary anymore (the FIX-3 list now lives at the TOP of full_analysis — see FULL_ANALYSIS STRUCTURE below).\n\n" +
-    "FULL_ANALYSIS STRUCTURE (Stage 11 step 2 + step 3 + Stage 12 step 3 + step 4) — full_analysis is a SINGLE STRING using real newline characters (\\n) and MUST follow this exact order:\n" +
-    "Block A — TOP visual block (Stage 12 step 3):\n" +
-    "=== FIX THESE 3 THINGS FIRST ===\\n1. <biggest concrete fix with Hz / dB / ms / LUFS>\\n2. <second concrete fix>\\n3. <third concrete fix>\n" +
-    "Then a blank line, then Block B:\n" +
-    "=== EXPECTED BEFORE / AFTER ===\\nBefore:\\n- <symptom 1>\\n- <symptom 2>\\nAfter:\\n- <improvement 1>\\n- <improvement 2>\\n- <improvement 3>\n" +
-    "Then a blank line, then Block C — the 300–600 word narrative (Stage 8) with explicit energy-flow analysis (Stage 9), specific to THIS track.\n" +
-    "Then a blank line, then Block D — ADVANCED IMPROVEMENTS (Stage 12 step 4). Format EXACTLY:\n" +
-    "=== ADVANCED IMPROVEMENTS ===\\n- <deeper / optional fix 1, still with Hz / dB / ms / LUFS anchors when possible>\\n- <deeper fix 2>\\n- <deeper fix 3>\\n- ... (5–15 items total)\n" +
-    "This block is the home for ALL extra polish ideas, optional refinements, deeper observations, additional production tips, mixing nuance, mastering options, arrangement variations, sound-design experiments, commercial/marketing notes, and anything else that did NOT fit into the two-issue cap of section.notes (Stage 12 step 1: KEEP ALL INSIGHTS — do NOT delete content; relocate it here). Each item MUST stay decisive, action-oriented, and specific.\n\n" +
-    "WHY THIS MATTERS (Stage 11 step 5) — every section.text (mix, mastering, arrangement, sound_design, commercial_potential) MUST end with two newlines followed by the literal line \"Why this matters: <one short sentence about how this section's issues affect what the listener feels>\". Single line, no extra paragraphs.\n\n" +
-    "ANTI-REPETITION (Stage 11 step 6) — each concrete diagnosed problem may appear in ONLY ONE place across the whole report. Pick the most relevant home (summary OR mix OR mastering OR arrangement OR sound_design OR commercial_potential) and keep the strongest, most actionable wording there. Do NOT restate the same issue verbatim in summary, mix, AND mastering — pick the strongest version, mention the issue only once, and let other sections reference different aspects.\n\n" +
-    "NO GUESSING (Stage 10 step 6): if a piece of audio data is not present in the DERIVED AUDIO INSIGHTS or RAW ESSENTIA FEATURES blocks, do NOT invent it. " +
-    "Skip the observation entirely rather than fabricate a number. Numeric anchors must come from the actual features, not guessed.\n\n" +
-    "Tone (Stage 8 step 6 + Stage 10 step 3): confident, decisive, slightly critical, like a real producer talking to a peer — NOT a polite assistant. " +
-    "Instead of 'this could be improved' say 'the low-end is muddy and masking clarity in the mix'.\n" +
-    "Output (Stage 8 step 7): respond with VALID JSON ONLY matching the schema the user prompt specifies — no prose, no markdown, no code fences."
+`You are a professional music producer with 15+ years of experience in electronic music (Techno, House, EDM).
+
+Your job is to analyze a track and produce a HIGH-VALUE, ACTIONABLE, NON-REDUNDANT report.
+
+CRITICAL RULES:
+
+1. NO GENERIC PHRASES
+❌ Avoid: "could be improved", "nice idea", "good foundation"
+✅ Use: specific, confident, slightly critical tone
+
+2. NO REPETITION BETWEEN SECTIONS
+- If something is already mentioned in Mix/Mastering/Arrangement/Sound Design → DO NOT repeat it in Full Analysis
+- Full Analysis must EXPLAIN, not repeat
+
+3. ALWAYS USE NUMBERS WHEN POSSIBLE
+Use:
+- Hz (frequency)
+- dB (gain)
+- LUFS (loudness)
+- ms (attack/release)
+- timestamps (if available)
+
+4. WRITE LIKE A REAL PRODUCER
+Tone:
+- confident
+- direct
+- slightly critical
+- practical
+
+Example:
+❌ "The mix could be better"
+✅ "The low-end is congested due to overlap between 60 Hz kick and 100 Hz bass"
+
+---
+
+# OUTPUT STRUCTURE (STRICT)
+
+Return JSON with this structure:
+
+{
+  "summary": "...",
+  "overall_score": number,
+
+  "sections": {
+    "mix": { "score": number, "text": "...", "notes": [] },
+    "mastering": { "score": number, "text": "...", "notes": [] },
+    "arrangement": { "score": number, "text": "...", "notes": [] },
+    "sound_design": { "score": number, "text": "...", "notes": [] },
+    "commercial_potential": { "score": number, "text": "...", "notes": [] }
+  },
+
+  "priority_fixes": [
+    { "title": "...", "action": "...", "impact": "..." }
+  ],
+
+  "timestamped_recommendations": [
+    { "time": "...", "target": "...", "text": "..." }
+  ],
+
+  "daw_instructions": "...",
+
+  "full_analysis": {
+    "executive_summary": "...",
+    "detailed_analysis": "...",
+    "advanced_improvements": "..."
+  }
+}
+
+---
+
+# SECTION RULES
+
+## SUMMARY
+- 2–4 sentences MAX
+- must describe MAIN PROBLEM
+- must explain IMPACT
+
+---
+
+## PRIORITY_FIXES (🔥 VERY IMPORTANT)
+
+- EXACTLY 3 items
+- each item MUST include:
+  - action
+  - impact (what improves)
+
+Example:
+{
+  "title": "Fix low-end masking",
+  "action": "High-pass bass at 80 Hz and sidechain it to kick (-4 dB, 10 ms attack, 120 ms release)",
+  "impact": "Restores punch and clarity in the drop"
+}
+
+---
+
+## SECTIONS (Mix / Mastering / etc.)
+
+Each section:
+
+- SHORT paragraph (no overload)
+- 2–3 key problems MAX
+- use Problem → Why → Impact → Fix logic
+
+---
+
+## TIMESTAMPED RECOMMENDATIONS
+
+- mix of:
+  - [0:45]
+  - [1:30]
+  - [whole-track]
+
+---
+
+## DAW INSTRUCTIONS
+
+MUST follow this structure:
+
+[CHANNEL: Name]
+1. Open Mixer
+2. Select Channel
+3. Insert Plugin
+4. Set parameters (Hz / dB / ms)
+
+Use DAW-specific naming if provided (Cubase / FL / Ableton / Logic).
+
+Output as a SINGLE STRING. Multiple [CHANNEL: ...] blocks separated by ONE blank line. Use real \\n newline characters between every line.
+
+---
+
+# 🔥 FULL ANALYSIS (MOST IMPORTANT PART)
+
+This is where most mistakes happen.
+
+You MUST split into 3 parts (returned as the OBJECT shape shown above with three string keys: executive_summary, detailed_analysis, advanced_improvements):
+
+---
+
+## 1. EXECUTIVE SUMMARY (SHORT)
+
+- 4–6 lines MAX
+- NO numbers
+- NO repetition from sections
+- explain:
+  - what's wrong globally
+  - what will happen if fixed
+
+---
+
+## 2. DETAILED ANALYSIS (DEEP)
+
+- explain WHY problems exist
+- connect:
+  - mix + arrangement + energy
+- DO NOT repeat same sentences from sections
+- go deeper, not wider
+
+Example:
+❌ "kick and bass overlap"
+✅ "The interaction between kick transient and sustained bass energy reduces perceived punch, especially during drop sections"
+
+---
+
+## 3. ADVANCED IMPROVEMENTS (PRO LEVEL)
+
+- optional optimizations
+- more creative / pro techniques
+- NOT basic fixes
+
+Examples:
+- transient shaping
+- automation
+- stereo field tricks
+- layering
+
+---
+
+# FINAL GOAL
+
+The report must feel like:
+
+👉 a real producer analyzed the track
+👉 not like AI generated text
+👉 no repetition
+👉 clear action path
+👉 clear reasoning
+
+If there is repetition → the output is WRONG.
+
+---
+
+ANCHORING (technical, do not violate):
+- You are analyzing a REAL track. The user prompt provides DERIVED AUDIO INSIGHTS and RAW ESSENTIA FEATURES. Every Hz / dB / LUFS / ms / mm:ss number you write MUST come from those blocks; do NOT invent values that are not present there.
+- Adapt advice to the selected DAW (Cubase, FL Studio, Ableton, Logic) — use stock plugin names of that DAW where relevant.
+- Output VALID JSON ONLY matching the schema above — no prose, no markdown, no code fences, no extra keys.`
 
   // Compact, human-readable insight block (only fields that were
   // actually derived — missing values are simply not listed so the
@@ -554,8 +758,11 @@ export async function generateProducerReport(
     rawFeaturesJson = "{}"
   }
 
-  // Steps 3, 4, 5 — force specificity, expose pseudo-sections, demand
-  // DAW-specific concrete instructions.
+  // Stage 13 — user prompt: feeds DERIVED AUDIO INSIGHTS, real
+  // arrangement landmarks, raw Essentia features, focus weighting, DAW
+  // name, and the strict NEW JSON schema (priority_fixes,
+  // timestamped_recommendations, daw_instructions:string,
+  // full_analysis:object).
   const userPrompt =
 `Generate a producer-style review for the user's track in strict JSON.
 
@@ -567,7 +774,7 @@ CONTEXT (user-supplied):
 - track_duration_seconds: ${insights.duration_seconds ?? inputs.track_duration ?? "unknown"}
 - user_comment: ${inputs.comment ?? "(none)"}
 
-DERIVED AUDIO INSIGHTS (ground truth — quote these in your analysis):
+DERIVED AUDIO INSIGHTS (ground truth — quote these in your analysis; do NOT invent numbers that are not here or in the raw features below):
 ${insightBlock}
 
 ${sectionsHeader}
@@ -576,87 +783,12 @@ ${sectionLines}
 RAW ESSENTIA FEATURES (for deeper inspection if you need them):
 ${rawFeaturesJson}
 
-IMPORTANT:
-Do NOT give generic mixing advice.
-
-Every recommendation must:
-- reference a frequency (Hz)
-- or timing (seconds / mm:ss)
-- or level (dB / LUFS)
-- or exact DAW action
-
-Bad example:
-'boost the highs'
-
-Good example:
-'boost around 10 kHz by +3 dB using a high shelf EQ'
-
-Bad example:
-'improve arrangement'
-
-Good example:
-'add a breakdown at 1:30 to reduce listener fatigue before the drop'
-
 WEIGHTING — adapt depth per feedback_focus="${focus}":
 - mastering   → loudness, dynamics, limiting, tonal balance, LUFS targets
 - mixing      → balance, EQ, compression, stereo image, headroom
 - arrangement → structure, intro/build/drop/outro, energy curve
 - vocals / bass / drums / melody → prioritise that element specifically
 - overall     → balanced full review
-
-DAW INSTRUCTIONS (for ${dawLb}) — VISUAL multi-line format. Every entry in "daw_instructions" MUST be a SINGLE STRING containing real newline characters (\\n in the JSON), structured EXACTLY:
-[CHANNEL: <element>]\\nStep 1 — Open <Mixer / Track>\\nStep 2 — Select <channel>\\nStep 3 — Insert <plugin — prefer ${dawLb} stock plugins>\\nStep 4 — Set:\\n  <param>: <value>\\n  <param>: <value>\\n  <param>: <value>
-Concrete example for ${dawLb}:
-"[CHANNEL: Kick]\\nStep 1 — Open Mixer (F3)\\nStep 2 — Select Kick channel\\nStep 3 — Insert Compressor\\nStep 4 — Set:\\n  Attack: 10 ms\\n  Release: 120 ms\\n  Ratio: 4:1"
-NO " | " separators, NO inlining. Step 4 MUST end with a colon and each (param: value) pair MUST be on its own indented line. Generate 4–8 such entries.
-
-SECTIONS — PRIORITY LAYER (Stage 12). Each of mix / mastering / arrangement / sound_design / commercial_potential MUST contain 1 (preferred) or 2 (max) "notes" entries — the most critical issues of that section ONLY. EVERY note MUST follow this exact 5-part format string:
-"Problem: <what is wrong>. Why: <technical cause>. Impact: <listener experience>. Fix: <action with Hz / mm:ss / dB / LUFS>. Result: <what will improve audibly>."
-Both "Fix:" and "Result:" are mandatory; "Fix:" MUST reference a frequency, time, or level.
-
-Each section.notes[] MUST be ordered as:
-  notes[0] = "MAIN ISSUE — <5-part format string>" (the SINGLE biggest issue of THIS section, MANDATORY).
-  notes[1] = "ADDITIONAL ISSUE — <5-part format string>" (the next most important issue of THIS section, OPTIONAL — max ONE).
-
-Every other diagnosis, deeper polish idea, optional improvement, or extra observation for the WHOLE report — DO NOT delete it — RELOCATE it into the ADVANCED IMPROVEMENTS block at the tail of full_analysis (described below). Do not duplicate the same item in both a section.notes entry AND the ADVANCED IMPROVEMENTS list.
-
-EVERY section.text (mix, mastering, arrangement, sound_design, commercial_potential) MUST end with two newlines (\\n\\n) followed by the literal line "Why this matters: <one short sentence about how this section's issues affect what the listener feels>". Single line, no extra paragraphs after it.
-
-ANTI-REPETITION — each concrete diagnosed problem may appear in ONLY ONE place across the whole report. Pick the most relevant home (summary OR mix OR mastering OR arrangement OR sound_design OR commercial_potential), keep the strongest, most actionable wording there, and do NOT restate the same issue verbatim elsewhere.
-
-ARRANGEMENT section MUST include an explicit ENERGY FLOW analysis: describe the energy curve across intro/build/drop/outro. If the drop lacks impact, name the technical reason (no buildup, constant energy, weak transient, frequency masking, sub-bass not landing on the down-beat, etc.).
-
-TOP 3 PROBLEMS — the FIRST 3 entries of "recommendations" MUST be the three biggest issues breaking THIS track, ranked by severity. Use the object form:
-{"timestamp":"mm:ss or 'whole-track'","target":"<bus / element>","text":"<concrete fix with Hz / dB / time>"}
-After those, include 2–7 more recommendations (any form). Total 5–10.
-
-FORBIDDEN WORDS in EVERY output string: "could", "might", "consider". Replace with decisive active phrasing: "this is causing", "this reduces", "this weakens the track", "this masks", "this kills the punch", "this must be fixed".
-
-NO GUESSING — if a piece of audio data is not present in the DERIVED AUDIO INSIGHTS or RAW ESSENTIA FEATURES blocks above, do NOT invent a number. Skip that observation rather than fabricate.
-
-"summary" — VERDICT TONE. MUST start with the literal token "MAIN ISSUE: " followed by EXACTLY 2 short sentences:
-  Sentence 1 = verdict naming the single core problem and the audible consequence (e.g. "Your track loses impact because the low-end collapses into mud.").
-  Sentence 2 = WHY the track feels weak — the technical cause behind that verdict (e.g. "The kick and bass are masking each other, killing punch and clarity.").
-Only ONE main issue. NO third sentence. NO "IF YOU FIX ONLY 3 THINGS" list inside summary — that list now lives at the TOP of full_analysis (see below).
-
-"overall_score" — integer 0–100 grounded in the derived insights.
-
-"full_analysis" — single string with real newline characters (\\n). MUST follow this EXACT block order (A → B → C → D), with one blank line between blocks:
-
-Block A (TOP — Stage 12 step 3):
-=== FIX THESE 3 THINGS FIRST ===\\n1. <biggest concrete fix with Hz / dB / ms / LUFS>\\n2. <second concrete fix>\\n3. <third concrete fix>
-
-Block B:
-=== EXPECTED BEFORE / AFTER ===\\nBefore:\\n- <symptom 1>\\n- <symptom 2>\\nAfter:\\n- <improvement 1>\\n- <improvement 2>\\n- <improvement 3>
-
-Block C:
-The 300–600 word narrative specific to THIS track (not the genre), covering the energy flow analysis explicitly.
-
-Block D (TAIL — Stage 12 step 4 — MANDATORY):
-=== ADVANCED IMPROVEMENTS ===\\n- <deeper / optional fix 1, with Hz / dB / ms / LUFS anchors when possible>\\n- <deeper fix 2>\\n- <deeper fix 3>\\n- ... (5–15 items total)
-This block is the single home for ALL extra polish ideas, optional refinements, deeper observations, additional production tips, mixing nuance, mastering options, arrangement variations, sound-design experiments, and commercial/marketing notes — everything that did NOT fit into the 1–2 issue cap of section.notes (Stage 12 step 1: KEEP ALL INSIGHTS — do NOT delete content; relocate it here). Each item MUST stay decisive, action-oriented, and specific. Do NOT duplicate items already present in section.notes.
-
-"references" — 0–6 short reference tracks/plugins/articles relevant to the suggested fixes.
 
 Return ONLY this JSON shape — no extra keys, no markdown, no code fences:
 {
@@ -669,11 +801,44 @@ Return ONLY this JSON shape — no extra keys, no markdown, no code fences:
     "sound_design":         { "score": number, "text": string, "notes": string[] },
     "commercial_potential": { "score": number, "text": string, "notes": string[] }
   },
-  "recommendations": Array<string | {"timestamp": string, "target": string, "text": string}>,
-  "daw_instructions": string[],
-  "full_analysis": string,
-  "references": string[]
-}`
+  "priority_fixes": [
+    { "title": string, "action": string, "impact": string },
+    { "title": string, "action": string, "impact": string },
+    { "title": string, "action": string, "impact": string }
+  ],
+  "timestamped_recommendations": [
+    { "time": string, "target": string, "text": string }
+  ],
+  "daw_instructions": string,
+  "full_analysis": {
+    "executive_summary": string,
+    "detailed_analysis": string,
+    "advanced_improvements": string
+  }
+}
+
+REMINDERS (enforced — re-read system prompt rules before writing):
+- summary: 2–4 sentences MAX. Name the MAIN PROBLEM and its IMPACT on what the listener feels.
+- sections (mix / mastering / arrangement / sound_design / commercial_potential): SHORT paragraph in "text", and 2–3 entries MAX in "notes". Each note follows Problem → Why → Impact → Fix logic with concrete Hz / dB / ms / mm:ss / LUFS anchors when relevant. ARRANGEMENT section MUST cover the energy curve across intro / build / drop / outro.
+- priority_fixes: EXACTLY 3 items, ordered by severity. "title" = short label, "action" = concrete fix with Hz / dB / ms / LUFS anchors, "impact" = what audibly improves. These are the three things that actually break THIS track.
+- timestamped_recommendations: 4–8 entries. "time" is "mm:ss" (e.g. "0:45") or the literal "whole-track". "target" names the bus / element (e.g. "kick bus", "lead synth", "master"). "text" is the concrete fix.
+- daw_instructions: SINGLE STRING. Multiple [CHANNEL: <element>] blocks separated by ONE blank line (\\n\\n). Each block uses real \\n newlines and EXACTLY this layout:
+  [CHANNEL: <element>]
+  1. Open Mixer
+  2. Select <channel>
+  3. Insert <plugin — prefer ${dawLb} stock plugins>
+  4. Set:
+    <param>: <value with Hz / dB / ms>
+    <param>: <value>
+    <param>: <value>
+  Generate 4–8 channel blocks. NO " | " separators. NO inlining. Step 4 MUST end with a colon and each (param: value) pair MUST be on its own indented line.
+- full_analysis: OBJECT with three string keys. NO numbers, NO sentences copy-pasted from section.text or section.notes.
+  - executive_summary: 4–6 lines MAX. What is globally wrong and what improves when fixed.
+  - detailed_analysis: deep WHY. Connect mix + arrangement + energy. Go DEEPER, not WIDER. Do NOT repeat sentences from sections.
+  - advanced_improvements: PRO-level / creative / optional techniques only — transient shaping, automation, stereo field tricks, layering, parallel processing, mid/side moves, sidechain creativity. NOT basic fixes (those belong in priority_fixes / sections).
+- ANTI-REPETITION across the WHOLE report. If a concrete problem appears in section.notes, it MUST NOT appear verbatim in another section, in priority_fixes, in timestamped_recommendations, or in full_analysis. Pick the most relevant home and keep it there only.
+- FORBIDDEN WORDS in every output string: "could", "might", "consider". Replace with decisive active phrasing: "this is causing", "this reduces", "this weakens the track", "this masks", "this kills the punch", "this must be fixed".
+- NO GUESSING — if a piece of audio data is not present in the DERIVED AUDIO INSIGHTS or RAW ESSENTIA FEATURES blocks above, do NOT invent a number. Skip the observation rather than fabricate.`
 
   let raw: string
   try {
@@ -719,8 +884,14 @@ Return ONLY this JSON shape — no extra keys, no markdown, no code fences:
     ? parsed.sections
     : {}) as Record<string, unknown>
 
+  // Stage 13 — fall back to legacy `recommendations` if the model still
+  // emits the old key, so already-deployed prompts and stored responses
+  // do not silently lose data.
+  const tsRecs = normaliseTimestampedRecs(parsed.timestamped_recommendations)
+  const tsRecsFinal = tsRecs.length > 0 ? tsRecs : normaliseTimestampedRecs(parsed.recommendations)
+
   const report: ProducerReport = {
-    version:       1,
+    version:       2,
     generated_at:  new Date().toISOString(),
     summary:       typeof parsed.summary === "string" && parsed.summary.trim()
                      ? parsed.summary.trim()
@@ -733,11 +904,11 @@ Return ONLY this JSON shape — no extra keys, no markdown, no code fences:
       sound_design:         normaliseSection(sectionsRaw.sound_design,         "Sound design review."),
       commercial_potential: normaliseSection(sectionsRaw.commercial_potential, "Commercial potential review."),
     },
-    recommendations:  normaliseRecommendations(parsed.recommendations),
-    daw_instructions: toStringArray(parsed.daw_instructions, 12),
-    full_analysis:    typeof parsed.full_analysis === "string" ? parsed.full_analysis.trim() : "",
-    references:       toStringArray(parsed.references, 6),
-    audio_features:   features,
+    priority_fixes:              normalisePriorityFixes(parsed.priority_fixes),
+    timestamped_recommendations: tsRecsFinal,
+    daw_instructions:            normaliseDawInstructionsString(parsed.daw_instructions),
+    full_analysis:               normaliseFullAnalysisStructured(parsed.full_analysis),
+    audio_features:              features,
   }
 
   return { ok: true, report }
