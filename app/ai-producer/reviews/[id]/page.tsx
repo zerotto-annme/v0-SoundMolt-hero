@@ -553,7 +553,7 @@ export default function ReviewReportPage() {
 
   const mixBlock = (
     <SectionCard icon={Sliders} title="Mix Balance" score={mix?.score}>
-      {mix?.text && <p>{mix.text}</p>}
+      {mix?.text && <p className="whitespace-pre-line">{mix.text}</p>}
       <NotesList notes={mix?.notes ?? null} />
     </SectionCard>
   )
@@ -563,22 +563,22 @@ export default function ReviewReportPage() {
   const lockedContent = (
     <div className="space-y-4">
       <SectionCard icon={Disc3} title="Mastering" score={mastering?.score}>
-        {mastering?.text && <p>{mastering.text}</p>}
+        {mastering?.text && <p className="whitespace-pre-line">{mastering.text}</p>}
         <NotesList notes={mastering?.notes ?? null} />
       </SectionCard>
 
       <SectionCard icon={Layers} title="Arrangement" score={arrangement?.score}>
-        {arrangement?.text && <p>{arrangement.text}</p>}
+        {arrangement?.text && <p className="whitespace-pre-line">{arrangement.text}</p>}
         <NotesList notes={arrangement?.notes ?? null} />
       </SectionCard>
 
       <SectionCard icon={Wand2} title="Sound Design" score={soundDesign?.score}>
-        {soundDesign?.text && <p>{soundDesign.text}</p>}
+        {soundDesign?.text && <p className="whitespace-pre-line">{soundDesign.text}</p>}
         <NotesList notes={soundDesign?.notes ?? null} />
       </SectionCard>
 
       <SectionCard icon={TrendingUp} title="Commercial Potential" score={commercial?.score}>
-        {commercial?.text && <p>{commercial.text}</p>}
+        {commercial?.text && <p className="whitespace-pre-line">{commercial.text}</p>}
         <NotesList notes={commercial?.notes ?? null} />
       </SectionCard>
 
@@ -601,9 +601,14 @@ export default function ReviewReportPage() {
         {dawInstructionsList.length === 0 ? (
           <div className="text-muted-foreground/70 italic">No DAW instructions available.</div>
         ) : (
-          <ul className="list-disc list-inside space-y-1">
+          <ul className="space-y-3">
             {dawInstructionsList.map((d, i) => (
-              <li key={i}>{d}</li>
+              <li
+                key={i}
+                className="whitespace-pre-line rounded-lg border border-border/40 bg-background/40 p-3 font-mono text-xs leading-relaxed"
+              >
+                {d}
+              </li>
             ))}
           </ul>
         )}
