@@ -325,46 +325,191 @@ export default function ReviewReportPage() {
     return v.split("\n").map((s) => s.trim()).filter(Boolean)
   }, [report])
 
-  const handleCopyRecommendations = async () => {
-    let text = ""
-    if (isFree) {
-      text = [
-        review?.title ? `Track: ${review.title}` : null,
-        report?.summary ? `Summary: ${report.summary}` : null,
-        typeof report?.overall_score === "number"
-          ? `Overall score: ${report.overall_score}/100`
-          : null,
-      ].filter(Boolean).join("\n")
-    } else {
-      const lines: string[] = []
-      if (review?.title) lines.push(`Track: ${review.title}`)
-      if (recommendationsList.length > 0) {
-        lines.push("", "Recommendations:")
-        recommendationsList.forEach((r) => lines.push(`- ${r}`))
-      }
-      if (dawInstructionsList.length > 0) {
-        lines.push("", "DAW instructions:")
-        dawInstructionsList.forEach((r) => lines.push(`- ${r}`))
-      }
-      text = lines.join("\n")
+  // Build the COMPLETE report text for the Copy button. Supports both the
+  // current report_json shape and any older variant by reading defensively
+  // (typeof checks, optional chaining, array fallbacks).
+  const buildFullReportText = useCallback((): string => {
+    const lines: string[] = []
+    const r = report as Record<string, unknown> | null
+
+    // ── Header ─────────────────────────────────────────────────────────
+    if (review?.title) lines.push(`Track: ${review.title}`)
+    if (review?.daw) {
+      const lbl = dawLabel(review.daw)
+      if (lbl) lines.push(`DAW: ${lbl}`)
     }
-    if (!text) text = "(nothing to copy)"
+    const genreDisplay = buildGenreDisplay(
+      review?.genre ?? null,
+      r?.genre_source,
+      r?.final_genre_used,
+      r?.detected_genre,
+    )
+    if (genreDisplay) lines.push(`Genre: ${genreDisplay}`)
+    if (review?.feedback_focus) lines.push(`Focus: ${review.feedback_focus}`)
+    if (typeof review?.credits_used === "number") {
+      lines.push(`Credits used: ${review.credits_used}`)
+    }
+    if (lines.length) lines.push("")
+
+    // For free-tier reviews only the unlocked sections (Summary, Overall
+    // Score, Mix Balance) are shown on screen. Don't leak locked content
+    // through Copy.
+    const includeLocked = !isFree
+
+    // ── Summary ────────────────────────────────────────────────────────
+    if (typeof report?.summary === "string" && report.summary.trim()) {
+      lines.push("=== SUMMARY ===")
+      lines.push(report.summary.trim())
+      lines.push("")
+    }
+
+    // ── Overall Score ──────────────────────────────────────────────────
+    if (typeof report?.overall_score === "number") {
+      lines.push("=== OVERALL SCORE ===")
+      lines.push(`${report.overall_score} / 100`)
+      lines.push("")
+    }
+
+    const renderSection = (title: string, sec: ReportSection | undefined | null) => {
+      if (!sec) return
+      const hasScore = typeof sec.score === "number"
+      const hasText = typeof sec.text === "string" && sec.text.trim().length > 0
+      const hasNotes = Array.isArray(sec.notes) && sec.notes.length > 0
+      if (!hasScore && !hasText && !hasNotes) return
+      lines.push(`=== ${title.toUpperCase()} ===`)
+      if (hasScore) lines.push(`Score: ${sec.score} / 100`)
+      if (hasText) lines.push((sec.text as string).trim())
+      if (hasNotes) {
+        for (const n of sec.notes as string[]) {
+          if (typeof n === "string" && n.trim()) lines.push(`- ${n.trim()}`)
+        }
+      }
+      lines.push("")
+    }
+
+    renderSection("Mix Balance", report?.sections?.mix)
+
+    if (includeLocked) {
+      renderSection("Mastering", report?.sections?.mastering)
+      renderSection("Arrangement", report?.sections?.arrangement)
+      renderSection("Sound Design", report?.sections?.sound_design)
+      renderSection("Commercial Potential", report?.sections?.commercial_potential)
+
+      // ── Timestamped Recommendations ──────────────────────────────────
+      if (recommendationsList.length > 0) {
+        lines.push("=== TIMESTAMPED RECOMMENDATIONS ===")
+        recommendationsList.forEach((rec) => lines.push(`- ${rec}`))
+        lines.push("")
+      }
+
+      // ── DAW Instructions ─────────────────────────────────────────────
+      if (dawInstructionsList.length > 0) {
+        lines.push("=== DAW INSTRUCTIONS ===")
+        dawInstructionsList.forEach((d, i) => {
+          lines.push(`[${i + 1}]`)
+          lines.push(d)
+          lines.push("")
+        })
+      }
+
+      // ── Full Analysis (supports old string + current object shape) ───
+      const fa = report?.full_analysis
+      let faText = ""
+      if (typeof fa === "string") {
+        faText = fa.trim()
+      } else if (fa && typeof fa === "object") {
+        const o = fa as Record<string, unknown>
+        const exec = typeof o.executive_summary === "string" ? o.executive_summary.trim() : ""
+        const det = typeof o.detailed_analysis === "string" ? o.detailed_analysis.trim() : ""
+        const adv = Array.isArray(o.advanced_improvements)
+          ? (o.advanced_improvements as unknown[])
+              .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+              .map((x) => `- ${x.trim()}`)
+              .join("\n")
+          : typeof o.advanced_improvements === "string"
+            ? o.advanced_improvements.trim()
+            : ""
+        const parts: string[] = []
+        if (exec) parts.push(exec)
+        if (det) parts.push(det)
+        if (adv) parts.push("--- ADVANCED IMPROVEMENTS ---\n" + adv)
+        faText = parts.join("\n\n")
+      }
+      if (faText) {
+        lines.push("=== FULL ANALYSIS ===")
+        lines.push(faText)
+        lines.push("")
+      }
+    }
+
+    return lines.join("\n").trim()
+  }, [review, report, recommendationsList, dawInstructionsList, isFree])
+
+  // Robust clipboard copy with textarea fallback for browsers / contexts
+  // where navigator.clipboard is unavailable (insecure context, older
+  // browsers, etc.).
+  const copyTextToClipboard = async (text: string): Promise<boolean> => {
+    if (
+      typeof navigator !== "undefined" &&
+      navigator.clipboard &&
+      typeof window !== "undefined" &&
+      window.isSecureContext
+    ) {
+      try {
+        await navigator.clipboard.writeText(text)
+        return true
+      } catch {
+        /* fall through to textarea fallback */
+      }
+    }
     try {
-      await navigator.clipboard.writeText(text)
+      const ta = document.createElement("textarea")
+      ta.value = text
+      ta.setAttribute("readonly", "")
+      ta.style.position = "fixed"
+      ta.style.left = "-9999px"
+      ta.style.top = "0"
+      ta.style.opacity = "0"
+      document.body.appendChild(ta)
+      ta.focus()
+      ta.select()
+      ta.setSelectionRange(0, text.length)
+      const ok = document.execCommand("copy")
+      document.body.removeChild(ta)
+      return ok
+    } catch {
+      return false
+    }
+  }
+
+  const handleCopyRecommendations = async () => {
+    const text = buildFullReportText() || "(nothing to copy)"
+    const ok = await copyTextToClipboard(text)
+    if (ok) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-    } catch {
+    } else {
       alert("Could not copy to clipboard.")
     }
+  }
+
+  const handleDownloadPdf = () => {
+    if (typeof window === "undefined") return
+    // Browser print-to-PDF. Print styles in app/globals.css hide the
+    // sidebar / action buttons / back link / free-tier upsell overlay so
+    // only the AI Producer report content is printed.
+    window.print()
   }
 
   // ─── Render branches ────────────────────────────────────────────────
   const Layout = ({ children }: { children: React.ReactNode }) => (
     <div className="min-h-screen bg-background text-foreground">
-      <Sidebar />
+      <div className="no-print">
+        <Sidebar />
+      </div>
       <main className="lg:ml-64 min-h-screen pb-32">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-          <div>
+          <div className="no-print">
             <Link
               href="/ai-producer"
               className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -372,7 +517,7 @@ export default function ReviewReportPage() {
               <ArrowLeft className="w-4 h-4" /> Back to AI Producer
             </Link>
           </div>
-          {children}
+          <div className="printable-report space-y-6">{children}</div>
         </div>
       </main>
     </div>
@@ -536,13 +681,14 @@ export default function ReviewReportPage() {
   const soundDesign = report?.sections?.sound_design
   const commercial = report?.sections?.commercial_potential
 
-  // Action buttons (top right of header)
+  // Action buttons (top right of header). Hidden in print output.
   const actionsRow = (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2 no-print">
       <Button
         variant="outline"
         size="sm"
-        onClick={() => alert("Download PDF will be available soon.")}
+        onClick={handleDownloadPdf}
+        title="Download / print this review as PDF"
       >
         <Download className="w-4 h-4 mr-2" /> Download PDF
       </Button>
@@ -550,9 +696,10 @@ export default function ReviewReportPage() {
         variant="outline"
         size="sm"
         onClick={handleCopyRecommendations}
+        title="Copy the full report text to clipboard"
       >
         {copied ? <Check className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
-        {copied ? "Copied" : "Copy Recommendations"}
+        {copied ? "Copied!" : "Copy Recommendations"}
       </Button>
       <Link href="/ai-producer">
         <Button size="sm" className="bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:opacity-90">
@@ -694,7 +841,7 @@ export default function ReviewReportPage() {
       {mixBlock}
 
       {isFree ? (
-        <div className="relative">
+        <div className="relative no-print">
           {/* Blurred preview of locked sections */}
           <div className="pointer-events-none select-none filter blur-md opacity-60">
             {lockedContent}
