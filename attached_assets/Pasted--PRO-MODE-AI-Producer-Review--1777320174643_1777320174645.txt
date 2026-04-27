@@ -1,0 +1,210 @@
+ЗАДАЧА: Добавить PRO MODE (уровень студийного инженера) в AI Producer Review
+
+---
+
+КОНТЕКСТ:
+
+Текущая система:
+
+* AI Producer Review уже работает
+* структура отчёта финальная (менять нельзя)
+* DAW Instructions реализованы
+* Market Position + Confidence есть
+
+Цель:
+Добавить режим анализа, который работает как профессиональный инженер:
+
+👉 более жёсткий
+👉 более конкретный
+👉 ориентирован на коммерческий результат
+
+---
+
+⚠️ ОГРАНИЧЕНИЯ (STRICT):
+
+* НЕ менять UI
+* НЕ менять JSON schema
+* НЕ менять API
+* НЕ трогать PDF / Copy
+* НЕ добавлять новые поля
+* Менять ТОЛЬКО systemPrompt / userPrompt
+
+---
+
+# 🔧 CHANGE 1 — ДОБАВИТЬ PRO MODE BLOCK
+
+В начало отчёта (сразу после SUMMARY) добавить:
+
+=== PRO MODE: CRITICAL FIXES ===
+
+Rules:
+
+* ALWAYS output EXACTLY 5 fixes
+* Order by impact (most critical first)
+* Include ONLY high-impact issues
+* Each fix must be actionable and technical
+
+Format:
+
+1. [critical issue + action]
+2. [critical issue + action]
+3. [critical issue + action]
+4. [critical issue + action]
+5. [critical issue + action]
+
+Example:
+
+1. Increase loudness to -8 to -9 LUFS using a limiter
+2. Fix kick/bass masking using sidechain compression
+3. Tighten low-end with high-pass at 80 Hz on bass
+4. Reduce harshness around 3–5 kHz with EQ cut
+5. Improve drop impact with arrangement contrast
+
+---
+
+# 🔧 CHANGE 2 — PRO MODE TONE
+
+Добавить глобальное правило:
+
+=== PRO MODE TONE ===
+
+Use direct, professional, decisive language.
+
+FORBIDDEN:
+
+* maybe
+* could
+* consider
+* try
+
+REQUIRED:
+
+* must
+* required
+* fix
+* necessary
+
+Example:
+
+BAD:
+"This could be improved"
+
+GOOD:
+"This must be fixed to reach commercial level"
+
+---
+
+# 🔧 CHANGE 3 — STRONGER ENGINEERING ACTIONS
+
+Allow stronger parameter ranges:
+
+* EQ cuts: -2 to -6 dB
+* Loudness: -8 to -9 LUFS (Electronic)
+* Compression: more assertive if needed
+
+RULE:
+Do NOT stay conservative if problem is obvious.
+
+---
+
+# 🔧 CHANGE 4 — COMMERCIAL STANDARD TARGET
+
+Добавить:
+
+=== COMMERCIAL TARGET RULE ===
+
+All recommendations must aim for:
+
+* club playback systems
+* large speakers
+* competitive loudness
+* punch and clarity
+
+NOT just “better sound”:
+→ must be “competitive with released tracks”
+
+---
+
+# 🔧 CHANGE 5 — AFTER FIX EXPECTATION
+
+В Full Analysis добавить:
+
+=== AFTER FIX EXPECTATION ===
+
+Describe what will happen after fixes:
+
+* louder perceived energy
+* tighter low-end
+* clearer transients
+* improved club translation
+
+Example:
+
+After applying these fixes, the track will hit harder on large systems, with a tighter low-end and more controlled dynamics.
+
+---
+
+# 🔧 CHANGE 6 — KEEP HYBRID LOGIC
+
+НЕ ломать существующее:
+
+* DAW Instructions остаются
+* OBJECTIVE CHECK остаётся
+* Market Position остаётся
+* Confidence остаётся
+
+PRO MODE — это усиление, НЕ замена
+
+---
+
+# ✅ ACCEPTANCE CRITERIA
+
+После внедрения:
+
+1. В отчёте есть блок:
+   "PRO MODE: CRITICAL FIXES"
+
+2. В блоке:
+
+   * ровно 5 пунктов
+   * только важные фиксы
+
+3. Тон:
+
+   * жёсткий
+   * без “maybe / could”
+
+4. Фиксы:
+
+   * конкретные
+   * технические
+   * выполнимые
+
+5. Общий результат:
+   отчет ощущается как:
+   👉 работа студийного инженера
+
+---
+
+# 🎯 ОЖИДАЕМЫЙ РЕЗУЛЬТАТ
+
+AI должен звучать как:
+
+👉 профессиональный mixing/mastering engineer
+👉 который доводит трек до коммерческого уровня
+
+НЕ как помощник
+НЕ как блогер
+НЕ как обучающий туториал
+
+---
+
+ПОСЛЕ ВНЕДРЕНИЯ:
+
+* сгенерировать 1 отчёт
+* проверить:
+  • есть PRO MODE блок
+  • нет мягких формулировок
+  • 5 критических фиксов присутствуют
+
+---
