@@ -76,6 +76,7 @@ const DAW_LABELS: Record<string, string> = {
 }
 
 const GENRE_LABELS: Record<string, string> = {
+  auto: "Auto",
   lofi: "Lo-Fi",
   techno: "Techno",
   ambient: "Ambient",
@@ -95,7 +96,37 @@ function dawLabel(id: string | null): string | null {
 
 function genreLabel(id: string | null): string | null {
   if (!id) return null
-  return GENRE_LABELS[id] ?? id
+  return GENRE_LABELS[id.toLowerCase()] ?? id
+}
+
+/**
+ * Build the "Genre: …" display string. When the user picked Auto in the
+ * form (review.genre === "auto") we prefix the auto-detected label with
+ * "Auto-detected"; manual selections render plainly. Falls back to the
+ * raw stored value when the report does not carry the new fields (older
+ * rows generated before genre auto-detection landed).
+ */
+function buildGenreDisplay(
+  reviewGenre: string | null,
+  reportGenreSource: unknown,
+  reportFinalGenre: unknown,
+  reportDetectedGenre: unknown,
+): string | null {
+  const source =
+    reportGenreSource === "auto" || reportGenreSource === "manual"
+      ? (reportGenreSource as "auto" | "manual")
+      : (reviewGenre && reviewGenre.toLowerCase() === "auto" ? "auto" : "manual")
+  const finalGenre =
+    typeof reportFinalGenre === "string" && reportFinalGenre.trim()
+      ? reportFinalGenre.trim()
+      : typeof reportDetectedGenre === "string" && reportDetectedGenre.trim()
+        ? reportDetectedGenre.trim()
+        : null
+  if (source === "auto") {
+    const label = genreLabel(finalGenre)
+    return label ? `Auto-detected ${label}` : "Auto"
+  }
+  return genreLabel(reviewGenre)
 }
 
 function formatRecommendation(rec: Recommendation): string {
@@ -431,9 +462,18 @@ export default function ReviewReportPage() {
             {dawLabel(review.daw) && (
               <span><span className="text-foreground/80 font-medium">DAW:</span> {dawLabel(review.daw)}</span>
             )}
-            {genreLabel(review.genre) && (
-              <span><span className="text-foreground/80 font-medium">Genre:</span> {genreLabel(review.genre)}</span>
-            )}
+            {(() => {
+              const r = report as Record<string, unknown> | null
+              const display = buildGenreDisplay(
+                review.genre,
+                r?.genre_source,
+                r?.final_genre_used,
+                r?.detected_genre,
+              )
+              return display ? (
+                <span><span className="text-foreground/80 font-medium">Genre:</span> {display}</span>
+              ) : null
+            })()}
             <span><span className="text-foreground/80 font-medium">Credits used:</span> {review.credits_used}</span>
             {review.feedback_focus && (
               <span><span className="text-foreground/80 font-medium">Focus:</span> {review.feedback_focus}</span>

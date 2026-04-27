@@ -15,7 +15,11 @@ import { supabase } from "@/lib/supabase"
 import { uploadWithRetry } from "@/lib/upload-with-retry"
 
 // Style/genre list — kept in sync with upload-track-modal GENRES.
+// "auto" is the AI Producer default and instructs the analyser to
+// detect the genre from the Essentia features instead of trusting a
+// user-supplied label.
 const GENRES = [
+  { id: "auto", name: "Auto (detect from audio)" },
   { id: "lofi", name: "Lo-Fi" },
   { id: "techno", name: "Techno" },
   { id: "ambient", name: "Ambient" },
@@ -105,7 +109,7 @@ export default function AiProducerPage() {
   // Upload form state
   const [audioFile, setAudioFile] = useState<File | null>(null)
   const [title, setTitle] = useState("")
-  const [genre, setGenre] = useState("")
+  const [genre, setGenre] = useState("auto")
   const [daw, setDaw] = useState("")
   const [focus, setFocus] = useState("")
   const [comment, setComment] = useState("")
@@ -636,7 +640,6 @@ export default function AiProducerPage() {
                       onChange={(e) => setGenre(e.target.value)}
                       className="mt-2 w-full px-3 py-2 rounded-lg bg-background/40 border border-border/50 focus:border-purple-400/60 focus:outline-none text-sm"
                     >
-                      <option value="">Select a style…</option>
                       {GENRES.map((g) => (
                         <option key={g.id} value={g.id}>{g.name}</option>
                       ))}

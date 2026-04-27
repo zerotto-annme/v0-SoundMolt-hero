@@ -52,6 +52,8 @@ type SectionShape = {
   notes: string[]
 }
 
+export type GenreSource = "auto" | "manual"
+
 export type ProducerReport = {
   version:       1
   generated_at:  string
@@ -71,6 +73,12 @@ export type ProducerReport = {
   full_analysis:    string
   references:       string[]
   audio_features:   EssentiaFeatures
+  /** "auto" when the form left genre on Auto, "manual" otherwise. */
+  genre_source:     GenreSource
+  /** Genre auto-detected from the audio features (always set when possible). */
+  detected_genre:   string | null
+  /** Genre actually used to drive the genre-brain rules in the prompt. */
+  final_genre_used: string | null
 }
 
 export type GenerateReportResult =
@@ -418,6 +426,125 @@ export function resolveSections(
   return simulateSections(durationSeconds).map(s => ({ ...s, source: "simulated" as const }))
 }
 
+// ─── Genre auto-detection + Genre Brain rules ──────────────────────────
+//
+// When the AI Producer form leaves "Genre" on Auto we run a deterministic
+// detector against the Essentia features (high-level classifier first,
+// BPM/danceability heuristic as fallback) so the LLM always receives a
+// concrete genre label. The detected label drives a small "Genre Brain"
+// rule block that focuses the analysis on what actually matters for that
+// style of music (kick/sub for techno, transient/808 for trap, etc).
+
+const GENRE_BRAIN_RULES: Record<string, string> = {
+  techno:
+    "GENRE BRAIN — TECHNO: focus the analysis on kick/sub fundamentals, club impact, and groove tension.\n" +
+    "- Kick at 50–60 Hz must be tight, mono, and dominate the low-end punch.\n" +
+    "- Sidechain bass to kick (4–6 dB GR, ~10 ms attack, ~120 ms release) so the kick breathes.\n" +
+    "- Loudness target -8 to -9 LUFS integrated, true-peak ceiling -1 dB.\n" +
+    "- Buildup and drop tension are essential: comment on filter sweeps, risers, snare rolls, kick drops, and energy curve at the breakdown.\n" +
+    "- Avoid suggesting warm/lo-fi processing or excessive high-end softening; techno should feel hard and forward.",
+  house:
+    "GENRE BRAIN — HOUSE: focus on groove, swing, and the kick/bass pocket.\n" +
+    "- 4-on-the-floor kick at 50–65 Hz; bass tucked between 80–200 Hz with sidechain (3–5 dB GR, ~8 ms attack, ~140 ms release).\n" +
+    "- Percussion movement: hats, shakers, claps must add stereo motion (panning + short delays) without crowding the centre.\n" +
+    "- Loudness target -9 to -10 LUFS integrated, true-peak ceiling -1 dB.\n" +
+    "- Stereo rhythm and groove glue are more important than maximum loudness — comment on swing, ghost notes, and percussion layering.",
+  trap:
+    "GENRE BRAIN — TRAP: focus on 808, kick separation, vocal space, and transient punch.\n" +
+    "- 808 sub fundamental 30–55 Hz, distorted layer 100–250 Hz for translation on small speakers.\n" +
+    "- Kick must occupy a different frequency window from the 808 (kick 60–80 Hz click + 2–4 kHz transient) so they do not mask.\n" +
+    "- Vocal space: HPF the music bus 250–300 Hz under the lead vocal, light de-essing 6–8 kHz.\n" +
+    "- Transient punch: short attack on snare/clap (1–5 ms) plus parallel saturation; preserve dynamics.\n" +
+    "- Loudness target -8 to -9 LUFS integrated, true-peak ceiling -1 dB.",
+  lofi:
+    "GENRE BRAIN — LO-FI: preserve warmth, do NOT over-limit, soft high-end, moderate loudness.\n" +
+    "- Loudness target -14 to -16 LUFS integrated, true-peak ceiling -1 dB. Do NOT push to -8 LUFS.\n" +
+    "- Roll off above 10–12 kHz with a gentle low-pass to keep the cassette/dusty character.\n" +
+    "- Tape saturation, vinyl crackle, light wow/flutter are stylistic — recommend them, do not call them flaws.\n" +
+    "- Avoid hard brick-wall limiting, aggressive transient designers, or harsh upper-mid boosts.\n" +
+    "- Comment on swing, sample chops, and atmosphere rather than club-grade punch.",
+  ambient:
+    "GENRE BRAIN — AMBIENT: do NOT force kick/drop advice. Focus on space, texture, stereo depth, atmosphere.\n" +
+    "- There may be no kick, no drop, no clear arrangement landmarks — that is fine for the genre.\n" +
+    "- Loudness target -18 to -23 LUFS integrated, dynamic range matters more than loudness.\n" +
+    "- Comment on stereo width (M/S balance), reverb tails (long pre-delay, plate vs hall), evolving textures, and frequency layering between pads.\n" +
+    "- Avoid sidechain-to-kick advice, transient-shaper suggestions, or club-loudness LUFS targets.",
+}
+
+function pickGenreFromHighLevel(features: EssentiaFeatures): string | null {
+  const f = features as Record<string, unknown>
+  const hl = pickString(
+    get(f, "highlevel.genre_dortmund.value"),
+    get(f, "highlevel.genre_rosamerica.value"),
+    get(f, "highlevel.genre_electronic.value"),
+    get(f, "highlevel.genre_tzanetakis.value"),
+    get(f, "highlevel.genre.value"),
+  )
+  if (!hl) return null
+  const norm = hl.toLowerCase().trim()
+  // Map common Essentia high-level labels to our internal ids.
+  const map: Record<string, string> = {
+    techno: "techno", trance: "techno", electro: "techno",
+    house: "house", deephouse: "house", "deep house": "house",
+    "drum and bass": "dnb", "drum&bass": "dnb", "drum n bass": "dnb",
+    dnb: "dnb", jungle: "dnb", breakbeat: "dnb",
+    hiphop: "trap", "hip-hop": "trap", "hip hop": "trap", rap: "trap", trap: "trap",
+    lofi: "lofi", "lo-fi": "lofi", chillhop: "lofi", "trip-hop": "lofi", "trip hop": "lofi",
+    ambient: "ambient", drone: "ambient", newage: "ambient", "new age": "ambient",
+    synthwave: "synthwave", retrowave: "synthwave", vaporwave: "synthwave",
+    cinematic: "cinematic", soundtrack: "cinematic", score: "cinematic",
+    electronic: "electronic", edm: "electronic", electronica: "electronic",
+    experimental: "experimental", idm: "experimental",
+  }
+  return map[norm] ?? null
+}
+
+/**
+ * Pick the best-fit internal genre id from derived insights when the
+ * Essentia high-level classifier is not available. Conservative: falls
+ * back to "electronic" rather than guessing wildly.
+ */
+function detectGenreFromFeatures(
+  features: EssentiaFeatures,
+  insights: DerivedAudioInsights,
+): string {
+  const fromHl = pickGenreFromHighLevel(features)
+  if (fromHl) return fromHl
+
+  const bpm    = insights.bpm ?? 0
+  const dance  = insights.danceability ?? 0
+  const energy = insights.energy ?? 0
+  const sc     = insights.spectral_centroid ?? 0
+  const dur    = insights.duration_seconds ?? 0
+
+  if (bpm >= 165 && bpm <= 185) return "dnb"
+  if (bpm >= 130 && bpm <= 160 && dance > 0 && dance < 0.85 && sc < 4500) return "trap"
+  if (bpm >= 120 && bpm <= 135 && (energy > 0.05 || dance > 0.6)) return "techno"
+  if (bpm >= 115 && bpm <  125) return "house"
+  if (bpm >= 100 && bpm <  115) return "synthwave"
+  if (bpm > 0 && bpm < 95 && (dance < 0.5 || energy < 0.05)) return "lofi"
+  if ((bpm > 0 && bpm < 90 && dance < 0.4) || (dur > 240 && dance < 0.3)) return "ambient"
+  return "electronic"
+}
+
+const GENRE_LABELS: Record<string, string> = {
+  lofi: "Lo-Fi",
+  techno: "Techno",
+  ambient: "Ambient",
+  synthwave: "Synthwave",
+  trap: "Trap",
+  cinematic: "Cinematic",
+  electronic: "Electronic",
+  house: "House",
+  dnb: "Drum & Bass",
+  experimental: "Experimental",
+}
+
+function prettyGenreLabel(id: string | null | undefined): string {
+  if (!id) return "Electronic"
+  return GENRE_LABELS[id.toLowerCase()] ?? id
+}
+
 function normaliseRecommendations(
   raw: unknown,
 ): ProducerReport["recommendations"] {
@@ -461,6 +588,19 @@ export async function generateProducerReport(
   const insights = deriveAudioInsights(features, inputs.track_duration)
   const sections = resolveSections(features, insights.duration_seconds ?? inputs.track_duration ?? null)
   const sectionsAreReal = sections.length > 0 && sections[0]!.source === "essentia"
+
+  // Step 1b — genre resolution. The form sends "auto" by default; any
+  // empty / "auto" value means we run our deterministic detector and
+  // hand the LLM the detected genre. Manual selections are honoured
+  // verbatim so the user can override the detector.
+  const rawGenre = (inputs.genre ?? "").trim().toLowerCase()
+  const isAutoGenre = rawGenre === "" || rawGenre === "auto"
+  const detectedGenre = detectGenreFromFeatures(features, insights)
+  const genreSource: GenreSource = isAutoGenre ? "auto" : "manual"
+  const finalGenre = isAutoGenre ? detectedGenre : rawGenre
+  const finalGenreLabel = prettyGenreLabel(finalGenre)
+  const detectedGenreLabel = prettyGenreLabel(detectedGenre)
+  const brainRules = GENRE_BRAIN_RULES[finalGenre] ?? ""
 
   // Step 2 — system prompt (verbatim from Stage 8 spec).
   // Step 6 (tone) and the JSON-only output rule are appended as a
@@ -561,7 +701,7 @@ export async function generateProducerReport(
 
 CONTEXT (user-supplied):
 - title: ${inputs.title ?? "Untitled"}
-- genre: ${inputs.genre ?? "unspecified"}
+- genre: ${finalGenreLabel}${isAutoGenre ? ` (auto-detected from audio; user picked "Auto"; raw detector output: ${detectedGenreLabel})` : " (user-selected)"}
 - daw: ${dawLb}
 - feedback_focus: ${focus}
 - track_duration_seconds: ${insights.duration_seconds ?? inputs.track_duration ?? "unknown"}
@@ -569,6 +709,9 @@ CONTEXT (user-supplied):
 
 DERIVED AUDIO INSIGHTS (ground truth — quote these in your analysis):
 ${insightBlock}
+
+GENRE BRAIN — USE THESE RULES TO FOCUS THE ANALYSIS (the genre above is the canonical genre for this report; tailor every section, every recommendation, every DAW instruction, and the full_analysis to the rules below):
+${brainRules || `(no genre-specific brain rules for "${finalGenreLabel}" — give a balanced, genre-neutral electronic-music review.)`}
 
 ${sectionsHeader}
 ${sectionLines}
@@ -738,6 +881,9 @@ Return ONLY this JSON shape — no extra keys, no markdown, no code fences:
     full_analysis:    typeof parsed.full_analysis === "string" ? parsed.full_analysis.trim() : "",
     references:       toStringArray(parsed.references, 6),
     audio_features:   features,
+    genre_source:     genreSource,
+    detected_genre:   detectedGenre || null,
+    final_genre_used: finalGenre   || null,
   }
 
   return { ok: true, report }
