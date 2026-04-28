@@ -24,8 +24,11 @@ import {
   RotateCcw,
   Check,
   AlertCircle,
+  Send,
+  Settings,
 } from "lucide-react"
 import { BoostStatsModal, type BoostModalTrack } from "@/components/admin/boost-stats-modal"
+import { TelegramConnectModal } from "@/components/admin/telegram-connect-modal"
 
 // ── Types ───────────────────────────────────────────────────────────
 interface Overview {
@@ -107,6 +110,13 @@ interface AdminAgent {
   connected_at: string | null
   last_active_at: string | null
   created_at: string
+  /**
+   * Telegram bot username for this agent, without the leading "@".
+   *   - null  → no bot connected (or migration 045 not applied yet).
+   *   - ""    → bot connected but bot has no public username.
+   *   - "foo" → render as "@foo" in the agents table.
+   */
+  telegram_bot_username?: string | null
 }
 interface HealthData {
   missing_audio_url: Array<{
@@ -1795,6 +1805,8 @@ function AgentsSection({
   const { data, loading, error, reload } = res
   const agents = data?.agents ?? []
   const [busyId, setBusyId] = useState<string | null>(null)
+  // Telegram modal target — null when closed.
+  const [telegramAgent, setTelegramAgent] = useState<AdminAgent | null>(null)
 
   async function toggleStatus(a: AdminAgent) {
     const next = a.status === "active" ? "inactive" : "active"
@@ -1824,34 +1836,74 @@ function AgentsSection({
       onRefresh={reload}
     >
       <DataTable
-        head={["Name", "Capabilities", "Status", "Owner", "Last activity", "Actions"]}
-        rows={agents.map((a) => [
-          <span key="n" className="font-medium text-white">{a.name}</span>,
-          <span key="cap" className="text-xs text-muted-foreground">
-            {a.capabilities.length > 0 ? a.capabilities.join(", ") : "—"}
-          </span>,
-          <Pill key="s" tone={a.status === "active" ? "ok" : "warn"}>{a.status}</Pill>,
-          <span key="o" className="text-xs">
-            {a.owner_email ?? <span className="text-muted-foreground/60">{shortId(a.user_id)}</span>}
-          </span>,
-          <span key="la" className="text-xs text-muted-foreground">{formatDate(a.last_active_at)}</span>,
-          <ActionButton
-            key="act"
-            title={a.status === "active" ? "Deactivate agent" : "Activate agent"}
-            onClick={() => toggleStatus(a)}
-            disabled={busyId === a.id}
-            variant="default"
-          >
-            {a.status === "active" ? (
-              <PowerOff className="w-3.5 h-3.5" />
-            ) : (
-              <Power className="w-3.5 h-3.5" />
-            )}
-            <span className="text-xs">
-              {a.status === "active" ? "Deactivate" : "Activate"}
-            </span>
-          </ActionButton>,
-        ])}
+        head={["Name", "Capabilities", "Status", "Owner", "Telegram", "Last activity", "Actions"]}
+        rows={agents.map((a) => {
+          const tg = a.telegram_bot_username
+          const tgConnected = tg !== null && tg !== undefined
+          return [
+            <span key="n" className="font-medium text-white">{a.name}</span>,
+            <span key="cap" className="text-xs text-muted-foreground">
+              {a.capabilities.length > 0 ? a.capabilities.join(", ") : "—"}
+            </span>,
+            <Pill key="s" tone={a.status === "active" ? "ok" : "warn"}>{a.status}</Pill>,
+            <span key="o" className="text-xs">
+              {a.owner_email ?? <span className="text-muted-foreground/60">{shortId(a.user_id)}</span>}
+            </span>,
+            <span key="tg" className="text-xs font-mono">
+              {tgConnected ? (
+                <span className="text-sky-300">
+                  {tg ? `@${tg}` : <span className="text-muted-foreground/70">(no username)</span>}
+                </span>
+              ) : (
+                <span className="text-muted-foreground/60">Not connected</span>
+              )}
+            </span>,
+            <span key="la" className="text-xs text-muted-foreground">{formatDate(a.last_active_at)}</span>,
+            <div key="act" className="flex items-center gap-2">
+              <ActionButton
+                title={a.status === "active" ? "Deactivate agent" : "Activate agent"}
+                onClick={() => toggleStatus(a)}
+                disabled={busyId === a.id}
+                variant="default"
+              >
+                {a.status === "active" ? (
+                  <PowerOff className="w-3.5 h-3.5" />
+                ) : (
+                  <Power className="w-3.5 h-3.5" />
+                )}
+                <span className="text-xs">
+                  {a.status === "active" ? "Deactivate" : "Activate"}
+                </span>
+              </ActionButton>
+              <ActionButton
+                title={tgConnected ? "Open Telegram settings" : "Connect Telegram bot"}
+                onClick={() => setTelegramAgent(a)}
+                variant="default"
+              >
+                {tgConnected ? (
+                  <Settings className="w-3.5 h-3.5" />
+                ) : (
+                  <Send className="w-3.5 h-3.5" />
+                )}
+                <span className="text-xs">
+                  {tgConnected ? "Telegram Settings" : "Connect Telegram"}
+                </span>
+              </ActionButton>
+            </div>,
+          ]
+        })}
+      />
+
+      <TelegramConnectModal
+        agentId={telegramAgent?.id ?? null}
+        agentName={telegramAgent?.name ?? null}
+        isOpen={!!telegramAgent}
+        onClose={() => setTelegramAgent(null)}
+        onChanged={async () => {
+          // Reload so the column flips between "Not connected" and "@username".
+          await reload()
+        }}
+        adminFetch={adminFetch}
       />
     </SectionShell>
   )

@@ -62,6 +62,37 @@ export async function GET(request: NextRequest) {
     }),
   )
 
+  // Telegram-bot connections (1:1 per agent). Optional: if migration 045
+  // hasn't been applied yet to this Supabase project, the table won't
+  // exist (Postgres 42P01) — that's not fatal here; we just render every
+  // agent as "Not connected" until the operator runs the migration.
+  const agentIds = (agents ?? []).map((a) => a.id)
+  // Sentinel semantics:
+  //   - Map has no entry        → not connected (UI shows "Not connected").
+  //   - Map value === ""        → connected, but bot has no public username.
+  //   - Map value === "foo"     → connected; UI renders "@foo".
+  // We must never collapse the "" case down to null, otherwise the UI's
+  // null-vs-string check would render a real connection as "Not connected".
+  const telegramByAgent = new Map<string, string>()
+  if (agentIds.length > 0) {
+    const { data: telegrams, error: telegramErr } = await admin
+      .from("agent_telegram_bots")
+      .select("agent_id, bot_username")
+      .in("agent_id", agentIds)
+    if (telegramErr) {
+      if (telegramErr.code !== "42P01") {
+        console.warn("[admin/agents GET] telegram lookup failed:", {
+          code: telegramErr.code,
+          message: telegramErr.message,
+        })
+      }
+    } else {
+      for (const t of telegrams ?? []) {
+        telegramByAgent.set(t.agent_id, t.bot_username ?? "")
+      }
+    }
+  }
+
   const result = (agents ?? []).map((a) => ({
     id: a.id,
     name: a.name,
@@ -78,6 +109,14 @@ export async function GET(request: NextRequest) {
     cover_url: a.cover_url ?? null,
     description: a.description ?? null,
     genre: a.genre ?? null,
+    // Connected: bot_username (with leading "@" added in UI). Not
+    // connected: explicit null. Connected-but-no-username (rare —
+    // bot owner hid username) → empty string. Distinguishing "" from
+    // null is what lets the admin UI flip the action button to
+    // "Telegram Settings" even when the bot has no public username.
+    telegram_bot_username: telegramByAgent.has(a.id)
+      ? telegramByAgent.get(a.id) ?? ""
+      : null,
   }))
 
   return NextResponse.json({ agents: result })
