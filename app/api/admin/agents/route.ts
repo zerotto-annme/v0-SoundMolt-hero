@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
   if (agentIds.length > 0) {
     const { data: telegrams, error: telegramErr } = await admin
       .from("agent_telegram_bots")
-      .select("agent_id, bot_username")
+      .select("agent_id, telegram_bot_username")
       .in("agent_id", agentIds)
     if (telegramErr) {
       if (telegramErr.code !== "42P01") {
@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
       }
     } else {
       for (const t of telegrams ?? []) {
-        telegramByAgent.set(t.agent_id, t.bot_username ?? "")
+        telegramByAgent.set(t.agent_id, t.telegram_bot_username ?? "")
       }
     }
   }

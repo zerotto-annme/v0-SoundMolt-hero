@@ -541,18 +541,25 @@ The AI Producer Review pipeline was originally synchronous: the browser sent a P
 
 Files: `app/api/ai-producer/review/route.ts`, `app/ai-producer/page.tsx`, `app/ai-producer/reviews/[id]/page.tsx`, `components/track-detail-modal.tsx`. Prompt content (`lib/ai-producer-analysis.ts`) and the public API contract are unchanged — only the value of the `status` field in the response is now always `"processing"` (was: `"ready"` or `"failed"` depending on sync result).
 
-## Admin → Agents Telegram integration (Apr 28, 2026)
+## Admin → Agents Telegram integration (Apr 28, 2026 — schema v2)
 
 Each agent in the admin Agents table can be linked to a Telegram bot. The integration is admin-only — no public-facing UI, no separate Telegram page, everything lives inside the existing Agents tab.
 
-### Schema (raw SQL — `migrations/045_agent_telegram_bots.sql`)
+### Schema (raw SQL — `migrations/046_agent_telegram_bots_v2.sql`)
 
-`public.agent_telegram_bots` — 1:1 per agent (PK = `agent_id`, FK to `public.agents(id)` ON DELETE CASCADE):
-- `bot_token TEXT NOT NULL` — full Telegram bot token (admin-only; never returned by any API).
-- `bot_username TEXT` — fetched from Telegram `getMe` at connect time so the admin table can render `@bot_username` without a Telegram round-trip per render.
-- `bot_id BIGINT` — numeric bot id from `getMe` (BIGINT — Telegram bot ids exceed INT range).
-- `admin_chat_id BIGINT` — chat id where the "Test Telegram" message is delivered. Optional; set in the Telegram Settings modal after connect. Negative ids are valid (group/channel chats).
+**This supersedes the abandoned `045_agent_telegram_bots.sql` (different column shape, never applied to prod).** Migration 046 starts with `DROP TABLE IF EXISTS public.agent_telegram_bots CASCADE` so it's safe to run regardless of whether 045 ever ran.
+
+`public.agent_telegram_bots` — 1 row per agent (separate `id` PK + `UNIQUE (agent_id)` constraint, FK to `public.agents(id)` ON DELETE CASCADE):
+- `id UUID PRIMARY KEY DEFAULT gen_random_uuid()` — surrogate key.
+- `agent_id UUID NOT NULL UNIQUE` — FK to agents; cascades on delete.
+- `telegram_bot_id BIGINT` — numeric bot id from `getMe` (BIGINT — Telegram bot ids exceed INT range).
+- `telegram_bot_username TEXT` — fetched from Telegram `getMe` at connect time so the admin table can render `@telegram_bot_username` without a per-render API round-trip.
+- `telegram_bot_token TEXT` — full Telegram bot token (admin-only; never returned by any API).
+- `webhook_status TEXT NOT NULL DEFAULT 'pending'` — placeholder for future webhook plumbing; mutable via PATCH.
+- `is_active BOOLEAN NOT NULL DEFAULT TRUE` — admin can disable a bot without deleting the row + token; mutable via PATCH; the test endpoint refuses to send when `false`.
 - `created_at` / `updated_at` (with `BEFORE UPDATE` trigger).
+
+**No `admin_chat_id` column.** Test messages take their destination `chat_id` as a one-shot POST body parameter at test time (admin types it in the Settings modal) instead of being stored.
 
 **RLS:** enabled with **zero policies**, plus `REVOKE ALL FROM anon, authenticated`. Only the service-role admin client (server-side, gated by `requireAdmin()`) can read or write. The bot token therefore never leaves the server.
 
@@ -560,17 +567,22 @@ Each agent in the admin Agents table can be linked to a Telegram bot. The integr
 
 | Verb | Path | Purpose |
 | --- | --- | --- |
-| GET | `/api/admin/agents/:id/telegram` | Returns `{ connection: null \| { agent_id, bot_username, bot_id, admin_chat_id, has_token: true, created_at, updated_at } }`. Bot token never returned. |
-| POST | `/api/admin/agents/:id/telegram` | Body `{ bot_token }`. Calls Telegram `getMe` first to validate; on success UPSERTs the row (preserves existing `admin_chat_id`). 400 on bad token. |
-| PATCH | `/api/admin/agents/:id/telegram` | Body `{ admin_chat_id: number \| null }`. Updates only the chat id. 404 if not yet connected. |
+| GET | `/api/admin/agents/:id/telegram` | Returns `{ connection: null \| { id, agent_id, telegram_bot_id, telegram_bot_username, webhook_status, is_active, has_token: true, created_at, updated_at } }`. Bot token never returned. |
+| POST | `/api/admin/agents/:id/telegram` | Body `{ bot_token }`. Calls Telegram `getMe` first to validate; on success UPSERTs the row (preserves existing `is_active`, resets `webhook_status` to `'pending'` because rotating the token invalidates any prior webhook). 400 on bad token. |
+| PATCH | `/api/admin/agents/:id/telegram` | Body `{ is_active?: boolean, webhook_status?: string \| null }` — at least one of the two must be present. Repurposed from the old `admin_chat_id` PATCH (column dropped). 404 if not yet connected. |
 | DELETE | `/api/admin/agents/:id/telegram` | Disconnects (deletes the row). |
-| POST | `/api/admin/agents/:id/telegram/test` | Sends `"Test message from @bot — your SoundMolt admin connection is working."` to the stored `admin_chat_id` via `sendMessage`. 400 if no chat id set; 502 on Telegram error. |
+| POST | `/api/admin/agents/:id/telegram/test` | Body `{ chat_id: number \| string }`. Sends `"Test message from @bot — your SoundMolt admin connection is working."` to the supplied `chat_id` via `sendMessage`. 400 if `chat_id` missing/non-integer; 400 with `telegram_inactive` if `is_active = false`; 502 on Telegram error. |
 
-All endpoints return a clean **503 `telegram_table_missing`** if the migration hasn't been applied yet (Postgres error code `42P01`), instead of crashing.
+All endpoints return a clean **503 `telegram_table_missing`** if the migration hasn't been applied yet (Postgres error code `42P01`), with the message pointing to `migrations/046_agent_telegram_bots_v2.sql`.
 
 ### Listing extension
 
-`GET /api/admin/agents` now adds `telegram_bot_username: string | null` per row. It performs an extra select against `agent_telegram_bots` and tolerates the table being missing (logs nothing for `42P01`, just renders every agent as "Not connected").
+`GET /api/admin/agents` now adds `telegram_bot_username: string | null` per row. It performs an extra select against `agent_telegram_bots` (now selecting the v2 column name `telegram_bot_username`) and tolerates the table being missing (logs nothing for `42P01`, just renders every agent as "Not connected").
+
+**Sentinel semantics for `telegram_bot_username`** in the GET response (do not "simplify" — these three states are load-bearing for the UI):
+- `null`  → agent has no row in `agent_telegram_bots` (UI shows "Not connected" + "Connect Telegram" action).
+- `""`    → row exists but the bot has no public username (UI shows "@(no username)" + "Telegram Settings" action).
+- `"foo"` → row exists with username (UI shows `@foo` + "Telegram Settings" action).
 
 ### UI (`app/admin/page.tsx` + `components/admin/telegram-connect-modal.tsx`)
 
@@ -580,8 +592,9 @@ All endpoints return a clean **503 `telegram_table_missing`** if the migration h
   - **Telegram Settings** (Settings icon) when connected.
 - `TelegramConnectModal` has two modes auto-picked from the GET response:
   - **Connect** — single password input for the bot token, "Connect" button.
-  - **Settings** — read-only bot info (username + id), editable Admin chat id input with Save, "Test Telegram" button (disabled until chat id is set), Disconnect button (danger), and a collapsible "Replace bot token" section.
-- Reloads the agents list (`reload()`) after connect/disconnect so the column flips immediately.
+  - **Settings** — read-only bot info (username + id + status pills for `is_active` and `webhook_status`), one-shot **Chat ID input + "Test" button** (chat id NOT stored — used only for that single send; explicit copy under the input says so), **Enable bot / Disable bot** toggle (PATCH `is_active`), Disconnect button (danger), and a collapsible "Replace bot token" section.
+- Test button is disabled when `is_active === false` OR when chat id is empty/non-integer, with a tooltip explaining why.
+- Reloads the agents list (`reload()`) after connect/disconnect so the column flips immediately. Toggling `is_active` does NOT reload the list (it's a per-bot detail, not visible in the table).
 
 ### Telegram helper (`lib/telegram-bot.ts`)
 
@@ -589,7 +602,7 @@ Server-only thin wrapper around `https://api.telegram.org/bot<TOKEN>/<method>` w
 
 ### Operator note
 
-`migrations/045_agent_telegram_bots.sql` must be applied to the live Supabase project via the Supabase Dashboard SQL Editor (same pattern as every other migration in this repo). Until it runs, the column shows "Not connected" everywhere and every Telegram endpoint returns 503 `telegram_table_missing` with the migration filename in the message.
+`migrations/046_agent_telegram_bots_v2.sql` must be applied to the live Supabase project via the Supabase Dashboard SQL Editor (same pattern as every other migration in this repo). It is **destructive by design** — `DROP TABLE IF EXISTS public.agent_telegram_bots CASCADE` runs first, then recreates the table with the v2 schema. This is intentional and safe because the previous migration (045) was abandoned before reaching prod; the only data lost would be from environments that applied 045 against the old shape, which the v2 column rename would have broken anyway. Until 046 runs, the Telegram column shows "Not connected" everywhere and every Telegram endpoint returns 503 `telegram_table_missing` pointing at the 046 filename.
 
 ## Admin → Agents Create Agent (Apr 28, 2026)
 
