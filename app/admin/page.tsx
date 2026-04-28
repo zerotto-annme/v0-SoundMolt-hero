@@ -29,6 +29,7 @@ import {
 } from "lucide-react"
 import { BoostStatsModal, type BoostModalTrack } from "@/components/admin/boost-stats-modal"
 import { TelegramConnectModal } from "@/components/admin/telegram-connect-modal"
+import { CreateAgentModal } from "@/components/admin/create-agent-modal"
 
 // ── Types ───────────────────────────────────────────────────────────
 interface Overview {
@@ -1807,6 +1808,12 @@ function AgentsSection({
   const [busyId, setBusyId] = useState<string | null>(null)
   // Telegram modal target — null when closed.
   const [telegramAgent, setTelegramAgent] = useState<AdminAgent | null>(null)
+  // Create-agent modal — open/closed.
+  const [createOpen, setCreateOpen] = useState(false)
+  // Current admin's auth user id, used as the default `owner_user_id`
+  // in the create form. We only need .id; useAuth() is already used
+  // throughout this client page so this is cheap.
+  const { user: currentAdminUser } = useAuth()
 
   async function toggleStatus(a: AdminAgent) {
     const next = a.status === "active" ? "inactive" : "active"
@@ -1835,6 +1842,20 @@ function AgentsSection({
       error={error}
       onRefresh={reload}
     >
+      {/* Toolbar — sits above the table. We render it inside SectionShell's
+          children rather than as a header slot because SectionShell doesn't
+          expose one; this keeps the visual rhythm (title + refresh on top,
+          toolbar + table below) without touching shared chrome. */}
+      <div className="mb-3 flex items-center justify-end">
+        <button
+          onClick={() => setCreateOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-md bg-gradient-to-r from-glow-primary to-glow-secondary hover:opacity-90 transition-opacity"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Create Agent
+        </button>
+      </div>
+
       <DataTable
         head={["Name", "Capabilities", "Status", "Owner", "Telegram", "Last activity", "Actions"]}
         rows={agents.map((a) => {
@@ -1902,6 +1923,19 @@ function AgentsSection({
         onChanged={async () => {
           // Reload so the column flips between "Not connected" and "@username".
           await reload()
+        }}
+        adminFetch={adminFetch}
+      />
+
+      <CreateAgentModal
+        isOpen={createOpen}
+        onClose={() => setCreateOpen(false)}
+        defaultOwnerUserId={currentAdminUser?.id ?? null}
+        onCreated={async () => {
+          // Pull the new row in immediately so admin can see it (and
+          // click "Connect Telegram" on it) the moment they close.
+          await reload()
+          notify("Agent created.", "success")
         }}
         adminFetch={adminFetch}
       />
