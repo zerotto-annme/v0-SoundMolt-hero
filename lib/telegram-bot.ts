@@ -114,3 +114,37 @@ export async function telegramSendMessage(
     text,
   })
 }
+
+/**
+ * Register a webhook URL with Telegram for this bot.
+ *
+ *   POST https://api.telegram.org/bot<TOKEN>/setWebhook
+ *
+ * `secretToken` (optional, A-Z/a-z/0-9/_-, 1..256 chars) is sent back to
+ * us by Telegram as the `X-Telegram-Bot-Api-Secret-Token` header on
+ * every incoming update. We use it to (a) prove the request really came
+ * from Telegram and (b) identify which connected bot the update is for
+ * — agent UUIDs fit the allowed character set, so we pass `agent_id`
+ * directly.
+ *
+ * Returns Telegram's raw envelope. `result === true` on success.
+ */
+export async function telegramSetWebhook(
+  token: string,
+  url: string,
+  secretToken?: string,
+): Promise<TelegramResult<true>> {
+  const params: Record<string, unknown> = { url }
+  if (secretToken) params.secret_token = secretToken
+  return callTelegram<true>(token, "setWebhook", params)
+}
+
+/**
+ * Remove the webhook for this bot. Idempotent on Telegram's side — a
+ * delete on an already-empty webhook still returns ok: true.
+ */
+export async function telegramDeleteWebhook(
+  token: string,
+): Promise<TelegramResult<true>> {
+  return callTelegram<true>(token, "deleteWebhook")
+}

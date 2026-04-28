@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
+import { randomBytes } from "node:crypto"
 import { requireAdmin } from "@/lib/admin-auth"
-import { telegramGetMe } from "@/lib/telegram-bot"
+import {
+  telegramGetMe,
+  telegramSetWebhook,
+  telegramDeleteWebhook,
+} from "@/lib/telegram-bot"
 
 export const dynamic = "force-dynamic"
 
@@ -183,12 +188,26 @@ export async function POST(
     .eq("agent_id", id)
     .maybeSingle()
 
+  // Generate a fresh random secret for THIS connection. We send it to
+  // Telegram as `secret_token`; Telegram echoes it back in the
+  // X-Telegram-Bot-Api-Secret-Token header on every update, and the
+  // public webhook handler uses it as both the routing key (which agent)
+  // AND a shared secret (proof the request really came from Telegram).
+  // 32 random bytes → 64 hex chars, well under Telegram's 256-char limit
+  // and inside its allowed [A-Za-z0-9_-] charset.
+  //
+  // Rotated on every connect/replace — there's no need to preserve the
+  // old secret, and rotating it cleanly invalidates any forged requests
+  // an attacker might have built up against the previous value.
+  const webhookSecret = randomBytes(32).toString("hex")
+
   const upsertPayload = {
     agent_id: id,
     telegram_bot_token: token,
     telegram_bot_username: me.result.username ?? null,
     telegram_bot_id: me.result.id,
     webhook_status: "pending",
+    webhook_secret: webhookSecret,
     is_active: existing?.is_active ?? true,
   }
 
@@ -207,7 +226,47 @@ export async function POST(
     )
   }
 
-  return NextResponse.json({ connection: toPublic(data) })
+  // ── Register the Telegram webhook for this bot. ────────────────────────
+  // The webhook URL is the SAME path for every connected bot — we route
+  // updates to the right agent at delivery time using Telegram's
+  // `secret_token` mechanism (it gets echoed back to us as the
+  // X-Telegram-Bot-Api-Secret-Token header). We pass the random
+  // `webhookSecret` we just generated: it doubles as the routing key
+  // (look up the bot row by `webhook_secret = <header>`) AND a shared
+  // secret that proves the request really came from Telegram. Critical:
+  // we deliberately do NOT use agent_id here — agent ids are listed
+  // publicly via GET /api/agents, so anyone could forge updates against
+  // /api/integrations/telegram/webhook by guessing a UUID.
+  //
+  // We DO NOT fail the connect if setWebhook errors — the bot row is
+  // already saved, the admin UI will show webhook_status='failed', and
+  // the user can retry without losing their token. Telegram's most
+  // common reasons for setWebhook failures are non-HTTPS URLs and
+  // unreachable hosts — both of which are environment issues, not user
+  // input issues.
+  const webhookUrl = `${request.nextUrl.origin}/api/integrations/telegram/webhook`
+  const setRes = await telegramSetWebhook(token, webhookUrl, webhookSecret)
+  const newStatus = setRes.ok ? "active" : "failed"
+  if (!setRes.ok) {
+    console.warn("[admin/agents/:id/telegram POST] setWebhook failed", {
+      agent_id: id,
+      url: webhookUrl,
+      description: setRes.description,
+      error_code: setRes.error_code,
+    })
+  }
+
+  // Persist the resolved status. If this UPDATE itself fails we still
+  // return the row from the previous upsert — webhook_status will just
+  // show as 'pending' and the admin can retry.
+  const { data: updated } = await admin
+    .from(TABLE)
+    .update({ webhook_status: newStatus })
+    .eq("agent_id", id)
+    .select(PUBLIC_COLUMNS)
+    .maybeSingle()
+
+  return NextResponse.json({ connection: toPublic(updated ?? data) })
 }
 
 // ── PATCH (toggle is_active or update webhook_status) ────────────────────────
@@ -308,6 +367,27 @@ export async function DELETE(
 
   const { id } = await context.params
   if (!id) return NextResponse.json({ error: "Missing agent id" }, { status: 400 })
+
+  // Best-effort: tear down the Telegram-side webhook before we drop our
+  // row, so Telegram stops trying to deliver updates to a bot we no
+  // longer know about. We need the token for this — fetch it first.
+  // Failure here is non-fatal: even if Telegram refuses, the local row
+  // delete must still proceed (the operator's intent was "disconnect").
+  const { data: existing } = await admin
+    .from(TABLE)
+    .select("telegram_bot_token")
+    .eq("agent_id", id)
+    .maybeSingle()
+  if (existing?.telegram_bot_token) {
+    const del = await telegramDeleteWebhook(existing.telegram_bot_token)
+    if (!del.ok) {
+      console.warn("[admin/agents/:id/telegram DELETE] deleteWebhook failed", {
+        agent_id: id,
+        description: del.description,
+        error_code: del.error_code,
+      })
+    }
+  }
 
   const { error } = await admin.from(TABLE).delete().eq("agent_id", id)
   if (error) {

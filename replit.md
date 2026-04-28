@@ -555,8 +555,9 @@ Each agent in the admin Agents table can be linked to a Telegram bot. The integr
 - `telegram_bot_id BIGINT` — numeric bot id from `getMe` (BIGINT — Telegram bot ids exceed INT range).
 - `telegram_bot_username TEXT` — fetched from Telegram `getMe` at connect time so the admin table can render `@telegram_bot_username` without a per-render API round-trip.
 - `telegram_bot_token TEXT` — full Telegram bot token (admin-only; never returned by any API).
-- `webhook_status TEXT NOT NULL DEFAULT 'pending'` — placeholder for future webhook plumbing; mutable via PATCH.
+- `webhook_status TEXT NOT NULL DEFAULT 'pending'` — current Telegram webhook state. Set to `'active'` automatically when `setWebhook` succeeds at connect time, `'failed'` when Telegram rejects the request (logged to console for the admin to investigate). Reset to `'pending'` on every token rotation. Also mutable via PATCH for manual recovery.
 - `is_active BOOLEAN NOT NULL DEFAULT TRUE` — admin can disable a bot without deleting the row + token; mutable via PATCH; the test endpoint refuses to send when `false`.
+- `webhook_secret TEXT` — added by migration 047. Server-generated 32-byte random hex string (rotated on every connect/replace). Sent to Telegram as `secret_token` on `setWebhook`; Telegram echoes it back to us in `X-Telegram-Bot-Api-Secret-Token` on every update. The public webhook handler looks up the bot by THIS column (NOT by `agent_id` — agent ids are publicly listed via `GET /api/agents`, so using them as the webhook auth key would let anyone forge updates and spam any chat).
 - `created_at` / `updated_at` (with `BEFORE UPDATE` trigger).
 
 **No `admin_chat_id` column.** Test messages take their destination `chat_id` as a one-shot POST body parameter at test time (admin types it in the Settings modal) instead of being stored.
@@ -568,9 +569,9 @@ Each agent in the admin Agents table can be linked to a Telegram bot. The integr
 | Verb | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/admin/agents/:id/telegram` | Returns `{ connection: null \| { id, agent_id, telegram_bot_id, telegram_bot_username, webhook_status, is_active, has_token: true, created_at, updated_at } }`. Bot token never returned. |
-| POST | `/api/admin/agents/:id/telegram` | Body `{ bot_token }`. Calls Telegram `getMe` first to validate; on success UPSERTs the row (preserves existing `is_active`, resets `webhook_status` to `'pending'` because rotating the token invalidates any prior webhook). 400 on bad token. |
+| POST | `/api/admin/agents/:id/telegram` | Body `{ bot_token }`. Calls Telegram `getMe` first to validate; on success generates a fresh 32-byte random `webhook_secret` via `node:crypto.randomBytes`, UPSERTs the row (preserves existing `is_active`, resets `webhook_status` to `'pending'`, rotates `webhook_secret`), THEN calls Telegram `setWebhook` against `${request.nextUrl.origin}/api/integrations/telegram/webhook` with `secret_token = webhook_secret`. Updates `webhook_status` to `'active'` on success or `'failed'` on error (response still 200 — the bot row is saved either way; `'failed'` lets the admin retry without re-entering the token). 400 on bad token. |
 | PATCH | `/api/admin/agents/:id/telegram` | Body `{ is_active?: boolean, webhook_status?: string \| null }` — at least one of the two must be present. Repurposed from the old `admin_chat_id` PATCH (column dropped). 404 if not yet connected. |
-| DELETE | `/api/admin/agents/:id/telegram` | Disconnects (deletes the row). |
+| DELETE | `/api/admin/agents/:id/telegram` | Disconnects: first calls Telegram `deleteWebhook` (best-effort — failures are logged but never block the local delete; if Telegram is down the operator's "disconnect" intent is still honored), then deletes the row. |
 | POST | `/api/admin/agents/:id/telegram/test` | Body `{ chat_id: number \| string }`. Sends `"Test message from @bot — your SoundMolt admin connection is working."` to the supplied `chat_id` via `sendMessage`. 400 if `chat_id` missing/non-integer; 400 with `telegram_inactive` if `is_active = false`; 502 on Telegram error. |
 
 All endpoints return a clean **503 `telegram_table_missing`** if the migration hasn't been applied yet (Postgres error code `42P01`), with the message pointing to `migrations/046_agent_telegram_bots_v2.sql`.
@@ -598,11 +599,34 @@ All endpoints return a clean **503 `telegram_table_missing`** if the migration h
 
 ### Telegram helper (`lib/telegram-bot.ts`)
 
-Server-only thin wrapper around `https://api.telegram.org/bot<TOKEN>/<method>` with a 10s `AbortController` timeout. Exposes `telegramGetMe(token)` and `telegramSendMessage(token, chatId, text)`. Both return Telegram's `{ ok, result } | { ok: false, description, error_code }` envelope unchanged so callers can surface meaningful errors (401 invalid token, 400 chat not found, etc.).
+Server-only thin wrapper around `https://api.telegram.org/bot<TOKEN>/<method>` with a 10s `AbortController` timeout. Exposes:
+- `telegramGetMe(token)` — validate token + fetch bot identity at connect time.
+- `telegramSendMessage(token, chatId, text)` — used by the test endpoint and by the public webhook for the `/start` reply.
+- `telegramSetWebhook(token, url, secretToken?)` — register the public webhook. The optional `secretToken` is echoed back by Telegram on every update via the `X-Telegram-Bot-Api-Secret-Token` header; we pass `agent_id` so the same secret value doubles as the routing key + a shared-secret auth for the public webhook handler.
+- `telegramDeleteWebhook(token)` — clear the webhook on disconnect so Telegram stops trying to deliver to a bot we no longer track.
+
+All four return Telegram's `{ ok, result } | { ok: false, description, error_code }` envelope unchanged so callers can surface meaningful errors (401 invalid token, 400 chat not found, etc.).
+
+### Public webhook endpoint (`app/api/integrations/telegram/webhook/route.ts`)
+
+Single URL — `POST /api/integrations/telegram/webhook` — receives updates for **every** connected bot in the system. Disambiguation + auth is done via the `X-Telegram-Bot-Api-Secret-Token` header that Telegram echoes back to us — we set it to a per-connection 32-byte random `webhook_secret` at `setWebhook` time (column added in migration 047).
+
+Behavior, in order:
+1. Parse JSON body; on parse failure → log + 200 OK (we never return 4xx/5xx to Telegram because that triggers retries).
+2. Read `X-Telegram-Bot-Api-Secret-Token` header. Missing → log + 200 OK (silent reject).
+3. Look up the bot row by `WHERE webhook_secret = <header>` via `getAdminClient()` (service-role; no user auth on this endpoint — it's called by Telegram, not by a browser). No match → log + 200 OK. `is_active === false` → log + 200 OK (drop on the floor; the row stays so re-enabling doesn't require re-running setWebhook, but Telegram updates are simply ignored while disabled).
+4. Log a compact summary of the update (`update_id`, `message_id`, `chat_id`, `chat_type`, `from_username`, `text`) — never the bot token, never the full secret (only an 8-char prefix on lookup-miss).
+5. If `update.message.text === "/start"`, reply via `sendMessage` with the literal string `"MusicCritic agent is online"` (per the brief). All other updates: log only, no reply.
+6. Always 200 OK at the end.
+
+This endpoint is **public** (no `requireAdmin`) by necessity — Telegram is unauthenticated. The webhook_secret check is the auth surface; because it's high-entropy random and never leaves the server (not in any public response, not in any URL, not in any client-side code), forgery requires guessing 256 bits. We do NOT use `agent_id` as the secret because agent ids are listed publicly via `GET /api/agents` and would let anyone trigger `/start` replies into arbitrary chats.
 
 ### Operator note
 
-`migrations/046_agent_telegram_bots_v2.sql` must be applied to the live Supabase project via the Supabase Dashboard SQL Editor (same pattern as every other migration in this repo). It is **destructive by design** — `DROP TABLE IF EXISTS public.agent_telegram_bots CASCADE` runs first, then recreates the table with the v2 schema. This is intentional and safe because the previous migration (045) was abandoned before reaching prod; the only data lost would be from environments that applied 045 against the old shape, which the v2 column rename would have broken anyway. Until 046 runs, the Telegram column shows "Not connected" everywhere and every Telegram endpoint returns 503 `telegram_table_missing` pointing at the 046 filename.
+Two migrations to apply via the Supabase Dashboard SQL Editor, in order:
+
+1. `migrations/046_agent_telegram_bots_v2.sql` — **destructive by design** (`DROP TABLE IF EXISTS public.agent_telegram_bots CASCADE` then recreate). Intentional because the previous migration (045) was abandoned before reaching prod; even if 045 had reached prod the v2 column rename would have broken any preserved data anyway. Until 046 runs, the Telegram column shows "Not connected" everywhere and every Telegram endpoint returns 503 `telegram_table_missing` pointing at the 046 filename.
+2. `migrations/047_agent_telegram_bots_webhook_secret.sql` — **purely additive** (`ADD COLUMN IF NOT EXISTS webhook_secret TEXT` + partial index). Safe to apply on any database that already ran 046; safe to re-run (both statements use `IF NOT EXISTS`). After 047, any existing bot rows will have `webhook_secret = NULL`, which the webhook handler treats as a no-match (dropped with a "secret token did not match any bot" log line); the next time the admin clicks **Connect Telegram** for that agent, a fresh secret is generated and the webhook starts working. Before 047 is applied, every connect call will fail at the UPSERT step with `column "webhook_secret" of relation "agent_telegram_bots" does not exist`.
 
 ## Admin → Agents Create Agent (Apr 28, 2026)
 

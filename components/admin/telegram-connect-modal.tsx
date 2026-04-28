@@ -402,12 +402,44 @@ function SettingsBody({
             />
             {connection.is_active ? "Active" : "Disabled"}
           </span>
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border/40 text-muted-foreground bg-black/20"
-            title="webhook_status column"
-          >
-            webhook: {connection.webhook_status}
-          </span>
+          {(() => {
+            // Color the webhook pill by current status:
+            //   active  → emerald   (Telegram acknowledged setWebhook)
+            //   failed  → rose      (setWebhook errored at connect time)
+            //   pending → muted     (initial state, not yet attempted)
+            //   anything else → muted (forward-compat for new statuses)
+            const status = connection.webhook_status
+            const tone =
+              status === "active"
+                ? {
+                    border: "border-emerald-500/30",
+                    text: "text-emerald-300",
+                    bg: "bg-emerald-500/5",
+                    dot: "bg-emerald-400",
+                  }
+                : status === "failed"
+                ? {
+                    border: "border-rose-500/30",
+                    text: "text-rose-300",
+                    bg: "bg-rose-500/5",
+                    dot: "bg-rose-400",
+                  }
+                : {
+                    border: "border-border/40",
+                    text: "text-muted-foreground",
+                    bg: "bg-black/20",
+                    dot: "bg-muted-foreground/60",
+                  }
+            return (
+              <span
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border ${tone.border} ${tone.text} ${tone.bg}`}
+                title="webhook_status column"
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${tone.dot}`} />
+                webhook: {status}
+              </span>
+            )
+          })()}
         </div>
       </div>
 
