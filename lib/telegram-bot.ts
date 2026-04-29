@@ -123,9 +123,10 @@ export async function telegramSendMessage(
  * `secretToken` (optional, A-Z/a-z/0-9/_-, 1..256 chars) is sent back to
  * us by Telegram as the `X-Telegram-Bot-Api-Secret-Token` header on
  * every incoming update. We use it to (a) prove the request really came
- * from Telegram and (b) identify which connected bot the update is for
- * — agent UUIDs fit the allowed character set, so we pass `agent_id`
- * directly.
+ * from Telegram and (b) identify which connected bot the update is for.
+ * Callers MUST pass a high-entropy server-generated value (e.g. 32
+ * random bytes hex) — never agent_id or any other publicly-known id,
+ * because the secret_token IS the auth surface for the public webhook.
  *
  * Returns Telegram's raw envelope. `result === true` on success.
  */

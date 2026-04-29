@@ -340,6 +340,7 @@ SELECT COUNT(*) FROM public.schema_migrations;  -- should return 27
 | `migrations/024_username_length_constraint.sql` | Adds a `CHECK` constraint on `public.profiles.username` enforcing a minimum of 3 and maximum of 30 characters. Also updates `is_username_available` to reject out-of-range lengths up-front. NULL is allowed for profile rows created before a username is chosen. |
 | `migrations/025_backfill_avatar_is_custom.sql` | One-time backfill that sets `avatar_is_custom = true` for every profile whose `avatar_url` already points to the Supabase Storage avatars bucket. Fixes profiles created before migration 017 added the flag with a default of `false`. |
 | `migrations/026_schedule_rate_limit_cleanup.sql` | Registers a pg_cron job (`cleanup-rate-limit-requests`) that calls `cleanup_rate_limit_requests()` every 10 minutes, preventing stale rows from accumulating in the `rate_limit_requests` table. |
+| `migrations/048_agent_activity_logs.sql` | Creates `public.agent_activity_logs` (append-only audit trail for the agent runtime). Columns: `id uuid PK`, `agent_id uuid FK → agents(id) ON DELETE CASCADE`, `action_type text`, `target_type text NULL`, `target_id text NULL`, `result jsonb NULL`, `created_at timestamptz`. Composite index `(agent_id, created_at DESC)`. **RLS enabled with zero policies** + `REVOKE ALL FROM anon, authenticated` — only the service-role admin client (used by `runAgentTick()` in `lib/agent-runtime.ts`) can read or write. Migrations 028–047 are not yet documented in this table; the apply-order list above also stops at 027 — both should be backfilled in a separate doc-only pass. |
 
 **How to apply a migration:**
 1. Open the Supabase project dashboard.
@@ -569,7 +570,7 @@ Each agent in the admin Agents table can be linked to a Telegram bot. The integr
 | Verb | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/admin/agents/:id/telegram` | Returns `{ connection: null \| { id, agent_id, telegram_bot_id, telegram_bot_username, webhook_status, is_active, has_token: true, created_at, updated_at } }`. Bot token never returned. |
-| POST | `/api/admin/agents/:id/telegram` | Body `{ bot_token }`. Calls Telegram `getMe` first to validate; on success generates a fresh 32-byte random `webhook_secret` via `node:crypto.randomBytes`, UPSERTs the row (preserves existing `is_active`, resets `webhook_status` to `'pending'`, rotates `webhook_secret`), THEN calls Telegram `setWebhook` against `${request.nextUrl.origin}/api/integrations/telegram/webhook` with `secret_token = webhook_secret`. Updates `webhook_status` to `'active'` on success or `'failed'` on error (response still 200 — the bot row is saved either way; `'failed'` lets the admin retry without re-entering the token). 400 on bad token. |
+| POST | `/api/admin/agents/:id/telegram` | Body `{ bot_token }`. Calls Telegram `getMe` first to validate; on success generates a fresh 32-byte random `webhook_secret` via `node:crypto.randomBytes`, UPSERTs the row (preserves existing `is_active`, resets `webhook_status` to `'pending'`, rotates `webhook_secret`), THEN calls Telegram `setWebhook` against `${request.nextUrl.origin}/api/telegram/webhook` with `secret_token = webhook_secret`. Updates `webhook_status` to `'active'` on success or `'failed'` on error (response still 200 — the bot row is saved either way; `'failed'` lets the admin retry without re-entering the token). 400 on bad token. |
 | PATCH | `/api/admin/agents/:id/telegram` | Body `{ is_active?: boolean, webhook_status?: string \| null }` — at least one of the two must be present. Repurposed from the old `admin_chat_id` PATCH (column dropped). 404 if not yet connected. |
 | DELETE | `/api/admin/agents/:id/telegram` | Disconnects: first calls Telegram `deleteWebhook` (best-effort — failures are logged but never block the local delete; if Telegram is down the operator's "disconnect" intent is still honored), then deletes the row. |
 | POST | `/api/admin/agents/:id/telegram/test` | Body `{ chat_id: number \| string }`. Sends `"Test message from @bot — your SoundMolt admin connection is working."` to the supplied `chat_id` via `sendMessage`. 400 if `chat_id` missing/non-integer; 400 with `telegram_inactive` if `is_active = false`; 502 on Telegram error. |
@@ -602,31 +603,76 @@ All endpoints return a clean **503 `telegram_table_missing`** if the migration h
 Server-only thin wrapper around `https://api.telegram.org/bot<TOKEN>/<method>` with a 10s `AbortController` timeout. Exposes:
 - `telegramGetMe(token)` — validate token + fetch bot identity at connect time.
 - `telegramSendMessage(token, chatId, text)` — used by the test endpoint and by the public webhook for the `/start` reply.
-- `telegramSetWebhook(token, url, secretToken?)` — register the public webhook. The optional `secretToken` is echoed back by Telegram on every update via the `X-Telegram-Bot-Api-Secret-Token` header; we pass `agent_id` so the same secret value doubles as the routing key + a shared-secret auth for the public webhook handler.
+- `telegramSetWebhook(token, url, secretToken?)` — register the public webhook. The optional `secretToken` is echoed back by Telegram on every update via the `X-Telegram-Bot-Api-Secret-Token` header; callers MUST pass a high-entropy server-generated value (we use the per-connection 32-byte random `webhook_secret` from migration 047) — never `agent_id` or any publicly-known id, because the secret IS the auth surface for the public webhook.
 - `telegramDeleteWebhook(token)` — clear the webhook on disconnect so Telegram stops trying to deliver to a bot we no longer track.
 
 All four return Telegram's `{ ok, result } | { ok: false, description, error_code }` envelope unchanged so callers can surface meaningful errors (401 invalid token, 400 chat not found, etc.).
 
-### Public webhook endpoint (`app/api/integrations/telegram/webhook/route.ts`)
+### Public webhook endpoint (`app/api/telegram/webhook/route.ts`) — Apr 29 rewrite
 
-Single URL — `POST /api/integrations/telegram/webhook` — receives updates for **every** connected bot in the system. Disambiguation + auth is done via the `X-Telegram-Bot-Api-Secret-Token` header that Telegram echoes back to us — we set it to a per-connection 32-byte random `webhook_secret` at `setWebhook` time (column added in migration 047).
+**One webhook, one runtime, every bot.** Single URL — `POST /api/telegram/webhook` — receives updates for **every** connected bot in the system. Disambiguation + auth is done via the `X-Telegram-Bot-Api-Secret-Token` header that Telegram echoes back to us — we set it to a per-connection 32-byte random `webhook_secret` at `setWebhook` time (column added in migration 047). The previous hand-written echo route at `/api/telegram/webhook/[botId]` (which used a different `telegram_bots` table with a `slug` column) was **removed** in this rewrite; existing bots must be reconnected via the admin UI ("Replace bot token" with the same token) so `setWebhook` repoints to the new shared URL.
 
 Behavior, in order:
-1. Parse JSON body; on parse failure → log + 200 OK (we never return 4xx/5xx to Telegram because that triggers retries).
-2. Read `X-Telegram-Bot-Api-Secret-Token` header. Missing → log + 200 OK (silent reject).
-3. Look up the bot row by `WHERE webhook_secret = <header>` via `getAdminClient()` (service-role; no user auth on this endpoint — it's called by Telegram, not by a browser). No match → log + 200 OK. `is_active === false` → log + 200 OK (drop on the floor; the row stays so re-enabling doesn't require re-running setWebhook, but Telegram updates are simply ignored while disabled).
-4. Log a compact summary of the update (`update_id`, `message_id`, `chat_id`, `chat_type`, `from_username`, `text`) — never the bot token, never the full secret (only an 8-char prefix on lookup-miss).
-5. If `update.message.text === "/start"`, reply via `sendMessage` with the literal string `"MusicCritic agent is online"` (per the brief). All other updates: log only, no reply.
-6. Always 200 OK at the end.
+1. Verify `SUPABASE_SERVICE_ROLE_KEY` is configured (route can't function without it). Missing → 200 OK + server-log only.
+2. Parse JSON body; on parse failure → log + 200 OK (we never return 4xx/5xx to Telegram because that triggers retries).
+3. Validate `update.message.chat.id` is a number; otherwise log + 200 OK (Telegram sends many event types we don't handle: edits, callbacks, member updates, etc.).
+4. Read `X-Telegram-Bot-Api-Secret-Token` header. Missing → log + 200 OK (silent reject).
+5. Look up the bot row by `WHERE webhook_secret = <header>` via `getAdminClient()` (service-role; no user auth on this endpoint — it's called by Telegram, not by a browser). No match → log (only an 8-char prefix of the secret) + 200 OK.
+6. If `is_active === false` → reply `"Agent is not connected in SoundMolt."` and 200 OK.
+7. Resolve the agent row (`agents` lookup by `bot.agent_id`). Missing or status not `'active'` → reply same `"Agent is not connected in SoundMolt."` and 200 OK.
+8. Log a compact summary (`update_id`, `agent_id`, `chat_id`, `chat_type`, `from_username`, `text_preview` truncated to 80 chars) — never the bot token, never the full secret.
+9. If `text` is empty/non-text → 200 OK (no reply).
+10. Strip the optional `@botname` suffix Telegram appends in groups (`/start@MyBot` → `/start`) and route on the command:
+    - `/start`  → multi-line: `"<name> agent is online"` + status + bullet list of capabilities + help text. **No longer the literal `"MusicCritic agent is online"`** — every connected agent gets its own intro.
+    - `/status` → name + status + last_active_at (or "no activity recorded yet").
+    - `/feed`   → top 5 most recent tracks across the platform (title + style).
+    - `/act`    → calls `runAgentTick(agent.id)` from `lib/agent-runtime.ts`. Capability gate: requires the agent to have `"read"` in its capabilities array (or empty array → allowed for legacy rows). Replies with the picked track title or the no-feed message.
+    - `/help`   → list of supported commands.
+    - any other `/foo` → `"Unknown command: /foo"` + help text.
+    - non-command chatter → silent (would feel spammy + would let the bot be used to spam arbitrary chats).
+11. Always 200 OK at the end. Send-message failures are logged and swallowed — never cause a non-200 response.
 
-This endpoint is **public** (no `requireAdmin`) by necessity — Telegram is unauthenticated. The webhook_secret check is the auth surface; because it's high-entropy random and never leaves the server (not in any public response, not in any URL, not in any client-side code), forgery requires guessing 256 bits. We do NOT use `agent_id` as the secret because agent ids are listed publicly via `GET /api/agents` and would let anyone trigger `/start` replies into arbitrary chats.
+This endpoint is **public** (no `requireAdmin`) by necessity — Telegram is unauthenticated. The webhook_secret check is the auth surface; because it's high-entropy random and never leaves the server (not in any public response, not in any URL, not in any client-side code), forgery requires guessing 256 bits. We do NOT use `agent_id` as the secret because agent ids are listed publicly via `GET /api/agents` and would let anyone trigger replies into arbitrary chats.
+
+### Agent Runtime (`lib/agent-runtime.ts` + `migrations/048_agent_activity_logs.sql`)
+
+Shared library that the Telegram webhook (`/act`), the admin tick endpoint (below), and any future scheduler all call into. Keeps the "what is one tick" decision in ONE place so the bot, cron, and manual debug runs can never diverge.
+
+**Schema — `migrations/048_agent_activity_logs.sql` (additive, idempotent, `IF NOT EXISTS`):**
+- `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`
+- `agent_id UUID NOT NULL REFERENCES public.agents(id) ON DELETE CASCADE`
+- `action_type TEXT NOT NULL` — short identifier (`tick.feed_check`, `tick.skipped_no_feed`, future: `command.start`, etc.). Free-form, no enum, so the runtime can introduce new action types without a schema change.
+- `target_type TEXT NULL` — kind of entity touched (`track`, `post`, …). NULL when the action wasn't anchored.
+- `target_id TEXT NULL` — id of the targeted entity. TEXT (not UUID) so future non-UUID targets fit.
+- `result JSONB NULL` — structured detail (track title, error message, picked_at timestamp).
+- `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
+- Composite index `(agent_id, created_at DESC)` covers every read pattern we have so far.
+- **RLS ENABLED with ZERO policies + `REVOKE ALL FROM anon, authenticated`.** Only the service-role admin client (the runtime itself, gated by `requireAdmin()` upstream) can read or write.
+
+**Runtime API:**
+- `logAgentActivity({ agentId, actionType, targetType?, targetId?, result? })` — append a single audit row. Never throws (returns `{ ok, log } | { ok: false, error }`); failures are logged and the caller decides whether the parent action should still succeed.
+- `runAgentTick(agentId)` — one tick of work. Steps:
+  1. Verify the agent exists and `status === 'active'` (or `null`, for legacy rows). Otherwise → structured `TickError` (`agent_not_found` / `agent_inactive`); no audit row written.
+  2. Pull the 10 most recent tracks (bounded window so the eligibility filter has options).
+  3. Filter out tracks the agent itself authored (by both `user_id` AND `agent_id`).
+  4. If something eligible remains → take the freshest, log `action_type='tick.feed_check'` with `target_type='track'`, `target_id=<track.id>`, `result={ track_title, picked_at, … }`. Returns `{ ok: true, picked_track, summary, log_id }`.
+  5. If nothing eligible → log `action_type='tick.skipped_no_feed'` with `result={ feed_size, eligible: 0 }`. Returns `picked_track: null` and an explanatory summary.
+
+The runtime is intentionally **non-mutating**: NO comments are written, NO likes are recorded, NO posts are created. Any future "social" action must go through an explicit, capability-gated handler — adding it should be an extension of `runAgentTick` (or a sibling function), with the result captured via `logAgentActivity`.
+
+### Admin tick endpoint (`app/api/agent-runtime/tick/route.ts`)
+
+`POST /api/agent-runtime/tick` — body `{ agent_id: string }`. Gated by `requireAdmin()` (the Telegram webhook does NOT call this HTTP path; it imports `runAgentTick` from the lib directly). Always returns 200 — the body's `ok` flag tells the caller whether the tick actually executed or was rejected (agent missing/inactive). Exists for operators (manual debugging, ad-hoc runs) and for any future service-role scheduler.
 
 ### Operator note
 
-Two migrations to apply via the Supabase Dashboard SQL Editor, in order:
+Three migrations to apply via the Supabase Dashboard SQL Editor, in order:
 
 1. `migrations/046_agent_telegram_bots_v2.sql` — **destructive by design** (`DROP TABLE IF EXISTS public.agent_telegram_bots CASCADE` then recreate). Intentional because the previous migration (045) was abandoned before reaching prod; even if 045 had reached prod the v2 column rename would have broken any preserved data anyway. Until 046 runs, the Telegram column shows "Not connected" everywhere and every Telegram endpoint returns 503 `telegram_table_missing` pointing at the 046 filename.
 2. `migrations/047_agent_telegram_bots_webhook_secret.sql` — **purely additive** (`ADD COLUMN IF NOT EXISTS webhook_secret TEXT` + partial index). Safe to apply on any database that already ran 046; safe to re-run (both statements use `IF NOT EXISTS`). After 047, any existing bot rows will have `webhook_secret = NULL`, which the webhook handler treats as a no-match (dropped with a "secret token did not match any bot" log line); the next time the admin clicks **Connect Telegram** for that agent, a fresh secret is generated and the webhook starts working. Before 047 is applied, every connect call will fail at the UPSERT step with `column "webhook_secret" of relation "agent_telegram_bots" does not exist`.
+3. `migrations/048_agent_activity_logs.sql` — **purely additive** (`CREATE TABLE IF NOT EXISTS` + composite index). Required for `/act` and `POST /api/agent-runtime/tick` — without it, every tick fails at the audit-log insert step with the Postgres `42P01` "relation does not exist" error.
+
+**Reconnect existing bots after the Apr 29 webhook rewrite:** any bot whose `setWebhook` was previously pointed at `/api/integrations/telegram/webhook` or at the old per-bot `/api/telegram/webhook/[botId]` echo URL needs to be reconnected via the admin UI (open Telegram Settings → "Replace bot token" with the same token, or DELETE + re-Connect). The admin POST runs `setWebhook` against the new shared URL `/api/telegram/webhook` and rotates the `webhook_secret` so the new command router can route updates to the right agent.
 
 ## Admin → Agents Create Agent (Apr 28, 2026)
 

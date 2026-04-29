@@ -236,7 +236,7 @@ export async function POST(
   // secret that proves the request really came from Telegram. Critical:
   // we deliberately do NOT use agent_id here — agent ids are listed
   // publicly via GET /api/agents, so anyone could forge updates against
-  // /api/integrations/telegram/webhook by guessing a UUID.
+  // /api/telegram/webhook by guessing a UUID.
   //
   // We DO NOT fail the connect if setWebhook errors — the bot row is
   // already saved, the admin UI will show webhook_status='failed', and
@@ -244,7 +244,7 @@ export async function POST(
   // common reasons for setWebhook failures are non-HTTPS URLs and
   // unreachable hosts — both of which are environment issues, not user
   // input issues.
-  const webhookUrl = `${request.nextUrl.origin}/api/integrations/telegram/webhook`
+  const webhookUrl = `${request.nextUrl.origin}/api/telegram/webhook`
   const setRes = await telegramSetWebhook(token, webhookUrl, webhookSecret)
   const newStatus = setRes.ok ? "active" : "failed"
   if (!setRes.ok) {
