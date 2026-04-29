@@ -1,47 +1,40 @@
-import { createClient } from '@supabase/supabase-js'
-
-export async function POST(
-  req: Request,
-  { params }: { params: { botId: string } }
-) {
+export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const botId = params.botId
-
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-
-    const { data: bot, error } = await supabase
-      .from('telegram_bots')
-      .select('bot_token, bot_username, status')
-      .eq('slug', botId)
-      .eq('status', 'active')
-      .single()
-
-    if (error || !bot) {
-      console.log('BOT NOT FOUND', botId)
-      return new Response('bot not found', { status: 404 })
-    }
 
     const chatId = body?.message?.chat?.id
     const text = body?.message?.text || ''
 
     if (!chatId) return new Response('ok')
 
-    await fetch(`https://api.telegram.org/bot${bot.bot_token}/sendMessage`, {
+    // ⚡ достаем botId из URL
+    const url = new URL(req.url)
+    const botId = url.pathname.split('/').pop()
+
+    // ⚡ получаем токен из Supabase
+    const res = await fetch(process.env.NEXT_PUBLIC_SUPABASE_URL + '/rest/v1/telegram_bots?slug=eq.' + botId, {
+      headers: {
+        apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`
+      }
+    })
+
+    const data = await res.json()
+    const token = data?.[0]?.bot_token
+
+    if (!token) return new Response('no token')
+
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        text: `${bot.bot_username || botId} online 👀 Ты написал: ${text}`
+        text: `Ты написал: ${text}`
       })
     })
 
     return new Response('ok')
   } catch (e) {
-    console.error(e)
     return new Response('ok')
   }
 }
