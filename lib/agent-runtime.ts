@@ -285,36 +285,110 @@ export async function runAgentTick(agentId: string): Promise<TickResult | TickEr
 // ─── Act ──────────────────────────────────────────────────────────────
 
 /**
- * Short, neutral, music-focused comment templates. Deliberately:
+ * Comment pool — 14 variants spread across three tones. Each line is:
  *   • short (one sentence, no questions, no @-mentions, no links)
  *   • opinion-less about the artist as a person
- *   • specific to a musical element so it can't be mistaken for a bot ping
+ *   • specific to a musical element so it never reads as a bot ping
  *
- * The pool is small on purpose — adding many near-duplicates would not
- * make the bot less spammy, just less obvious. The picker uses a stable
- * (agent_id + track_id)-derived index so re-running /act on the same
- * pair would write the same line, but the duplicate-check above prevents
- * that ever happening for real.
+ * Tones:
+ *   • positive — appreciation / encouragement
+ *   • neutral  — descriptive observation, no judgement
+ *   • critic   — constructive note (always paired with something positive
+ *                so it never lands as a personal attack)
+ *
+ * Picker is RANDOM (not deterministic on agent+track) AND filters out
+ * the agent's N most-recent comment bodies, so consecutive /act calls
+ * on different tracks rotate through the pool instead of repeating one
+ * line. With 14 variants and 5 recent-history exclusions, every call
+ * still has at least 9 options to randomise across.
  */
-const SAFE_COMMENT_POOL = [
-  "Nice atmosphere. The mix feels clean.",
-  "Strong groove. The intro works well.",
-  "Interesting texture. I'd keep building this idea.",
-  "Solid arrangement. The transitions land.",
-  "Warm sound. The low-end sits well.",
-  "Good direction. Curious where this goes.",
+type CommentTone = "positive" | "neutral" | "critic"
+
+interface CommentVariant {
+  tone: CommentTone
+  text: string
+}
+
+const COMMENT_POOL: readonly CommentVariant[] = [
+  // ─── positive ────────────────────────────────────────────────────
+  { tone: "positive", text: "Nice groove, the rhythm feels solid." },
+  { tone: "positive", text: "Love the energy here, keep it up!" },
+  { tone: "positive", text: "The atmosphere is strong, keep building this." },
+  { tone: "positive", text: "Great vibe — this hooked me right away." },
+  { tone: "positive", text: "Solid mix and great melodic choices." },
+  // ─── neutral ─────────────────────────────────────────────────────
+  { tone: "neutral",  text: "Interesting direction, curious where this goes next." },
+  { tone: "neutral",  text: "Nice texture in the arrangement." },
+  { tone: "neutral",  text: "The structure feels intentional, good flow." },
+  { tone: "neutral",  text: "Cool sound design choices throughout." },
+  { tone: "neutral",  text: "The tempo and groove sit well together." },
+  // ─── critic ──────────────────────────────────────────────────────
+  { tone: "critic",   text: "Interesting idea, but the mix could be cleaner." },
+  { tone: "critic",   text: "Strong concept — the drums could hit harder." },
+  { tone: "critic",   text: "The arrangement is promising but needs more contrast." },
+  { tone: "critic",   text: "Good start, the low end feels a bit muddy though." },
 ] as const
 
-function pickComment(agentId: string, trackId: string): string {
-  // Tiny, dependency-free string hash → deterministic per (agent, track).
-  // Using FNV-1a-style folding; collisions are fine, only need uniform spread.
-  const seed = `${agentId}:${trackId}`
-  let h = 2166136261
-  for (let i = 0; i < seed.length; i++) {
-    h ^= seed.charCodeAt(i)
-    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0
+/**
+ * Fetch the comment bodies the agent has used most recently, so the
+ * picker can avoid repeating itself on consecutive /act calls.
+ *
+ * Reads from `agent_activity_logs` (RLS-locked, service-role only) —
+ * specifically the `act.comment` rows we wrote on previous successful
+ * comments, where `result.content` carries the body text. We pull a
+ * window of the last 5 (small enough to never exhaust the 14-line
+ * pool, large enough to avoid the "second-most-recent" problem of a
+ * 1-back exclusion).
+ *
+ * Failures are non-fatal — the picker just sees an empty exclusion
+ * set and falls back to picking from the full pool. We never want a
+ * logging-table hiccup to block a legitimate /act.
+ */
+async function fetchRecentlyUsedCommentBodies(
+  admin: ReturnType<typeof getAdminClient>,
+  agentId: string,
+  windowSize = 5,
+): Promise<Set<string>> {
+  const { data, error } = await admin
+    .from("agent_activity_logs")
+    .select("result")
+    .eq("agent_id", agentId)
+    .eq("action_type", "act.comment")
+    .order("created_at", { ascending: false })
+    .limit(windowSize)
+
+  if (error) {
+    console.error("[agent-runtime] recent comments lookup failed:", error)
+    return new Set<string>()
   }
-  return SAFE_COMMENT_POOL[h % SAFE_COMMENT_POOL.length]!
+
+  const used = new Set<string>()
+  for (const row of data ?? []) {
+    const r = (row as { result: unknown }).result
+    if (r && typeof r === "object" && "content" in r) {
+      const c = (r as { content: unknown }).content
+      if (typeof c === "string" && c.length > 0) used.add(c)
+    }
+  }
+  return used
+}
+
+/**
+ * Pick a comment variant at random from the pool, EXCLUDING any text
+ * the agent has used in its recent history. If exclusion would empty
+ * the pool (impossible with the current 14-vs-5 budget, but defensive
+ * anyway) we fall back to the full pool — the DB-level uniqueness
+ * constraint and the per-track `alreadyCommented` filter already
+ * ensure the agent never posts the same line twice on the SAME track.
+ *
+ * Returns the full variant (text + tone) so the caller can log the
+ * tone alongside the content for downstream analytics.
+ */
+function pickComment(recentlyUsed: Set<string>): CommentVariant {
+  const eligible = COMMENT_POOL.filter((v) => !recentlyUsed.has(v.text))
+  const pool: readonly CommentVariant[] = eligible.length > 0 ? eligible : COMMENT_POOL
+  const idx = Math.floor(Math.random() * pool.length)
+  return pool[idx]!
 }
 
 /**
@@ -499,18 +573,29 @@ async function runAgentActImpl(agentId: string): Promise<AgentActResult> {
   const alreadyLiked     = new Set((likedRes.data     ?? []).map((r) => r.track_id))
   const alreadyCommented = new Set((commentedRes.data ?? []).map((r) => r.track_id))
 
-  // 5) Action priority: like first (cheap + idempotent), comment second.
-  //    Walk the candidates in feed order so we always target the freshest
-  //    eligible track for the chosen action.
+  // 5) Action priority — PER TRACK, walking the freshest first.
+  //    For each candidate track in feed order:
+  //      • if not yet liked AND the agent CAN like → choose 'like' on
+  //        this track. (Cheapest action, idempotent at the DB level via
+  //        the unique(track_id, agent_id) constraint.)
+  //      • else if already liked, not yet commented, AND the agent CAN
+  //        comment → choose 'comment' on this track. (The user-spec
+  //        rule "if track is already liked, comment instead" — gives
+  //        the agent a graceful escalation path on tracks it's already
+  //        engaged with, without ever doing both on a single /act.)
+  //      • otherwise skip and try the next freshest track.
+  //    Stop on the first match. Guarantees ONE action per /act.
   let chosen: { track: typeof candidates[number]; action: "like" | "comment" } | null = null
 
-  if (canLike) {
-    const t = candidates.find((c) => !alreadyLiked.has(c.id))
-    if (t) chosen = { track: t, action: "like" }
-  }
-  if (!chosen && canComment) {
-    const t = candidates.find((c) => !alreadyCommented.has(c.id))
-    if (t) chosen = { track: t, action: "comment" }
+  for (const c of candidates) {
+    if (canLike && !alreadyLiked.has(c.id)) {
+      chosen = { track: c, action: "like" }
+      break
+    }
+    if (canComment && alreadyLiked.has(c.id) && !alreadyCommented.has(c.id)) {
+      chosen = { track: c, action: "comment" }
+      break
+    }
   }
 
   if (!chosen) {
@@ -586,7 +671,13 @@ async function runAgentActImpl(agentId: string): Promise<AgentActResult> {
   }
 
   // chosen.action === "comment"
-  const body = pickComment(agentId, chosen.track.id)
+  // Pull the agent's recent comment history so the picker can rotate
+  // through the pool instead of repeating the same line. Done lazily
+  // (only when we're actually about to comment) — the like path doesn't
+  // need this lookup, so we don't pay for it on those calls.
+  const recentlyUsed = await fetchRecentlyUsedCommentBodies(admin, agentId, 5)
+  const variant = pickComment(recentlyUsed)
+  const body = variant.text
   const result = await createTrackComment(ref, { trackId: chosen.track.id, content: body })
   if (!result.ok) {
     // SQLSTATE 23505 = unique_violation: the partial index from
@@ -636,6 +727,7 @@ async function runAgentActImpl(agentId: string): Promise<AgentActResult> {
       track_title: chosen.track.title ?? null,
       comment_id:  result.data.id,
       content:     body,
+      tone:        variant.tone,
     },
   })
   if (!log.ok) {

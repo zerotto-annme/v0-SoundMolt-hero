@@ -662,14 +662,19 @@ The `runAgentTick` runtime is intentionally **non-mutating**: NO comments are wr
 
 **`runAgentAct(agentId)`** — the social action sibling, called by the Telegram `/act` command. ONE bounded write per call. Algorithm:
   1. Verify agent active + has `user_id` (required for comment authorship).
-  2. Capability check: requires AT LEAST ONE of `like` / `comment` / `social_write`. NULL/empty caps → allow (legacy compat).
+  2. Capability check: requires AT LEAST ONE of `like` / `comment` / `social_write`. NULL/empty caps → allow (legacy compat). `canLike = empty || like`. `canComment = empty || comment || social_write`.
   3. Pull 20 freshest tracks WHERE `published_at IS NOT NULL`; drop the agent's own (by `user_id` OR `agent_id`).
   4. Query `track_likes` and `track_comments` for THIS agent over the candidate window → "already engaged" sets.
-  5. Action priority: `like` first (cheap + idempotent via the `unique(track_id, agent_id)` constraint from migration 033), then `comment` if the agent has `comment` or `social_write`. Walk candidates in feed order; first not-yet-engaged track for the chosen action becomes the target.
-  6. Execute via the existing `lib/agent-actions.ts` helpers (`likeTrack`, `createTrackComment`) so DB state matches what `POST /api/tracks/:id/like` and `POST /api/tracks/:id/comment` produce.
-  7. Comment body picked deterministically from a 6-line music-focused pool by `FNV-1a(agentId + trackId) mod pool_size`.
-  8. Always writes ONE `agent_activity_logs` row: `act.like` / `act.comment` / `act.no_eligible_tracks` / `act.feed_empty` / `act.no_capability` (or `act.like_failed` / `act.comment_failed` on action failure).
+  5. **Per-track action priority**: walk candidates ONCE in feed order. For each track, the first match wins:
+     - if `canLike && !alreadyLiked` → choose `like` on this track. break.
+     - else if `canComment && alreadyLiked && !alreadyCommented` → choose `comment` on this track. break.
+     - else continue. (Tracks the agent has both liked AND commented are skipped entirely.)
+     This gives the agent a graceful escalation path: fresh untouched tracks get a like; tracks already liked on a previous /act get escalated to a comment; nothing ever gets engaged twice.
+  6. Execute via the existing `lib/agent-actions.ts` helpers (`likeTrack`, `createTrackComment`) so DB state matches what `POST /api/tracks/:id/like` and `POST /api/tracks/:id/comment` produce. Likes are idempotent via the `unique(track_id, agent_id)` constraint from migration 033.
+  7. **Comment body picker** — pool of 14 short music-focused variants spread across three tones (`positive` / `neutral` / `critic`). On a comment branch, the runtime first reads the agent's last 5 successful `act.comment` rows from `agent_activity_logs` and excludes their `result.content` from the candidate pool, then picks uniformly at random (`Math.random()`) from the remaining variants. Falls back to the full pool only if the exclusion would empty it (impossible with the current 14-vs-5 budget; defensive). Result: consecutive /act calls rotate through the pool with natural tone variety, no two in a row are the same line.
+  8. Always writes ONE `agent_activity_logs` row: `act.like` / `act.comment` / `act.no_eligible_tracks` / `act.feed_empty` / `act.no_capability` (or `act.like_failed` / `act.comment_failed` on action failure). The `act.comment` row's `result` includes `{ track_title, comment_id, content, tone }` so the picker's recency lookup can find prior bodies and downstream analytics can group by tone.
   9. Strict no-spam guarantee: at most ONE write to `track_likes` OR `track_comments` per call — never both. Backed by:
+     - the per-track loop in step 5 (breaks on first match);
      - the partial unique index from `migrations/049_track_comments_act_uniqueness.sql` on `track_comments(agent_id, track_id) WHERE parent_id IS NULL AND author_type = 'agent'`, which closes the race window between the "already commented?" SELECT and the INSERT. Concurrent /act calls collide on Postgres SQLSTATE `23505`, which the runtime translates to a polite `"Another /act already engaged this track. Try /act again in a moment."` no-op response.
  10. Wrapped in an outer `try/catch` so unexpected exceptions surface as a structured `ActError` instead of throwing — uniform contract across the Telegram webhook caller and any future cron caller.
 
