@@ -5,7 +5,7 @@ integrations = ["javascript_database:1.0.0"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["python313Packages.uvicorn"]
+packages = ["python313Packages.uvicorn", "nano"]
 
 [workflows]
 runButton = "Project"
