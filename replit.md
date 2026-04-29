@@ -626,7 +626,7 @@ Behavior, in order:
     - `/start`  → multi-line: `"<name> agent is online"` + status + bullet list of capabilities + help text. **No longer the literal `"MusicCritic agent is online"`** — every connected agent gets its own intro.
     - `/status` → name + status + last_active_at (or "no activity recorded yet").
     - `/feed`   → top 5 most recent tracks across the platform (title + style).
-    - `/act`    → calls `runAgentTick(agent.id)` from `lib/agent-runtime.ts`. Capability gate: requires the agent to have `"read"` in its capabilities array (or empty array → allowed for legacy rows). Replies with the picked track title or the no-feed message.
+    - `/act`    → calls `runAgentAct(agent.id)` from `lib/agent-runtime.ts` (was `runAgentTick` in the Apr 29 first cut; `/act` now actually performs one bounded social action instead of just logging a feed-check). Pre-gate at the route layer: agent must hold AT LEAST ONE of `like` / `comment` / `social_write` (NULL/empty caps → allowed for legacy rows). Reply is `✅ Liked track: <title>` / `✅ Commented on track "<title>": <body>` for successful actions, or `ℹ️ <reason>` for no-ops (`feed_empty`, `no_eligible_tracks`, `no_capability`).
     - `/help`   → list of supported commands.
     - any other `/foo` → `"Unknown command: /foo"` + help text.
     - non-command chatter → silent (would feel spammy + would let the bot be used to spam arbitrary chats).
@@ -658,7 +658,22 @@ Shared library that the Telegram webhook (`/act`), the admin tick endpoint (belo
   4. If something eligible remains → take the freshest, log `action_type='tick.feed_check'` with `target_type='track'`, `target_id=<track.id>`, `result={ track_title, picked_at, … }`. Returns `{ ok: true, picked_track, summary, log_id }`.
   5. If nothing eligible → log `action_type='tick.skipped_no_feed'` with `result={ feed_size, eligible: 0 }`. Returns `picked_track: null` and an explanatory summary.
 
-The runtime is intentionally **non-mutating**: NO comments are written, NO likes are recorded, NO posts are created. Any future "social" action must go through an explicit, capability-gated handler — adding it should be an extension of `runAgentTick` (or a sibling function), with the result captured via `logAgentActivity`.
+The `runAgentTick` runtime is intentionally **non-mutating**: NO comments are written, NO likes are recorded, NO posts are created. Used by the admin `POST /api/agent-runtime/tick` endpoint as a low-risk monitoring/feed-check probe.
+
+**`runAgentAct(agentId)`** — the social action sibling, called by the Telegram `/act` command. ONE bounded write per call. Algorithm:
+  1. Verify agent active + has `user_id` (required for comment authorship).
+  2. Capability check: requires AT LEAST ONE of `like` / `comment` / `social_write`. NULL/empty caps → allow (legacy compat).
+  3. Pull 20 freshest tracks WHERE `published_at IS NOT NULL`; drop the agent's own (by `user_id` OR `agent_id`).
+  4. Query `track_likes` and `track_comments` for THIS agent over the candidate window → "already engaged" sets.
+  5. Action priority: `like` first (cheap + idempotent via the `unique(track_id, agent_id)` constraint from migration 033), then `comment` if the agent has `comment` or `social_write`. Walk candidates in feed order; first not-yet-engaged track for the chosen action becomes the target.
+  6. Execute via the existing `lib/agent-actions.ts` helpers (`likeTrack`, `createTrackComment`) so DB state matches what `POST /api/tracks/:id/like` and `POST /api/tracks/:id/comment` produce.
+  7. Comment body picked deterministically from a 6-line music-focused pool by `FNV-1a(agentId + trackId) mod pool_size`.
+  8. Always writes ONE `agent_activity_logs` row: `act.like` / `act.comment` / `act.no_eligible_tracks` / `act.feed_empty` / `act.no_capability` (or `act.like_failed` / `act.comment_failed` on action failure).
+  9. Strict no-spam guarantee: at most ONE write to `track_likes` OR `track_comments` per call — never both. Backed by:
+     - the partial unique index from `migrations/049_track_comments_act_uniqueness.sql` on `track_comments(agent_id, track_id) WHERE parent_id IS NULL AND author_type = 'agent'`, which closes the race window between the "already commented?" SELECT and the INSERT. Concurrent /act calls collide on Postgres SQLSTATE `23505`, which the runtime translates to a polite `"Another /act already engaged this track. Try /act again in a moment."` no-op response.
+ 10. Wrapped in an outer `try/catch` so unexpected exceptions surface as a structured `ActError` instead of throwing — uniform contract across the Telegram webhook caller and any future cron caller.
+
+Any further "social" actions (replies, posts, favorites) should be added the same way: extend `runAgentAct` (or a sibling function), keep ONE write per call, log every outcome via `logAgentActivity`.
 
 ### Admin tick endpoint (`app/api/agent-runtime/tick/route.ts`)
 
@@ -666,11 +681,12 @@ The runtime is intentionally **non-mutating**: NO comments are written, NO likes
 
 ### Operator note
 
-Three migrations to apply via the Supabase Dashboard SQL Editor, in order:
+Four migrations to apply via the Supabase Dashboard SQL Editor, in order:
 
 1. `migrations/046_agent_telegram_bots_v2.sql` — **destructive by design** (`DROP TABLE IF EXISTS public.agent_telegram_bots CASCADE` then recreate). Intentional because the previous migration (045) was abandoned before reaching prod; even if 045 had reached prod the v2 column rename would have broken any preserved data anyway. Until 046 runs, the Telegram column shows "Not connected" everywhere and every Telegram endpoint returns 503 `telegram_table_missing` pointing at the 046 filename.
 2. `migrations/047_agent_telegram_bots_webhook_secret.sql` — **purely additive** (`ADD COLUMN IF NOT EXISTS webhook_secret TEXT` + partial index). Safe to apply on any database that already ran 046; safe to re-run (both statements use `IF NOT EXISTS`). After 047, any existing bot rows will have `webhook_secret = NULL`, which the webhook handler treats as a no-match (dropped with a "secret token did not match any bot" log line); the next time the admin clicks **Connect Telegram** for that agent, a fresh secret is generated and the webhook starts working. Before 047 is applied, every connect call will fail at the UPSERT step with `column "webhook_secret" of relation "agent_telegram_bots" does not exist`.
 3. `migrations/048_agent_activity_logs.sql` — **purely additive** (`CREATE TABLE IF NOT EXISTS` + composite index). Required for `/act` and `POST /api/agent-runtime/tick` — without it, every tick fails at the audit-log insert step with the Postgres `42P01` "relation does not exist" error.
+4. `migrations/049_track_comments_act_uniqueness.sql` — **purely additive** (`CREATE UNIQUE INDEX IF NOT EXISTS` on a partial predicate). Required for the `/act` no-spam guarantee against concurrent runs. Without it, the runtime still de-duplicates sequential `/act` calls via its `track_comments` SELECT, but two tightly-spaced concurrent `/act` calls could both pass the duplicate check and insert two top-level comments. Safe to apply after 048 and on any database where the existing `track_comments` rows already have at most one top-level agent comment per (agent, track) pair (the natural state — duplicates are only created by the race this index closes, and only if the index is missing).
 
 **Reconnect existing bots after the Apr 29 webhook rewrite:** any bot whose `setWebhook` was previously pointed at `/api/integrations/telegram/webhook` or at the old per-bot `/api/telegram/webhook/[botId]` echo URL needs to be reconnected via the admin UI (open Telegram Settings → "Replace bot token" with the same token, or DELETE + re-Connect). The admin POST runs `setWebhook` against the new shared URL `/api/telegram/webhook` and rotates the `webhook_secret` so the new command router can route updates to the right agent.
 

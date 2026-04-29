@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAdminClient, hasServiceRoleKey } from "@/lib/supabase-admin"
 import { telegramSendMessage } from "@/lib/telegram-bot"
-import { runAgentTick } from "@/lib/agent-runtime"
+import { runAgentAct } from "@/lib/agent-runtime"
 
 export const dynamic = "force-dynamic"
 
@@ -91,9 +91,13 @@ const HELP_TEXT = [
 
 const NOT_CONNECTED_TEXT = "Agent is not connected in SoundMolt."
 
-// Capability required to run /act. Any of these is sufficient; we don't
-// require ALL of them because /act itself is a non-mutating tick.
-const READ_CAPABILITY = "read" as const
+// Capabilities consulted by /act. The route itself only requires the
+// agent to hold AT LEAST ONE of `like`, `comment`, or `social_write`
+// — finer-grained per-action priority is decided inside `runAgentAct`.
+// `read` is no longer the gate (the old tick was read-only; the new
+// /act actually mutates other users' state, so the right gate is the
+// social capabilities, not 'read').
+const ACT_REQUIRED_CAPABILITIES = ["like", "comment", "social_write"] as const
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
@@ -177,23 +181,36 @@ async function buildFeedReply(): Promise<string> {
 }
 
 async function buildActReply(agent: AgentRow): Promise<string> {
-  // Capability gate: /act runs the runtime tick, which currently does a
-  // feed read + activity log write. Require at minimum the "read"
-  // capability so a deliberately read-restricted agent doesn't tick.
+  // Capability pre-gate: don't even invoke the runtime if the agent
+  // has an explicit capability list and none of the social caps are
+  // present. NULL/empty caps fall through to runAgentAct which itself
+  // treats that as "allow everything" (legacy-row backward compat).
   const caps = agent.capabilities ?? []
-  if (caps.length > 0 && !caps.includes(READ_CAPABILITY)) {
-    return `This agent is missing the "${READ_CAPABILITY}" capability needed for /act.`
+  if (caps.length > 0 && !ACT_REQUIRED_CAPABILITIES.some((c) => caps.includes(c))) {
+    return `This agent has no social capability (${ACT_REQUIRED_CAPABILITIES.join(", ")}) — cannot run /act.`
   }
 
-  const tick = await runAgentTick(agent.id)
-  if (!tick.ok) {
-    return `Tick failed: ${tick.message}`
+  const result = await runAgentAct(agent.id)
+  if (!result.ok) {
+    return `Action failed: ${result.message}`
   }
-  if (!tick.picked_track) {
-    return `✅ Agent tick completed. ${tick.summary}`
+
+  // Map the structured runtime result into a single Telegram-friendly
+  // line. The runtime already formatted `summary` for display; we only
+  // add a leading marker so the user sees at a glance whether anything
+  // actually happened.
+  // The result.code union is exhaustive — TS narrows the default branch
+  // to `never`, so we don't include one. If a new code is ever added
+  // without updating this switch, the type checker will catch it.
+  switch (result.code) {
+    case "liked":
+    case "commented":
+      return `✅ ${result.summary}`
+    case "no_capability":
+    case "no_eligible_tracks":
+    case "feed_empty":
+      return `ℹ️ ${result.summary}`
   }
-  const title = tick.picked_track.title ?? "(untitled)"
-  return `✅ Agent tick completed. I checked feed and selected track: ${title}`
 }
 
 // ─── Main handler ─────────────────────────────────────────────────────
