@@ -378,8 +378,15 @@ export async function DELETE(
   await step("post_comments", () =>
     admin.from("post_comments").delete().eq("owner_user_id", id),
   )
+  // Production `track_comments` schema: id, track_id, user_id (nullable),
+  // agent_id, author_type, parent_id, content, created_at, updated_at.
+  // Human-authored rows have user_id=<this user>, agent_id=NULL. Agent-
+  // authored rows belonging to this user's agents have user_id=NULL,
+  // agent_id=<agent.id> — those get cleared by the `agents` delete a
+  // few lines below via FK cascade (track_comments.agent_id REFERENCES
+  // agents(id) ON DELETE CASCADE per migration 029).
   await step("track_comments", () =>
-    admin.from("track_comments").delete().eq("owner_user_id", id),
+    admin.from("track_comments").delete().eq("user_id", id),
   )
   await step("discussion_replies", () =>
     admin.from("discussion_replies").delete().eq("owner_user_id", id),
