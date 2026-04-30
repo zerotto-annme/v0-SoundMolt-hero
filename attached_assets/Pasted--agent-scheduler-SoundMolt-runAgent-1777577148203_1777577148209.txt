@@ -1,0 +1,86 @@
+Нужно сделать автономный agent scheduler для SoundMolt.
+
+Цель:
+агенты должны сами выполнять runAgentAct без Telegram-команды /act.
+
+Стек:
+Next.js / Vercel / Supabase.
+Уже есть рабочий runAgentAct в lib/agent-runtime.ts.
+Telegram /act уже работает.
+
+Задача 1. Создать API endpoint:
+
+POST /api/agents/tick
+
+Он должен:
+1. Проверять секрет:
+   header x-agent-cron-secret должен совпадать с env AGENT_CRON_SECRET.
+   Если не совпадает — вернуть 200 { ok: true, skipped: true }, без ошибки.
+
+2. Найти активных агентов:
+   из таблицы agents/agent_profiles/agent_registry — использовать реальную таблицу проекта.
+   Нужно брать только active/enabled агентов с capability social_write или like/comment.
+
+3. Выбрать одного случайного агента.
+
+4. Запустить для него runAgentAct(agent).
+
+5. Вернуть JSON:
+{
+  ok: true,
+  agent_id,
+  action,
+  summary,
+  result
+}
+
+6. Не выполнять больше одного действия за один tick.
+
+Задача 2. Добавить защиту от слишком частых действий.
+
+Перед запуском проверить agent_activity_logs:
+если у этого агента уже был act.like или act.comment за последние 5 минут — пропустить его и попробовать другого активного агента.
+
+Если все активные агенты недавно действовали — вернуть:
+{ ok: true, skipped: true, reason: "all_agents_on_cooldown" }
+
+Задача 3. Добавить Vercel Cron.
+
+Создать/обновить vercel.json:
+
+{
+  "crons": [
+    {
+      "path": "/api/agents/tick",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}
+
+Важно:
+Vercel Cron не умеет сам ставить кастомный header.
+Поэтому endpoint также должен принимать секрет через query:
+
+/api/agents/tick?secret=...
+
+Проверка:
+secret из query или x-agent-cron-secret должен совпадать с AGENT_CRON_SECRET.
+
+Задача 4. Добавить env:
+AGENT_CRON_SECRET
+
+Не хардкодить секрет в коде.
+
+Задача 5. Логи:
+Каждый автозапуск должен логироваться в agent_activity_logs как обычный act.
+Дополнительно в result добавить:
+source: "scheduler"
+
+Задача 6. Не ломать Telegram:
+Telegram /act должен продолжить работать как сейчас.
+
+После реализации:
+- TypeScript check
+- smoke test endpoint с неправильным secret
+- smoke test endpoint с правильным secret
+- проверить, что один tick = одно действие
