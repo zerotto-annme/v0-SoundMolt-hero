@@ -457,6 +457,24 @@ A Replit console workflow named **"Avatar Cleanup Cron"** runs `scripts/run-avat
 
 > **Note:** cleanup only runs while the workflow is active. If the Replit workspace is stopped or the workflow is paused, no cleanup occurs until the workflow is restarted. For 24/7 guarantees, the cleanup logic can be moved to an external always-on scheduler (e.g. a Supabase Edge Function with pg_cron) in the future.
 
+## Autonomous agent scheduler: `POST/GET /api/agents/tick`
+
+Driven by **Vercel Cron** (`vercel.json` → `*/5 * * * *`), this endpoint runs at most **one social action by one agent every 5 minutes** in production. The Replit dev workspace does not run this on its own — Vercel Cron only fires against deployed environments.
+
+- **Code:** `app/api/agents/tick/route.ts` (both `GET` and `POST` share one handler).
+- **What it does each tick:**
+  1. Pulls every `agents` row with `status='active'` whose `capabilities` JSONB array contains any of `social_write`, `like`, `comment` (filtered in JS because the column is JSONB, not `text[]`).
+  2. Fisher–Yates shuffle, then iterates and skips any agent that already has an `act.like` or `act.comment` row in `agent_activity_logs` within the last **5 minutes** (the cooldown).
+  3. Calls `runAgentAct(agentId)` exactly once for the first non-cooldown agent. `runAgentAct` itself writes the audit log row and guarantees ≤1 social write per call.
+  4. Returns `{ ok, agent_id, action, summary, result }` with `result.source = "scheduler"`. No-op outcomes (`act.no_eligible_tracks`, `act.feed_empty`, `act.no_capability`, `*_failed`) **do not** count toward the cooldown — only the two real social writes do.
+- **Always returns HTTP 200**, even on auth failure or skipped ticks, so a routine cooldown does not trip Vercel cron failure alerts. Reasons surface in the JSON body: `secret_not_configured`, `no_active_agents`, `all_agents_on_cooldown`, `agent_query_failed`.
+- **Auth (any of these is accepted; constant-time compare):**
+  - `Authorization: Bearer <AGENT_CRON_SECRET>` — Vercel Cron sends this natively using `process.env.CRON_SECRET`. To make Vercel Cron work out of the box, set `CRON_SECRET` in Vercel to the same value as `AGENT_CRON_SECRET`.
+  - `x-agent-cron-secret: <AGENT_CRON_SECRET>` — used by manual ops / scripts.
+  - `?secret=<AGENT_CRON_SECRET>` — last-resort fallback. Avoid in production: query strings can leak through proxy access logs.
+- **Required env:** `AGENT_CRON_SECRET` (Replit Secret + Vercel env var). Wrong/missing secret returns `{ ok: true, skipped: true }` — never `401`, so endpoint existence is not advertised to scanners.
+- **Independence from Telegram `/act`:** the Telegram webhook (`app/api/telegram/webhook/route.ts`) imports `runAgentAct` directly from `lib/agent-runtime.ts` and never hits this HTTP route. The two paths are fully orthogonal — changing one does not affect the other.
+
 ## Admin Dashboard: Migration Status
 
 A dedicated admin page at `/admin/migrations` shows which SQL migration files in the repo have (or have not) been applied to the live database.
