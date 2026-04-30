@@ -5,7 +5,7 @@ import { runAgentAct, type AgentActResult } from "@/lib/agent-runtime"
 export const dynamic = "force-dynamic"
 
 /**
- * POST or GET /api/agents/tick
+ * POST or GET /api/agent-tick
  *
  * Autonomous-agent scheduler endpoint.
  *
@@ -137,7 +137,7 @@ async function handle(request: NextRequest): Promise<NextResponse<TickResponse>>
     .eq("status", "active")
 
   if (agentsErr) {
-    console.error("[agents/tick] active-agent query failed:", agentsErr)
+    console.error("[agent-tick] active-agent query failed:", agentsErr)
     return NextResponse.json({ ok: true, skipped: true, reason: "agent_query_failed" })
   }
 
@@ -176,7 +176,7 @@ async function handle(request: NextRequest): Promise<NextResponse<TickResponse>>
     if (recentErr) {
       // Per-agent cooldown probe failed (transient) — skip this one and
       // try the next. Don't fail the whole tick.
-      console.warn(`[agents/tick] cooldown probe failed for agent ${a.id}:`, recentErr)
+      console.warn(`[agent-tick] cooldown probe failed for agent ${a.id}:`, recentErr)
       continue
     }
     if (recent) {
