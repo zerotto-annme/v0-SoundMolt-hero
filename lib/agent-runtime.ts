@@ -474,12 +474,17 @@ async function runAgentActImpl(agentId: string): Promise<AgentActResult> {
     }
   }
   if (!agent.user_id) {
-    // Comments require owner_user_id (NOT NULL on track_comments).
+    // The live `track_comments` schema doesn't actually require an
+    // owner_user_id (the agent_id + author_type='agent' carry full
+    // authorship — see lib/agent-actions.ts createTrackComment). We
+    // still bail here because a properly-provisioned agent always
+    // has an owner user_id; a NULL value indicates a half-created or
+    // orphaned agent row that shouldn't be acting at all.
     return {
       ok: false,
       agent_id: agentId,
       code: "agent_inactive",
-      message: "Agent has no owner user_id; cannot author comments.",
+      message: "Agent has no owner user_id; refusing to act on a half-provisioned row.",
     }
   }
 

@@ -38,21 +38,31 @@ export async function createTrackComment(
   if (lookupErr) return fail(500, lookupErr.message)
   if (!track)    return fail(404, "Track not found")
 
+  // Production `public.track_comments` columns (not the `029_agent_social.sql`
+  // baseline; the prod schema diverged):
+  //   id, track_id, user_id, agent_id, author_type, parent_id, content,
+  //   created_at, updated_at
+  // For an agent-authored comment we set agent_id + author_type='agent'
+  // and explicitly set user_id=NULL — the row's authorship is fully
+  // captured by agent_id, no human user owns it. `ref.ownerUserId` is
+  // intentionally ignored on this path.
+  // `track_timestamp` no longer exists on the live table either — we
+  // synthesize it as `null` in the returned shape so callers that read
+  // the field still type-check.
   const { data, error } = await admin
     .from("track_comments")
     .insert({
-      track_id:        track.id,
-      parent_id:       null,
-      author_type:     "agent",
-      agent_id:        ref.agentId,
-      owner_user_id:   ref.ownerUserId,
+      track_id:    track.id,
+      parent_id:   null,
+      author_type: "agent",
+      agent_id:    ref.agentId,
+      user_id:     null,
       content,
-      track_timestamp: args.trackTimestamp ?? null,
     })
-    .select("id, track_id, parent_id, content, track_timestamp, created_at, agent_id")
+    .select("id, track_id, parent_id, content, created_at, agent_id")
     .single()
   if (error || !data) return fail(500, error?.message ?? "Failed to create comment", error?.code)
-  return { ok: true, data }
+  return { ok: true, data: { ...data, track_timestamp: null } }
 }
 
 // ─── Reply to a track comment ──────────────────────────────────────────
@@ -76,14 +86,19 @@ export async function createCommentReply(
   // Flatten one level: a reply to a reply attaches to the top-level comment.
   const parentId = parent.parent_id ?? parent.id
 
+  // Same prod-schema fix as createTrackComment above: the live
+  // `track_comments` table has `user_id` (nullable) instead of the
+  // baseline-migration's `owner_user_id` (not-null). For an agent-
+  // authored reply we set agent_id + author_type='agent' and leave
+  // user_id NULL — `ref.ownerUserId` is intentionally ignored.
   const { data, error } = await admin
     .from("track_comments")
     .insert({
-      track_id:      parent.track_id,
-      parent_id:     parentId,
-      author_type:   "agent",
-      agent_id:      ref.agentId,
-      owner_user_id: ref.ownerUserId,
+      track_id:    parent.track_id,
+      parent_id:   parentId,
+      author_type: "agent",
+      agent_id:    ref.agentId,
+      user_id:     null,
       content,
     })
     .select("id, track_id, parent_id, content, created_at, agent_id")
