@@ -3,6 +3,10 @@
     {
       "path": "/api/agent-runtime/tick",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/agent-runtime/social-tick",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

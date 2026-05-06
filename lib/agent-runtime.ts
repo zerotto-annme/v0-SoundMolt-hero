@@ -754,3 +754,146 @@ async function runAgentActImpl(agentId: string): Promise<AgentActResult> {
     log_id: log.ok ? log.log.id : null,
   }
 }
+
+// ─── Social Tick ──────────────────────────────────────────────────────
+
+export type SocialTickActionType =
+  | "social_tick.like"
+  | "social_tick.comment"
+  | "social_tick.skipped"
+
+export interface SocialTickResult {
+  ok: true
+  source: "scheduler"
+  agent_id: string
+  action_type: SocialTickActionType
+  track_id?: string | null
+  reason?: string | null
+}
+
+const SOCIAL_TICK_COOLDOWN_MS = 5 * 60 * 1000
+const SOCIAL_TICK_COOLDOWN_TYPES = [
+  "act.like",
+  "act.comment",
+  "social_tick.like",
+  "social_tick.comment",
+] as const
+
+/**
+ * One bounded social action per call: like → fallback comment.
+ *
+ * Wraps `runAgentAct` (the existing like/comment runtime) and adds:
+ *   - A 5-minute cooldown that gates BOTH `act.*` (Telegram /act) and
+ *     `social_tick.*` (this scheduler) writes — so the cron and the
+ *     bot never double-engage on the same minute.
+ *   - A separate `social_tick.{like,comment,skipped}` audit row in
+ *     addition to whatever `runAgentAct` writes (`act.*`). The two
+ *     log rows refer to the same underlying like/comment INSERT —
+ *     there is no duplicate write to `track_likes` or `track_comments`
+ *     because the actual mutation is performed exactly once inside
+ *     `runAgentAct`.
+ *
+ * Always returns a `SocialTickResult`; never throws.
+ */
+export async function runAgentSocialTick(agentId: string): Promise<SocialTickResult> {
+  const admin = getAdminClient()
+
+  // 1) Cooldown — look back 5 minutes across the four relevant action types.
+  const since = new Date(Date.now() - SOCIAL_TICK_COOLDOWN_MS).toISOString()
+  const { data: recent, error: recentErr } = await admin
+    .from("agent_activity_logs")
+    .select("id, action_type, created_at")
+    .eq("agent_id", agentId)
+    .gte("created_at", since)
+    .in("action_type", SOCIAL_TICK_COOLDOWN_TYPES as unknown as string[])
+    .limit(1)
+
+  if (recentErr) {
+    console.error("[agent-runtime] social-tick cooldown query failed:", recentErr)
+    // Fail open: log the skip and return — don't ever let a bad query
+    // turn into accidental over-actioning.
+    await logAgentActivity({
+      agentId,
+      actionType: "social_tick.skipped",
+      result: { reason: "cooldown_query_failed", error: recentErr.message, source: "scheduler" },
+    }).catch(() => {})
+    return {
+      ok: true,
+      source: "scheduler",
+      agent_id: agentId,
+      action_type: "social_tick.skipped",
+      reason: "cooldown_query_failed",
+    }
+  }
+
+  if (recent && recent.length > 0) {
+    await logAgentActivity({
+      agentId,
+      actionType: "social_tick.skipped",
+      result: { reason: "cooldown_active", source: "scheduler" },
+    }).catch(() => {})
+    return {
+      ok: true,
+      source: "scheduler",
+      agent_id: agentId,
+      action_type: "social_tick.skipped",
+      reason: "cooldown_active",
+    }
+  }
+
+  // 2) Delegate the actual like/comment selection + write to runAgentAct.
+  //    It writes its own `act.*` log row and performs ≤1 DB mutation.
+  const act = await runAgentAct(agentId)
+
+  // 3) Map the result onto a `social_tick.*` audit row + scheduler response.
+  if (!act.ok) {
+    const reason = act.code
+    await logAgentActivity({
+      agentId,
+      actionType: "social_tick.skipped",
+      result: { reason, error: act.message, source: "scheduler" },
+    }).catch(() => {})
+    return {
+      ok: true,
+      source: "scheduler",
+      agent_id: agentId,
+      action_type: "social_tick.skipped",
+      reason,
+    }
+  }
+
+  if (act.action === "like" || act.action === "comment") {
+    const actionType: SocialTickActionType =
+      act.action === "like" ? "social_tick.like" : "social_tick.comment"
+    const trackId = act.picked_track?.id ?? null
+    await logAgentActivity({
+      agentId,
+      actionType,
+      targetType: "track",
+      targetId: trackId,
+      result: { track_id: trackId, source: "scheduler" },
+    }).catch(() => {})
+    return {
+      ok: true,
+      source: "scheduler",
+      agent_id: agentId,
+      action_type: actionType,
+      track_id: trackId,
+    }
+  }
+
+  // action === 'none' — no_capability / no_eligible_tracks / feed_empty
+  const reason = act.code
+  await logAgentActivity({
+    agentId,
+    actionType: "social_tick.skipped",
+    result: { reason, source: "scheduler" },
+  }).catch(() => {})
+  return {
+    ok: true,
+    source: "scheduler",
+    agent_id: agentId,
+    action_type: "social_tick.skipped",
+    reason,
+  }
+}

@@ -1,0 +1,156 @@
+Задача: добавить отдельный social action tick для SoundMolt agents.
+
+Контекст:
+Сейчас /api/agent-runtime/tick — read-only safety tick.
+Он вызывает runAgentTick и пишет только tick.feed_check / tick.skipped_no_feed.
+Его НЕ трогать и не превращать в social action.
+
+Нужно добавить новый endpoint:
+
+app/api/agent-runtime/social-tick/route.ts
+
+Цель:
+Этот endpoint должен безопасно выполнять максимум 1 социальное действие за один вызов:
+- like
+- comment
+
+Требования:
+
+1. Auth / security
+Сделать такую же проверку секрета, как в app/api/agent-runtime/tick/route.ts:
+- Authorization: Bearer AGENT_CRON_SECRET
+- x-agent-cron-secret
+- ?secret=
+
+Без валидного секрета возвращать:
+{ ok: true, skipped: true, reason: "invalid_or_missing_secret" }
+HTTP 200.
+
+2. GET и POST
+Endpoint должен поддерживать GET и POST.
+
+POST body может содержать:
+{
+  "agent_id": "..."
+}
+
+Если agent_id передан — тикать конкретного агента.
+Если нет — выбрать случайного активного агента:
+status = 'active'
+
+3. Social action logic
+Не использовать runAgentTick напрямую, потому что он read-only.
+
+Нужно создать новую функцию в lib/agent-runtime.ts:
+
+runAgentSocialTick(agentId: string)
+
+Логика:
+- найти один подходящий опубликованный track
+- не свой трек агента, если есть возможность определить owner/agent
+- сначала попробовать likeTrack(agentId, trackId)
+- если уже лайкал, попробовать createTrackComment(agentId, trackId, comment)
+- максимум одно действие за вызов
+
+4. Cooldown / антиспам
+Перед действием проверить agent_activity_logs:
+
+Не делать social action, если у этого agent_id уже был action_type:
+- act.like
+- act.comment
+- social_tick.like
+- social_tick.comment
+
+за последние 5 минут.
+
+Если cooldown активен — вернуть:
+{
+  ok: true,
+  skipped: true,
+  reason: "cooldown_active"
+}
+
+5. Комментарии
+Использовать существующую логику комментариев из lib/agent-runtime.ts, если она уже есть:
+- не повторять последние комментарии
+- разные tone/variant
+- не писать одинаковые комментарии подряд
+
+Если готовой функции нет — сделать временный список 12 нейтральных коротких комментариев, например:
+- "Nice atmosphere on this one."
+- "The groove feels solid."
+- "Interesting sound design."
+- "This has a cool direction."
+- "The mix feels clean."
+- "Strong idea here."
+- "The energy builds nicely."
+- "Good texture in the arrangement."
+- "This one has character."
+- "Smooth progression."
+- "The vibe is working."
+- "Nice detail in the production."
+
+6. Логи
+Каждый успешный social tick писать в agent_activity_logs:
+
+Для лайка:
+action_type = "social_tick.like"
+
+Для комментария:
+action_type = "social_tick.comment"
+
+metadata должен содержать:
+{
+  "track_id": "...",
+  "source": "scheduler"
+}
+
+Если ничего не сделано:
+action_type = "social_tick.skipped"
+metadata:
+{
+  "reason": "...",
+  "source": "scheduler"
+}
+
+7. Endpoint response
+Успешный ответ:
+{
+  ok: true,
+  source: "scheduler",
+  agent_id: "...",
+  action_type: "social_tick.like" | "social_tick.comment" | "social_tick.skipped",
+  track_id?: "...",
+  reason?: "..."
+}
+
+8. vercel.json
+Добавить второй cron path:
+
+/api/agent-runtime/social-tick
+
+Период:
+раз в 10 минут.
+
+Старый cron /api/agent-runtime/tick оставить как есть.
+
+9. Ничего не ломать
+Не менять:
+- /api/agent-runtime/tick
+- /api/telegram/webhook
+- /api/integrations/telegram/webhook
+- requireAgent
+- существующие agent API
+
+10. Проверки
+После реализации прогнать:
+
+- TypeScript check
+- GET /api/agent-runtime/social-tick без секрета → skipped invalid_or_missing_secret
+- GET /api/agent-runtime/social-tick?secret=... → ok true
+- POST /api/agent-runtime/social-tick с agent_id и x-agent-cron-secret → тикает конкретного агента
+- повторный вызов сразу → cooldown_active
+- убедиться, что в agent_activity_logs появились social_tick.like / social_tick.comment / social_tick.skipped
+
+Важно:
+Если likeTrack/createTrackComment уже сами пишут act.like/act.comment в logs — всё равно social_tick должен возвращать понятный action_type и не создавать дубль-лайк.
