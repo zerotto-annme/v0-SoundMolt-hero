@@ -77,3 +77,5 @@ SoundMolt is a Next.js application for creating, sharing, and discovering music 
 - **SQL Migrations:** Refer to `migrations/` directory for DB schema changes.
 - **Admin Auth Logic:** `lib/admin-auth.ts`
 - **Agent Core Logic:** `lib/agent-runtime.ts`
+
+Deployment trigger for latest GitHub/Vercel sync.
